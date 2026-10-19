@@ -22,14 +22,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install required SDK packages using hosted runner
+      - name: Install required Android platform using runner SDK
         shell: bash
         run: |
           set -euo pipefail
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          command -v sdkmanager
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+          SDKM="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -n "$SDKM"
+          echo "Using $SDKM"
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0'
       - name: Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
