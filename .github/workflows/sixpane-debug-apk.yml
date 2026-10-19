@@ -2,12 +2,14 @@ name: SIXPANE Android debug APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'android/**'
       - '.github/workflows/sixpane-debug-apk.yml'
+
 permissions:
   contents: read
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -20,18 +22,22 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Install platform and build tools
-        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Install required SDK packages using hosted runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          command -v sdkmanager
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
       - name: Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Compile unit tests and debug APK
+      - name: Compile tests and debug APK
         working-directory: android
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
-      - name: Upload debug APK and reports
+      - name: Upload APK and build reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
