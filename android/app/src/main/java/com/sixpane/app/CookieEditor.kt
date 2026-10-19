@@ -55,7 +55,7 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
             setBackgroundColor(Color.rgb(56,59,66));setTextColor(Color.WHITE);setHintTextColor(Color.LTGRAY)
         }
         root.addView(search,LinearLayout.LayoutParams(-1,activity.dp(53)))
-        val scroll=ScrollView(activity).apply{fillViewport=true}
+        val scroll=ScrollView(activity).apply{isFillViewport=true}
         list=LinearLayout(activity).apply{orientation=LinearLayout.VERTICAL}
         scroll.addView(list);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         val footer=row().apply{setBackgroundColor(Color.rgb(36,38,44))}
