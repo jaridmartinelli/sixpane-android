@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>SIXPANE Local Test</title></head>
+<body style="font:16px system-ui;background:#172034;color:#eee"><h2>SIXPANE Controlled Test</h2>
+<div id="status">Timer: 0</div><div id="state"></div><button onclick="mark()">Write marker</button>
+<script>
+let ticks=0;setInterval(()=>{ticks++;document.getElementById('status').textContent='Timer: '+ticks},1000);
+function mark(){let m='local-'+Math.floor(Math.random()*1e8);localStorage.setItem('sixpane-marker',m);document.cookie='sixpane-marker='+encodeURIComponent(m)+'; Secure; SameSite=Lax; Path=/';update()}
+function update(){document.getElementById('state').textContent='Storage: '+(localStorage.getItem('sixpane-marker')||'(empty)')+' / Cookie: '+document.cookie}
+update();
+</script></body></html>

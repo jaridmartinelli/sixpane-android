@@ -1,0 +1,43 @@
+name: SIXPANE Android debug APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'android/**'
+      - '.github/workflows/sixpane-debug-apk.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install platform and build tools
+        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compile unit tests and debug APK
+        working-directory: android
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
+      - name: Upload debug APK and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sixpane-android-build-results
+          if-no-files-found: warn
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/reports/**
+            android/app/build/test-results/**

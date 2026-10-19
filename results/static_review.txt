@@ -1,0 +1,17 @@
+PASS: local-only (no network server runtime)
+PASS: one named profile per constructed WebView
+PASS: profile assignment BEFORE settings
+PASS: strict runtime MULTI_PROFILE support
+PASS: UUID profile IDs
+PASS: no automatic cookie wipe
+PASS: manual cookie deletion confirmation
+PASS: tab lock and tab close both exist
+PASS: desktop blocked when pane locked
+PASS: tombstone before retiring active UI
+PASS: six unique aspect ratios per new workspace
+PASS: no WebView.pauseTimers
+PASS: active offscreen views not intentionally GONE
+PASS: URL bar directly editable
+PASS: keep screen awake
+PASS: workspace limit policy
+Static source assertions, NOT Android runtime verification.

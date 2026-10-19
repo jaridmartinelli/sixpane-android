@@ -1,5 +1,5 @@
-# SIXPANE — Android
+# SIXPANE — Phone-only Android source
 
-Private, phone-only Android browser project. The target is six isolated browser profiles per workspace, up to seven workspaces, with no runtime VPS.
+This folder contains **new Android source** for the locally executing SIXPANE browser model. It is not an APK and is not yet compilation- or device-verified. It does not use a VPS, browser relay, WebRTC, or external server for browser execution.
 
-**Status:** Development source is being imported. APK compilation and physical-device verification are not yet complete. Do not treat a successful debug build as proof of 42 concurrently active sessions or complete cookie isolation.
+Start with `docs/IMPLEMENTATION_AND_VERIFICATION.md` for features, precise risks, build commands and test plan. Build requires a configured Android SDK/Gradle installation. The old remote-server package is superseded by this source for the agreed device-only architecture.
