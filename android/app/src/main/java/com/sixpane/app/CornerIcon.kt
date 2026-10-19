@@ -30,7 +30,7 @@ class CornerIcon(context:Context, val kind:Kind):View(context){
             Kind.LOCK->{
                 canvas.drawRoundRect(5f,10f,19f,21f,2f,2f,paint)
                 val path=Path().apply{moveTo(8f,10f);lineTo(8f,7f);cubicTo(8f,1f,16f,1f,16f,7f);lineTo(16f,10f)}
-                if(!locked){path.reset();path.moveTo(8f,10f);lineTo(8f,7f);cubicTo(8f,1f,15f,1f,16.5f,5f)}
+                if(!locked){path.reset();path.moveTo(8f,10f);path.lineTo(8f,7f);path.cubicTo(8f,1f,15f,1f,16.5f,5f)}
                 canvas.drawPath(path,paint)
             }
             Kind.EXPAND->{
