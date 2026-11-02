@@ -20,6 +20,30 @@ class BrowserPolicyTest {
         assertEquals("https://user:password@example.com",BrowserPolicy.normalizeAddress("https://user:password@example.com"))
         assertNull(BrowserPolicy.normalizeAddress("not a host"))
     }
+
+    @Test fun omniboxSearchesTextInsteadOfTreatingItAsHostname(){
+        assertEquals("https://www.google.com/search?q=cats",BrowserPolicy.resolveAddressOrSearch("cats"))
+        assertEquals("https://www.google.com/search?q=best+isekai+anime",
+            BrowserPolicy.resolveAddressOrSearch(" best isekai anime "))
+        assertEquals("https://www.google.com/search?q=weather+tomorrow",
+            BrowserPolicy.resolveAddressOrSearch("weather tomorrow"))
+        assertEquals("https://www.google.com/search?q=hello+%26+goodbye",
+            BrowserPolicy.resolveAddressOrSearch("hello & goodbye"))
+        assertNull(BrowserPolicy.resolveAddressOrSearch("   "))
+    }
+    @Test fun omniboxPreservesRealWebAddresses(){
+        assertEquals("https://google.com",BrowserPolicy.resolveAddressOrSearch("google.com"))
+        assertEquals("https://www.youtube.com",BrowserPolicy.resolveAddressOrSearch("www.youtube.com"))
+        assertEquals("https://example.com/page?a=1",BrowserPolicy.resolveAddressOrSearch("https://example.com/page?a=1"))
+        assertEquals("http://localhost:8080/",BrowserPolicy.resolveAddressOrSearch("http://localhost:8080/"))
+        assertEquals("https://localhost:8080",BrowserPolicy.resolveAddressOrSearch("localhost:8080"))
+        assertEquals("about:blank",BrowserPolicy.resolveAddressOrSearch("about:blank"))
+        assertEquals("https://example.com/a%20b",BrowserPolicy.resolveAddressOrSearch("https://example.com/a b"))
+    }
+    @Test fun strictBulkPortalAddressesStillRejectSearchQueries(){
+        assertNull(BrowserPolicy.normalizeAddress("best isekai anime"))
+        assertNull(BrowserPolicy.normalizeAddress("javascript://alert(1)"))
+    }
     @Test fun duplicateMeansMultiplePanesNotMultipleSources(){
         val samePane=listOf(SessionCandidate(1,"cookie","qid","A"),SessionCandidate(1,"localStorage","qid","A"))
         assertTrue(SessionAuditPolicy.duplicates(samePane).isEmpty())

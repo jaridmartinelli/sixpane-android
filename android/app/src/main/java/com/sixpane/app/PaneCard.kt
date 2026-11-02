@@ -242,14 +242,9 @@ class PaneCard(
         // Focus and grid changes never replace a WebView or force the toolbar visible.
         expand.contentDescription=if(focused)"Restore six-window grid" else "Expand window ${host.paneIndex(state.id)}"
     }
-    private fun normalize(raw:String):String?{
-        val t=raw.trim();if(t=="about:blank")return t
-        val candidate=if("://" in t)t else "https://$t"
-        return try{val u=android.net.Uri.parse(candidate);if(u.scheme in listOf("http","https")&&!u.host.isNullOrBlank())candidate else null}catch(_:Exception){null}
-    }
     /** Explicit submit from the thumb-reachable sheet: no navigation on focus loss. */
     fun submitAddress(raw:String):Boolean {
-        val next=normalize(raw) ?: return false
+        val next=BrowserPolicy.resolveAddressOrSearch(raw) ?: return false
         if(disposed)return false
         loadAddress(next)
         return true

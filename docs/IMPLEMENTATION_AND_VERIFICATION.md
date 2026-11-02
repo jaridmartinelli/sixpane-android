@@ -186,3 +186,13 @@ Internally caught defect: the drawable builder's `state` resolved to Drawable.st
 The v0.5 APK used the existing preview package with a certificate different from the earlier distributed APK. Android rejected installation; no device data deletion was performed. Delivering it as an update despite the known mismatch was a distribution failure: build success did not establish update compatibility. Future update claims require matching the reference certificate, not merely compiling successfully.
 
 After the reported conflict, the user explicitly selected **Install alongside**. The debug-only suffix is now `.preview.minimal`, label **SIXPANE Minimal**, leaving the original `.preview.onehand` installation untouched. This is an authorized exception to the earlier identity-preservation constraint, not a migration: the new app starts with independent fresh sessions. Source/session architecture, release application ID and SDK levels remain unchanged. APK package inspection must confirm the distinct identity before delivery. Existing sessions cannot transfer between these apps without a separately supported migration.
+
+
+## November 2, 2026 — Chrome-style address field navigation
+
+- The single-pane long-press address editor accepts search terms and ordinary URLs.
+- Plain words and multiword entries load \`https://www.google.com/search?q=...\` using UTF-8 URL encoding; domain-shaped entries, localhost, and explicit HTTP(S) URLs retain direct navigation.
+- The shared portal-bulk address validator remains **URL-only** to avoid unexpectedly opening an unrelated Google search across all active sessions.
+- Keyboard Go triggers the existing dialog submit action; no navigation occurs solely from focus loss.
+- A separate debug application ID (\`.preview.search\`) avoids overwriting prior signed preview installations and preserves their saved profiles.
+- JUnit tests cover search queries, encoding, URLs, local development addresses, blank input, and bulk-validation separation.

@@ -34,7 +34,8 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
     }
     private fun address(){
         val field=EditText(host).apply{
-            setSingleLine(true);setTextColor(Color.WHITE);hint="https://example.com"
+            setSingleLine(true);setTextColor(Color.WHITE);hint="Search Google or type URL"
+            imeOptions=android.view.inputmethod.EditorInfo.IME_ACTION_GO
             inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
             if(targets.size==1)setText(origin.state.url)
         }
@@ -43,7 +44,7 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
         bottom(dialog)
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener{
             if(targets.size==1){
-                if(origin.submitAddress(field.text.toString()))dialog.dismiss() else field.error="Enter a valid web address"
+                if(origin.submitAddress(field.text.toString()))dialog.dismiss() else field.error="Enter an address or search term"
             }else{
                 val url=BrowserPolicy.normalizeAddress(field.text.toString())
                 if(url==null)field.error="Enter a valid web address" else{
@@ -51,6 +52,12 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
                     host.persist();dialog.dismiss()
                 }
             }
+        }
+        field.setOnEditorActionListener { _,actionId,_ ->
+            if(actionId==android.view.inputmethod.EditorInfo.IME_ACTION_GO){
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                true
+            }else false
         }
     }
     private fun colors(){
