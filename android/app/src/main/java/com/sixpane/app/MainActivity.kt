@@ -26,9 +26,7 @@ class MainActivity:Activity(){
         private set
     private val handler=Handler(Looper.getMainLooper())
     private lateinit var screen:LinearLayout
-    private lateinit var tabScroller:HorizontalScrollView
     private lateinit var tabStrip:LinearLayout
-    private lateinit var workspaceMore:TextView
     private var selecting=false
     private val selectedPanes=linkedSetOf<String>()
     private lateinit var stage:FrameLayout
@@ -96,17 +94,10 @@ class MainActivity:Activity(){
             v.setPadding(bars.left,bars.top,bars.right,bars.bottom)
             insets
         }
-        val tabsRow=LinearLayout(this).apply{
+        tabStrip=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
-            setPadding(dp(4),dp(4),dp(4),dp(4));setBackgroundColor(Color.rgb(26,34,47))
+            setBackgroundColor(Color.rgb(17,23,29))
         }
-        tabStrip=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        tabScroller=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false;clipChildren=false;addView(tabStrip)}
-        tabsRow.addView(tabScroller,LinearLayout.LayoutParams(0,dp(39),1f))
-        workspaceMore=smallButton("⋮",28){if(selecting)selectionMenu() else workspaceMenu()}
-        workspaceMore.contentDescription="Workspace controls"
-        tabsRow.addView(workspaceMore,LinearLayout.LayoutParams(dp(30),dp(38)))
-        screen.addView(tabsRow,LinearLayout.LayoutParams(-1,dp(47)))
         stage=FrameLayout(this).apply{
             clipChildren=true;clipToPadding=true;setBackgroundColor(bg)
             addOnLayoutChangeListener{_,l,t,r,b,_,_,_,_->
@@ -114,6 +105,7 @@ class MainActivity:Activity(){
             }
         }
         screen.addView(stage,LinearLayout.LayoutParams(-1,0,1f))
+        screen.addView(tabStrip,LinearLayout.LayoutParams(-1,dp(48)))
         setContentView(screen)
         renderTabs()
         if(pendingFailures>0)notice("${pendingFailures} retired profiles await deletion on a later clean start; no IDs will be reused")
@@ -131,60 +123,45 @@ class MainActivity:Activity(){
     fun confirm(title:String,message:String,action:()->Unit)=confirm(title,message,"Continue",action)
     private fun renderTabs(){
         tabStrip.removeAllViews()
-        if(selecting){
-            val back=smallButton("←",38){exitSelection()}
-            back.contentDescription="Exit window selection"
-            tabStrip.addView(back,LinearLayout.LayoutParams(dp(40),dp(35)))
-            val count=TextView(this).apply{
-                text=if(selectedPanes.isEmpty())"Select windows" else "${selectedPanes.size} selected"
-                textSize=14f;setTextColor(Color.WHITE);gravity=Gravity.CENTER_VERTICAL
+        repeat(WorkspacePolicy.MAX_WORKSPACES){index->
+            val ws=store.spaces.getOrNull(index)
+            val active=ws?.id==store.currentId
+            val next=index==store.spaces.size
+            val label=if(active)"${index+1}\n${store.columns}×${6/store.columns}" else if(next)"${index+1}\n+" else "${index+1}"
+            val tab=smallButton(label,0){
+                if(ws==null){if(next)createWorkspace();return@smallButton}
+                if(active){
+                    store.columns=if(store.columns==2)3 else 2;store.focusId=null;store.save();renderTabs();positionCards(true)
+                }else{
+                    store.currentId=ws.id;store.focusId=null;store.save();renderTabs();positionCards(true)
+                }
+            }.apply{
+                textSize=if(active||next)12f else 14f
+                isEnabled=(!selecting||active)&&(ws!=null||next)
+                alpha=if(ws==null).45f else 1f
+                setTextColor(if(active)Color.rgb(184,210,237) else Color.rgb(232,237,244))
+                background=GradientDrawable().apply{setColor(if(active)Color.rgb(45,64,85) else Color.TRANSPARENT);cornerRadius=dp(8).toFloat()}
+                contentDescription=if(ws==null)"Create workspace ${index+1}" else "Workspace ${index+1}${if(active)"; tap to swap layout" else ""}; hold for workspace tools"
+                if(ws!=null)setOnLongClickListener{
+                    if(selecting)selectionMenu()
+                    else{store.currentId=ws.id;store.focusId=null;store.save();renderTabs();positionCards(true);workspaceMenu()}
+                    true
+                }
             }
-            tabStrip.addView(count,LinearLayout.LayoutParams(-2,dp(35)))
-            workspaceMore.contentDescription="Selection actions"
-            return
+            tabStrip.addView(tab,LinearLayout.LayoutParams(0,dp(44),1f))
         }
-        workspaceMore.contentDescription="Workspace controls"
-        store.spaces.forEachIndexed {index,ws->
-            val row=LinearLayout(this).apply {
-                orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
-                setBackgroundColor(if(ws.id==store.currentId)Color.rgb(62,88,124) else Color.rgb(40,51,70))
-            }
-            val number=smallButton("${index+1}",24){
-                if(selecting)exitSelection()
-                store.currentId=ws.id;store.focusId=null;store.save();renderTabs();positionCards(true)
-            }
-            number.textSize=12f;row.addView(number,LinearLayout.LayoutParams(dp(25),dp(34)))
-            val lock=CornerIcon(this,CornerIcon.Kind.LOCK).apply{
-                locked=ws.locked;contentDescription=if(ws.locked)"Unlock tab ${index+1}" else "Lock tab ${index+1}"
-                setOnClickListener {ws.locked=!ws.locked;locked=ws.locked;pressedFeedback();store.save();renderTabs()}
-            }
-            row.addView(lock,LinearLayout.LayoutParams(dp(27),dp(34)))
-            val close=smallButton("×",27){
-                if(ws.locked){lock.blockedFeedback();notice("Unlock Workspace ${index+1} to close it")}
-                else closeWorkspace(ws)
-            }
-            close.alpha=if(ws.locked) .22f else .70f
-            close.contentDescription="Close Workspace ${index+1}"
-            row.addView(close,LinearLayout.LayoutParams(dp(23),dp(34)))
-            tabStrip.addView(row,LinearLayout.LayoutParams(dp(75),dp(35)).apply{marginEnd=dp(3)})
-        }
-        if(WorkspacePolicy.canCreate(store.spaces.size)){
-            val add=smallButton("+",34){
-                try{
-                    store.create();renderTabs();positionCards(false)
-                    val new=store.active()
-                    new.panes.forEachIndexed {i,p-> handler.postDelayed({
-                        if(!isFinishing && store.spaces.any{w->w.id==new.id&&w.panes.any{p2->p2.id==p.id}}){
-                            try{val card=PaneCard(this,p);cards[p.id]=card;stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)));positionCards(false)}
-                            catch(e:Throwable){notice("Browser allocation failed: ${e.message}")}
-                        }
-                    },i*130L)}
-                }catch(e:Exception){notice("Cannot create workspace: ${e.message}")}
-            }
-            add.contentDescription="Create six fresh browsers"
-            tabStrip.addView(add,LinearLayout.LayoutParams(dp(35),dp(35)))
-        }
-        tabScroller.post{tabScroller.scrollTo(if(store.spaces.indexOfFirst{it.id==store.currentId}>=3)tabStrip.width else 0,0)}
+    }
+    private fun createWorkspace(){
+        if(!WorkspacePolicy.canCreate(store.spaces.size))return
+        try{
+            val new=store.create();renderTabs();positionCards(false)
+            new.panes.forEachIndexed{i,p->handler.postDelayed({
+                if(!isFinishing&&!isDestroyed&&store.spaces.any{w->w.id==new.id&&w.panes.any{it.id==p.id}}){
+                    try{val card=PaneCard(this,p);cards[p.id]=card;stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)));positionCards(false)}
+                    catch(e:Throwable){notice("Browser allocation failed: ${e.message}")}
+                }
+            },i*130L)}
+        }catch(e:Exception){notice("Cannot create workspace: ${e.message}")}
     }
     private fun closeWorkspace(ws:WorkspaceState){
         if(ws.locked){notice("Workspace locked");return}
@@ -232,96 +209,18 @@ class MainActivity:Activity(){
             card.updateSelection(selecting && store.active().panes.any{it.id==id},selectedPanes.contains(id))
         }
     }
-    /** Thumb-reachable controls: long-press the minimal top strip or tap the pane's ⋮. */
+    /** Exactly seven pane actions. A workspace-tab hold owns workspace-wide tools. */
     fun windowContextMenu(card:PaneCard){
-        if(selecting){toggleWindowSelection(card.state.id);return}
-        val dlg=Dialog(this)
-        dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        val palette=Color.rgb(38,49,65)
-        fun rounded(color:Int,radius:Int=14)=GradientDrawable().apply{
-            setColor(color);cornerRadius=dp(radius).toFloat()
-        }
-        fun touch(label:String,action:()->Unit):TextView=TextView(this).apply{
-            text=label;textSize=14f;gravity=Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background=rounded(Color.rgb(55,72,96),8)
-            setOnClickListener{action()}
-            contentDescription=label
-        }
-        val sheet=LinearLayout(this).apply{
-            orientation=LinearLayout.VERTICAL
-            setPadding(dp(16),dp(14),dp(16),dp(18))
-            background=rounded(palette,18)
-        }
-        val heading=TextView(this).apply{
-            text="Browser controls";textSize=14f;setTextColor(Color.WHITE)
-            setPadding(0,0,0,dp(9))
-        }
-        sheet.addView(heading)
-        // One direct URL field, no nested editor panel. Android IME Go also submits.
-        val addressRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        val address=EditText(this).apply{
-            setSingleLine(true)
-            setText(card.state.url)
-            setSelectAllOnFocus(true)
-            textSize=14f
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.LTGRAY)
-            setPadding(dp(10),0,dp(8),0)
-            background=rounded(Color.rgb(25,35,50),7)
-            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            imeOptions=EditorInfo.IME_ACTION_GO
-            contentDescription="Browser URL"
-        }
-        fun navigate(){
-            if(card.submitAddress(address.text.toString())){
-                (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
-                    .hideSoftInputFromWindow(address.windowToken,0)
-                dlg.dismiss()
-            }else address.error="Enter a valid web address"
-        }
-        address.setOnEditorActionListener{_,action,event->
-            if(action==EditorInfo.IME_ACTION_GO || event?.keyCode==KeyEvent.KEYCODE_ENTER){navigate();true}else false
-        }
-        addressRow.addView(address,LinearLayout.LayoutParams(0,dp(48),1f))
-        val go=touch("Go"){navigate()}
-        addressRow.addView(go,LinearLayout.LayoutParams(dp(55),dp(48)).apply{marginStart=dp(8)})
-        sheet.addView(addressRow)
-        val zoomRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        val zoomText=TextView(this).apply{
-            text="${card.state.zoom}%";textSize=14f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
-            contentDescription="Reset zoom to 100 percent"
-            setOnClickListener { card.resetZoom();text="100%" }
-        }
-        val minus=touch("−") {card.zoomByStep(-1);zoomText.text="${card.state.zoom}%"}
-        val plus=touch("+") {card.zoomByStep(1);zoomText.text="${card.state.zoom}%"}
-        zoomRow.addView(minus,LinearLayout.LayoutParams(dp(52),dp(48)))
-        zoomRow.addView(zoomText,LinearLayout.LayoutParams(0,dp(48),1f))
-        zoomRow.addView(plus,LinearLayout.LayoutParams(dp(52),dp(48)))
-        sheet.addView(zoomRow,LinearLayout.LayoutParams(-1,dp(56)).apply{topMargin=dp(10)})
-        val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        val lockButton=touch(if(card.state.locked)"Unlock" else "Lock"){
-            card.state.locked=!card.state.locked
-            card.updateLockStatus();store.save()
-            dlg.dismiss()
-        }
-        val selectButton=touch("Select") {dlg.dismiss();enterSelection(card.state.id)}
-        actions.addView(lockButton,LinearLayout.LayoutParams(0,dp(48),1f).apply{marginEnd=dp(5)})
-        actions.addView(selectButton,LinearLayout.LayoutParams(0,dp(48),1f).apply{marginStart=dp(5)})
-        sheet.addView(actions,LinearLayout.LayoutParams(-1,dp(48)).apply{topMargin=dp(7)})
-        val tools=touch("More browser tools  ›") {dlg.dismiss();paneMenu(card)}
-        sheet.addView(tools,LinearLayout.LayoutParams(-1,dp(44)).apply{topMargin=dp(8)})
-        dlg.setContentView(sheet)
-        dlg.window?.apply{
-            setBackgroundDrawableResource(android.R.color.transparent)
-            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
-            attributes=attributes.apply{dimAmount=.5f;gravity=Gravity.BOTTOM}
-        }
-        dlg.show()
-        dlg.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.WRAP_CONTENT)
-        dlg.window?.setGravity(Gravity.BOTTOM)
+        if(selecting&&!selectedPanes.contains(card.state.id)){selectedPanes.add(card.state.id);updateSelection()}
+        val targets=if(selecting&&selectedPanes.isNotEmpty())store.active().panes.filter{it.id in selectedPanes} else listOf(card.state)
+        WindowActions(this,card,targets).open()
     }
+    fun selectingWindows():Boolean=selecting
+    fun toggleSelectionFromMenu(card:PaneCard){if(selecting)exitSelection() else enterSelection(card.state.id)}
+    fun updateWindowLocks(){cards.values.forEach{it.updateLockStatus()};persist();updateSelection()}
+    fun windowCard(id:String):PaneCard?=cards[id]
+    fun recolorWindows(ids:Set<String>,color:Int){store.setFrameColor(ids,color);ids.forEach{cards[it]?.updateFrameColor()}}
+    fun closeWindows(ids:Set<String>)=confirmCloseWindows(ids)
     private fun shareUrls(urls:List<String>){
         val sites=urls.filter{it.startsWith("https://")||it.startsWith("http://")}.distinct()
         if(sites.isEmpty()){notice("No web addresses to share");return}
@@ -332,7 +231,7 @@ class MainActivity:Activity(){
         startActivity(android.content.Intent.createChooser(share,"Share browser links"))
     }
     private fun selectionMenu(){
-        val popup=PopupMenu(this,workspaceMore)
+        val popup=PopupMenu(this,tabStrip.getChildAt(store.spaces.indexOf(store.active()).coerceAtLeast(0)))
         val ws=store.active()
         val panes=ws.panes.filter {it.id in selectedPanes}
         val anyLocked=panes.any {it.locked}
@@ -358,9 +257,10 @@ class MainActivity:Activity(){
         }
         popup.show()
     }
-    private fun confirmCloseSelected(){
+    private fun confirmCloseSelected()=confirmCloseWindows(selectedPanes.toSet())
+    private fun confirmCloseWindows(requested:Set<String>){
         val ws=store.active()
-        val selected=ws.panes.filter{it.id in selectedPanes}
+        val selected=ws.panes.filter{it.id in requested}
         if(selected.isEmpty())return
         if(selected.any{it.locked}){
             selected.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
@@ -406,7 +306,7 @@ class MainActivity:Activity(){
             "Controlled test page", "Pending deletion status", "Select windows", "Bookmarks",
             "Open in all panes · this workspace", "Open in all panes · all workspaces",
             "Session audit", "Desktop UA: ${if(store.desktopUserAgent)"on" else "off"}",
-            "Battery optimization exemption")
+            "Battery optimization exemption", "Lock / unlock workspace", "Close workspace")
         AlertDialog.Builder(this).setItems(options){_,idx->when(idx){
             0->{store.columns=if(store.columns==2)3 else 2;store.save();positionCards(true)}
             1->{val value=!store.active().panes.all{it.locked};store.active().panes.forEach {it.locked=value;cards[it.id]?.updateLockStatus()};store.save()}
@@ -421,6 +321,8 @@ class MainActivity:Activity(){
             8->SessionAudit(this).open()
             9->toggleGlobalUserAgent()
             10->requestBatteryExemption(true)
+            11->{store.active().locked=!store.active().locked;persist();renderTabs()}
+            12->closeWorkspace(store.active())
         }}.show()
     }
     private fun navigatePanes(panes:List<PaneState>,url:String){
@@ -491,21 +393,8 @@ class MainActivity:Activity(){
         val layoutRun=++layoutGeneration
         val gap=dp(2);val visible=store.active().panes
         val f=store.focusId?.takeIf{id->visible.any{it.id==id}}
-        val desired=mutableMapOf<String,IntArray>()
-        if(f==null){
-            val cols=store.columns;val rows=6/cols
-            val cellW=(width-gap*(cols+1))/cols
-            val cellH=(height-gap*(rows+1))/rows
-            visible.forEachIndexed{i,p->desired[p.id]=intArrayOf(gap+(i%cols)*(cellW+gap),gap+(i/cols)*(cellH+gap),cellW,cellH)}
-        }else{
-            val stackW=(width*.235f).toInt().coerceAtLeast(dp(72))
-            val mainW=(width-stackW-gap*3).coerceAtLeast(dp(80))
-            val mainH=height-2*gap
-            desired[f]=intArrayOf(gap,gap,mainW,mainH)
-            val others=visible.filter{it.id!=f}
-            val cellH=(mainH-gap*4)/5
-            others.forEachIndexed{i,p->desired[p.id]=intArrayOf(mainW+gap*2,gap+i*(cellH+gap),stackW,cellH)}
-        }
+        val rects=PaneLayout.bounds(width,height,gap,store.columns,f?.let{id->visible.indexOfFirst{it.id==id}},dp(72),dp(80))
+        val desired=visible.mapIndexed{i,p->val r=rects[i];p.id to intArrayOf(r.x,r.y,r.width,r.height)}.toMap()
         for((id,card) in cards){
             card.updatePaneNumber()
             val r=desired[id]
@@ -520,7 +409,7 @@ class MainActivity:Activity(){
             val oldX=card.x;val oldY=card.y;val oldW=card.width;val oldH=card.height
             card.animate().cancel();card.translationX=0f;card.translationY=0f;card.scaleX=1f;card.scaleY=1f
             val lp=card.layoutParams as FrameLayout.LayoutParams
-            lp.width=r[2].coerceAtLeast(dp(60));lp.height=r[3].coerceAtLeast(dp(50))
+            lp.width=r[2].coerceAtLeast(1);lp.height=r[3].coerceAtLeast(1)
             lp.leftMargin=r[0];lp.topMargin=r[1]
             card.layoutParams=lp
             card.compact=r[2]<dp(155)
@@ -538,6 +427,12 @@ class MainActivity:Activity(){
                 }
             }
         }
+    }
+    @Deprecated("Android callback")
+    override fun onBackPressed(){
+        if(selecting){exitSelection();return}
+        if(::store.isInitialized&&store.focusId!=null){store.focusId=null;persist();positionCards(true);return}
+        super.onBackPressed()
     }
     override fun onConfigurationChanged(newConfig:Configuration){super.onConfigurationChanged(newConfig);if(::stage.isInitialized)stage.post{positionCards(false)}}
     override fun onStart(){

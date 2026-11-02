@@ -168,3 +168,15 @@ Additional device verification needed: all 42 UAs identical with shared mode ON;
 🚩G🔧 (Three independent callback findings shared a credible cause: work could continue after its view, navigation or layout state changed. The specific prevention now checks the current navigation/layout generation or retains the stable profile manager. Compilation and source review verify integration, but prevention effectiveness under actual renderer termination and rapid switching still needs device testing. No broader instruction changes are proposed.)
 
 The unavailable Chromium download is recorded as an environment limitation, not a passed browser test. No repeated runtime failure after these preventions has been observed; actual device testing remains outstanding.
+
+## Minimal native UI — 2026-11-02
+
+Approved UI implemented: seven fixed bottom workspace slots, no app header or extra action bar, 2dp gaps and 1dp pane frames. Tap the active tab to swap 2×3 / 3×2. Hold a pane (or tap its number) for exactly Lock, Desktop mode, Enter URL, Edit cookies, Close window, Select multiple, Frame color. Hold an existing workspace tab for retained workspace-wide tools. Unused slots create workspaces sequentially up to seven. Colors are separate preferences keyed by existing pane ID; the workspace manifest format and profile identifiers are unchanged.
+
+Expand/restore remains a corner icon with a 44dp target. The expanded pane occupies the left region; the other five resize into a right-hand stack. Geometry changes only layout parameters and positions of the existing PaneCards/WebViews. Profile allocation, navigation, recovery and page timer policy are unchanged. Selection still shields page interaction and closes require confirmation; locked panes cannot close.
+
+Files: MainActivity.kt (bottom tabs/menu routing/layout); PaneCard.kt (compact overlays, long press, frame/desktop actions); WindowActions.kt (seven-action sheet); LocalStore.kt (separate color preference); PaneLayout.kt (existing grid/focus geometry extracted); PaneLayoutTest.kt (grid/focus containment, overlap and restore checks); build.gradle.kts (version 5, SDK/identity/signing unchanged); this record.
+
+Verification: ten JVM tests, debug APK, instrumentation APK compilation and Android lint are required for this delivery. Geometry tests cover both grids, all six expanded positions, portrait/landscape and restore. No connected device is available: physical long-press versus page scrolling, fold/unfold, keyboard resizing, live WebView identity/session retention during expansion, 42 distinct cookie/localStorage/IndexedDB IDs, background heartbeat, 30-minute reload endurance, same-profile renderer recovery and zero audit duplicates remain on-device acceptance checks. Compilation is not evidence of those live checks.
+
+Internally caught defect: the drawable builder's `state` resolved to Drawable.state rather than PaneCard.state; Kotlin compilation rejected it. Qualified the owning PaneCard explicitly and rebuilt. No affected APK was delivered. File creation also initially used a duplicated android/ path; corrected the working-directory-relative paths before rebuilding.

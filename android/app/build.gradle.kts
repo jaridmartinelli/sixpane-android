@@ -9,8 +9,8 @@ android {
         applicationId = "com.sixpane.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4-onehand-dev"
+        versionCode = 5
+        versionName = "0.5-minimal"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }

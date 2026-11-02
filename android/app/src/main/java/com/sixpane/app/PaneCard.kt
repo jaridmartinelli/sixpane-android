@@ -21,20 +21,16 @@ class PaneCard(
 ):FrameLayout(host) {
     var webView:WebView
         private set
-    private val header=FrameLayout(host)
     private val body=FrameLayout(host)
     val lock=CornerIcon(host,CornerIcon.Kind.LOCK)
-    private val cookie=CornerIcon(host,CornerIcon.Kind.COOKIE)
     private val expand=CornerIcon(host,CornerIcon.Kind.EXPAND)
-    private val siteLabel=TextView(host)
     private val paneNumber=TextView(host)
     private val recoveryIndicator=TextView(host)
     private val indicator=TextView(host)
-    private val more=TextView(host)
-    val menuAnchor:View get()=more
+    private val badge=LinearLayout(host)
+    val menuAnchor:View get()=badge
     private val selectionLayer=FrameLayout(host)
     private val selectionMark=TextView(host)
-    private val stack=LinearLayout(host)
     private val assetLoader=WebViewAssetLoader.Builder().addPathHandler("/assets/",WebViewAssetLoader.AssetsPathHandler(host)).build()
     private var baseUserAgent=""
     private val recoveryHandler=Handler(Looper.getMainLooper())
@@ -91,95 +87,49 @@ class PaneCard(
     init {
         isFocusable=true
         setBackgroundColor(Color.rgb(27,34,45))
-        background=outline(Color.rgb(31,39,53))
+        updateFrameColor()
         clipChildren=true;clipToPadding=true
         require(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) { "Multi-profile WebView unavailable" }
         webView=createWebView()
         webViewAlive=true
-        val headerH=host.dp(20)
-        addView(header,LayoutParams(-1,headerH,Gravity.TOP))
-        addView(body,LayoutParams(-1,-1).apply { topMargin=headerH })
-        // Minimal chrome: only domain hint + overflow; URL/zoom controls live in a bottom sheet.
-        // The top strip (not the webpage itself) owns the long-press action.
-        header.setBackgroundColor(Color.rgb(38,49,64))
-        header.setOnLongClickListener { host.windowContextMenu(this);true }
-        siteLabel.apply {
-            textSize=9f
-            setTextColor(Color.argb(160,255,255,255))
-            gravity=Gravity.CENTER_VERTICAL
-            maxLines=1
-            ellipsize=android.text.TextUtils.TruncateAt.END
-            setPadding(host.dp(3),0,host.dp(3),0)
-            setBackgroundColor(Color.TRANSPARENT)
-            setOnLongClickListener { host.windowContextMenu(this@PaneCard);true }
-            contentDescription="Hold for address and browser controls"
-        }
-        updateSiteLabel()
-        header.addView(siteLabel,LayoutParams(-1,-1).apply{
-            leftMargin=host.dp(if(state.locked)24 else 2)
-            rightMargin=host.dp(35)
-        })
-        paneNumber.apply{
-            textSize=9f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
-            setBackgroundColor(Color.argb(210,28,39,55))
+        // Only overlays occupy app chrome: no header, URL strip, cookie button or overflow bar.
+        addView(body,LayoutParams(-1,-1).apply{setMargins(host.dp(1),host.dp(1),host.dp(1),host.dp(1))})
+        body.addView(webView,LayoutParams(-1,-1))
+        body.setOnLongClickListener{host.windowContextMenu(this);true}
+        badge.apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.argb(232,12,18,25))
+            setOnClickListener{host.windowContextMenu(this@PaneCard)}
             setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}
         }
+        paneNumber.apply{textSize=11f;setTextColor(Color.WHITE);gravity=Gravity.CENTER}
+        badge.addView(paneNumber,LinearLayout.LayoutParams(host.dp(24),host.dp(22)))
+        lock.isClickable=false;lock.isFocusable=false
+        badge.addView(lock,LinearLayout.LayoutParams(host.dp(16),host.dp(22)))
+        body.addView(badge,LayoutParams(-2,host.dp(22),Gravity.TOP or Gravity.LEFT).apply{leftMargin=host.dp(3);topMargin=host.dp(3)})
         updatePaneNumber()
-        // A lock is an indicator, not a persistent button. Long-press opens controls.
-        lock.locked=state.locked
-        lock.contentDescription="Browser locked; hold for browser controls"
-        lock.isClickable=false
-        lock.isFocusable=false
-        lock.setOnLongClickListener {host.windowContextMenu(this);true}
-        header.addView(lock,LayoutParams(host.dp(24),-1,Gravity.TOP or Gravity.LEFT))
-        updateLockStatus()
-        more.apply {
-            text="⋮";textSize=17f
-            setTextColor(Color.argb(192,255,255,255))
-            gravity=Gravity.CENTER
-            setBackgroundColor(Color.TRANSPARENT)
-            contentDescription="Browser controls: address, zoom, lock and selection"
-            setOnClickListener {host.windowContextMenu(this@PaneCard)}
-            setOnLongClickListener {host.windowContextMenu(this@PaneCard);true}
-        }
-        // The glyph remains tiny; the invisible target is 36dp for one-handed use.
-        addView(more,LayoutParams(host.dp(36),host.dp(36),Gravity.TOP or Gravity.RIGHT))
-        body.addView(webView,LayoutParams(-1,-1))
-        body.addView(cookie,LayoutParams(host.dp(32),host.dp(32),Gravity.BOTTOM or Gravity.LEFT))
-        body.addView(expand,LayoutParams(host.dp(32),host.dp(32),Gravity.BOTTOM or Gravity.RIGHT))
-        // Below the header, away from its lock and 36dp overflow hit target, even in Right Stack.
-        body.addView(paneNumber,LayoutParams(host.dp(20),host.dp(14),Gravity.TOP or Gravity.LEFT).apply{
-            leftMargin=host.dp(2);topMargin=host.dp(2)
-        })
-        // Selection shield prevents website interaction while selection mode is active.
+        // Retain expand / restore outside the seven-item menu; the WebViews resize in place.
+        body.addView(expand,LayoutParams(host.dp(44),host.dp(44),Gravity.BOTTOM or Gravity.RIGHT))
+        expand.setOnClickListener{expand.pressedFeedback();host.focus(this)}
         selectionLayer.setBackgroundColor(Color.argb(48,82,149,252))
         selectionLayer.visibility=View.GONE
         selectionLayer.isClickable=true
         selectionLayer.setOnClickListener{host.toggleWindowSelection(state.id)}
+        selectionLayer.setOnLongClickListener{host.windowContextMenu(this);true}
         selectionMark.apply{
             text="○";textSize=21f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
             setBackgroundColor(Color.argb(200,30,42,62))
         }
         selectionLayer.addView(selectionMark,LayoutParams(host.dp(35),host.dp(35),Gravity.TOP or Gravity.RIGHT))
         addView(selectionLayer,LayoutParams(-1,-1))
-        cookie.contentDescription="Cookie editor";expand.contentDescription="Expand browser"
-        cookie.setOnClickListener {cookie.pressedFeedback();host.cookieEditor(this)}
-        expand.setOnClickListener {expand.pressedFeedback();host.focus(this)}
-        indicator.apply {
-            textSize=9f;setTextColor(Color.argb(190,255,255,255));gravity=Gravity.CENTER
-            setBackgroundColor(Color.argb(210,37,52,73));visibility=View.GONE
-            setOnClickListener {zoomTo(100)}
-        }
-        body.addView(indicator,LayoutParams(host.dp(42),host.dp(22),Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
         recoveryIndicator.apply{
-            textSize=10f;setTextColor(Color.rgb(255,215,125));gravity=Gravity.CENTER
+            textSize=11f;setTextColor(Color.rgb(255,215,125));gravity=Gravity.CENTER
             setPadding(host.dp(4),host.dp(2),host.dp(4),host.dp(2))
-            setBackgroundColor(Color.argb(225,28,36,49));visibility=View.GONE
+            setBackgroundColor(Color.argb(225,37,33,28));visibility=View.GONE
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
             accessibilityLiveRegion=View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         body.addView(recoveryIndicator,LayoutParams(-2,-2,Gravity.CENTER))
-        updateZoomIndicator()
         body.addOnLayoutChangeListener{_,l,t,r,b,_,_,_,_->
             val w=r-l;val h=b-t
             if(w>0&&h>0&&(w!=lastWidth||h!=lastHeight)){
@@ -213,6 +163,8 @@ class PaneCard(
                     if(newProgress<100)indicator.text="·" else updateZoomIndicator()
                 }
             }
+            fresh.setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}
+            fresh.setBackgroundColor(Color.rgb(23,32,39))
             fresh.setInitialScale(state.zoom)
             // Page drags belong to the page; no workspace gesture interceptor is installed.
             return fresh
@@ -255,7 +207,11 @@ class PaneCard(
         val index=host.paneIndex(state.id)
         paneNumber.text=index.toString();paneNumber.contentDescription="Pane $index"
     }
-    private fun outline(color:Int)=GradientDrawable().apply{setColor(color);setStroke(host.dp(1),Color.rgb(58,71,89));cornerRadius=host.dp(3).toFloat()}
+    fun updateFrameColor(){
+        background=GradientDrawable().apply{
+            setColor(Color.rgb(16,20,24));setStroke(host.dp(1).coerceAtLeast(1),host.store.frameColor(this@PaneCard.state.id));cornerRadius=host.dp(3).toFloat()
+        }
+    }
     private fun applyViewportDimensions(w:Int,h:Int){
         if(!webViewAlive)return
         // Small genuine WebView viewport-size differences within identical visible card geometry.
@@ -271,14 +227,10 @@ class PaneCard(
     fun updateLockStatus(){
         lock.locked=state.locked
         lock.visibility=if(state.locked)View.VISIBLE else View.GONE
-        (siteLabel.layoutParams as? LayoutParams)?.let{params->
-            params.leftMargin=host.dp(if(state.locked)24 else 2)
-            siteLabel.layoutParams=params
-        }
+        badge.contentDescription="Window ${host.paneIndex(state.id)} actions${if(state.locked)"; locked" else ""}"
     }
     private fun updateSiteLabel(){
-        siteLabel.text=if(state.url=="about:blank") "New browser" else
-            try { android.net.Uri.parse(state.url).host ?: state.url } catch(_:Exception){state.url}
+        paneNumber.contentDescription="Window ${host.paneIndex(state.id)} · ${state.url}"
     }
     fun updateSelection(active:Boolean,selected:Boolean){
         selectionLayer.visibility=if(active)View.VISIBLE else View.GONE
@@ -288,7 +240,7 @@ class PaneCard(
     }
     fun updateControls(){
         // Focus and grid changes never replace a WebView or force the toolbar visible.
-        indicator.visibility=if(state.zoom==100)View.GONE else View.VISIBLE
+        expand.contentDescription=if(focused)"Restore six-window grid" else "Expand window ${host.paneIndex(state.id)}"
     }
     private fun normalize(raw:String):String?{
         val t=raw.trim();if(t=="about:blank")return t
@@ -326,6 +278,11 @@ class PaneCard(
         webView.settings.loadWithOverviewMode=!state.desktop
     }
     fun applyGlobalUserAgent(){updateDesktopWithoutReload()}
+    fun setDesktopMode(value:Boolean){
+        if(state.locked)return
+        state.desktop=value;updateDesktopWithoutReload();host.persist()
+        if(webViewAlive)webView.reload()
+    }
     fun toggleDesktop(){
         if(state.locked){blocked("Unlock browser to change Desktop mode");return}
         host.confirm("Change display mode?","This page will reload. Cookies stay in this browser."){

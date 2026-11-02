@@ -73,6 +73,14 @@ class LocalStore(ctx:Context){
     var desktopUserAgent:Boolean
         get()=prefs.getBoolean("desktop-user-agent",true)
         set(value){check(prefs.edit().putBoolean("desktop-user-agent",value).commit())}
+    fun frameColor(id:String):Int=prefs.getInt("frame-color:$id",0xff51606e.toInt())
+    fun setFrameColor(ids:Set<String>,color:Int){
+        val live=spaces.flatMap{it.panes}.map{it.id}.toSet()
+        require(ids.isNotEmpty()&&ids.all{it in live})
+        val edit=prefs.edit()
+        ids.forEach{edit.putInt("frame-color:$it",color)}
+        check(edit.commit()){"Could not save window frame color"}
+    }
     init {
         try {
             val j=JSONObject(prefs.getString("manifest", "{}")!!)
