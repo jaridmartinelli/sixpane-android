@@ -14,4 +14,10 @@ class WorkspacePolicyTest {
         assertEquals(200,WorkspacePolicy.zoom(200,1))
         assertEquals("",WorkspacePolicy.displayZoom(100)); assertEquals("90%",WorkspacePolicy.displayZoom(90))
     }
+
+    @org.junit.Test fun selectionCloseRequiresUnlockedNonempty(){
+        org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(0,false))
+        org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(2,true))
+        org.junit.Assert.assertTrue(WorkspacePolicy.canCloseSelected(2,false))
+    }
 }

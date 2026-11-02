@@ -19,6 +19,9 @@ class MainActivity:Activity(){
     private lateinit var screen:LinearLayout
     private lateinit var tabScroller:HorizontalScrollView
     private lateinit var tabStrip:LinearLayout
+    private lateinit var workspaceMore:TextView
+    private var selecting=false
+    private val selectedPanes=linkedSetOf<String>()
     private lateinit var stage:FrameLayout
     private val cards=linkedMapOf<String,PaneCard>()
     private var started=false
@@ -41,7 +44,7 @@ class MainActivity:Activity(){
         // Stagger WebView allocation only to avoid device resource spikes, not to evade site controls.
         val panes=store.spaces.flatMap { it.panes }
         panes.forEachIndexed { index,pane ->handler.postDelayed({
-            if(!isFinishing&&!isDestroyed){
+            if(!isFinishing&&!isDestroyed&&store.spaces.any{ws->ws.panes.any{it.id==pane.id}}){
                 try {
                     val card=PaneCard(this,pane)
                     cards[pane.id]=card
@@ -88,7 +91,7 @@ class MainActivity:Activity(){
         tabStrip=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         tabScroller=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false;clipChildren=false;addView(tabStrip)}
         tabsRow.addView(tabScroller,LinearLayout.LayoutParams(0,dp(39),1f))
-        val workspaceMore=smallButton("⋮",28){workspaceMenu()}
+        workspaceMore=smallButton("⋮",28){if(selecting)selectionMenu() else workspaceMenu()}
         workspaceMore.contentDescription="Workspace controls"
         tabsRow.addView(workspaceMore,LinearLayout.LayoutParams(dp(30),dp(38)))
         screen.addView(tabsRow,LinearLayout.LayoutParams(-1,dp(47)))
@@ -116,12 +119,26 @@ class MainActivity:Activity(){
     fun confirm(title:String,message:String,action:()->Unit)=confirm(title,message,"Continue",action)
     private fun renderTabs(){
         tabStrip.removeAllViews()
+        if(selecting){
+            val back=smallButton("←",38){exitSelection()}
+            back.contentDescription="Exit window selection"
+            tabStrip.addView(back,LinearLayout.LayoutParams(dp(40),dp(35)))
+            val count=TextView(this).apply{
+                text=if(selectedPanes.isEmpty())"Select windows" else "${selectedPanes.size} selected"
+                textSize=14f;setTextColor(Color.WHITE);gravity=Gravity.CENTER_VERTICAL
+            }
+            tabStrip.addView(count,LinearLayout.LayoutParams(-2,dp(35)))
+            workspaceMore.contentDescription="Selection actions"
+            return
+        }
+        workspaceMore.contentDescription="Workspace controls"
         store.spaces.forEachIndexed {index,ws->
             val row=LinearLayout(this).apply {
                 orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
                 setBackgroundColor(if(ws.id==store.currentId)Color.rgb(62,88,124) else Color.rgb(40,51,70))
             }
             val number=smallButton("${index+1}",24){
+                if(selecting)exitSelection()
                 store.currentId=ws.id;store.focusId=null;store.save();renderTabs();positionCards(true)
             }
             number.textSize=12f;row.addView(number,LinearLayout.LayoutParams(dp(25),dp(34)))
@@ -145,7 +162,7 @@ class MainActivity:Activity(){
                     store.create();renderTabs();positionCards(false)
                     val new=store.active()
                     new.panes.forEachIndexed {i,p-> handler.postDelayed({
-                        if(!isFinishing && store.spaces.any{it.id==new.id}){
+                        if(!isFinishing && store.spaces.any{w->w.id==new.id&&w.panes.any{p2->p2.id==p.id}}){
                             try{val card=PaneCard(this,p);cards[p.id]=card;stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)));positionCards(false)}
                             catch(e:Throwable){notice("Browser allocation failed: ${e.message}")}
                         }
@@ -178,10 +195,129 @@ class MainActivity:Activity(){
             notice("Six sessions closed. Their profiles are retired; on-disk cleanup is pending a clean restart.")
         }
     }
+    /** Selection is scoped to the six panes in the current workspace, never across tabs. */
+    fun enterSelection(initial:String?=null){
+        selecting=true
+        selectedPanes.clear()
+        if(initial!=null && store.active().panes.any{it.id==initial}) selectedPanes.add(initial)
+        updateSelection()
+    }
+    private fun exitSelection(){
+        selecting=false;selectedPanes.clear();updateSelection()
+    }
+    fun toggleWindowSelection(id:String){
+        if(!selecting){enterSelection(id);return}
+        if(store.active().panes.none{it.id==id})return
+        if(!selectedPanes.add(id))selectedPanes.remove(id)
+        updateSelection()
+    }
+    private fun updateSelection(){
+        renderTabs()
+        cards.forEach{(id,card)->
+            card.updateSelection(selecting && store.active().panes.any{it.id==id},selectedPanes.contains(id))
+        }
+    }
+    /** Context menu is anchored in the browser header, preserving the website's own long-press gestures. */
+    fun windowContextMenu(card:PaneCard){
+        if(selecting){toggleWindowSelection(card.state.id);return}
+        val popup=PopupMenu(this,card.menuAnchor)
+        popup.menu.add(if(card.state.locked)"Unlock window" else "Lock window")
+        popup.menu.add("Select window")
+        popup.menu.add("Bookmark page")
+        popup.menu.add("Share page")
+        popup.setOnMenuItemClickListener { item->
+            when(item.title.toString()){
+                "Lock window","Unlock window"->{card.state.locked=!card.state.locked;card.updateLockStatus();store.save()}
+                "Select window"->enterSelection(card.state.id)
+                "Bookmark page"->{store.bookmark(card.state.url);notice("Page bookmarked")}
+                "Share page"->shareUrls(listOf(card.state.url))
+            }
+            true
+        }
+        popup.show()
+    }
+    private fun shareUrls(urls:List<String>){
+        val sites=urls.filter{it.startsWith("https://")||it.startsWith("http://")}.distinct()
+        if(sites.isEmpty()){notice("No web addresses to share");return}
+        val share=android.content.Intent(android.content.Intent.ACTION_SEND).apply{
+            type="text/plain"
+            putExtra(android.content.Intent.EXTRA_TEXT,sites.joinToString("\n"))
+        }
+        startActivity(android.content.Intent.createChooser(share,"Share browser links"))
+    }
+    private fun selectionMenu(){
+        val popup=PopupMenu(this,workspaceMore)
+        val ws=store.active()
+        val panes=ws.panes.filter {it.id in selectedPanes}
+        val anyLocked=panes.any {it.locked}
+        val anyUnlocked=panes.any {!it.locked}
+        popup.menu.add("Select all")
+        popup.menu.add("Deselect all").isEnabled=selectedPanes.isNotEmpty()
+        popup.menu.add("Lock selected").isEnabled=anyUnlocked
+        popup.menu.add("Unlock selected").isEnabled=anyLocked
+        popup.menu.add("Close selected windows").isEnabled=panes.isNotEmpty()&&!anyLocked
+        popup.menu.add("Bookmark selected").isEnabled=panes.isNotEmpty()
+        popup.menu.add("Share selected").isEnabled=panes.isNotEmpty()
+        popup.setOnMenuItemClickListener{item->
+            when(item.title.toString()){
+                "Select all"->{selectedPanes.clear();selectedPanes.addAll(ws.panes.map{it.id});updateSelection()}
+                "Deselect all"->{selectedPanes.clear();updateSelection()}
+                "Lock selected"->{panes.forEach{it.locked=true;cards[it.id]?.updateLockStatus()};store.save();updateSelection()}
+                "Unlock selected"->{panes.forEach{it.locked=false;cards[it.id]?.updateLockStatus()};store.save();updateSelection()}
+                "Close selected windows"->confirmCloseSelected()
+                "Bookmark selected"->{panes.forEach{store.bookmark(it.url)};notice("${panes.size} pages bookmarked")}
+                "Share selected"->shareUrls(panes.map{it.url})
+            }
+            true
+        }
+        popup.show()
+    }
+    private fun confirmCloseSelected(){
+        val ws=store.active()
+        val selected=ws.panes.filter{it.id in selectedPanes}
+        if(selected.isEmpty())return
+        if(selected.any{it.locked}){
+            selected.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
+            notice("Unlock all selected windows before closing them")
+            return
+        }
+        val currentId=ws.id
+        confirm("Close ${selected.size} window${if(selected.size==1)"" else "s"}?",
+            "Selected sessions and their saved browser data will be retired for deletion. New blank, isolated browsers will replace them to preserve SIXPANE's six-window layout. Disk cleanup may require an app restart.",
+            "Close & Replace"){
+            if(store.active().id!=currentId){notice("Workspace changed; close cancelled");return@confirm}
+            val ids=selected.map{it.id}.toSet()
+            if(store.active().panes.filter{it.id in ids}.any{it.locked}){
+                notice("Selected windows were locked; close cancelled");return@confirm
+            }
+            val replacements=store.replacePanes(ids)
+            replacements.forEach{(old,_)->cards.remove(old.id)?.let{stage.removeView(it);it.destroyExplicitly()}}
+            exitSelection()
+            replacements.forEachIndexed{index,(_,fresh)->
+                handler.postDelayed({
+                    if(!isFinishing&&!isDestroyed&&store.spaces.any{w->w.id==currentId&&w.panes.any{it.id==fresh.id}}){
+                        try{
+                            val card=PaneCard(this,fresh);cards[fresh.id]=card
+                            stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)));positionCards(false)
+                        }catch(e:Throwable){notice("New window could not start: ${e.message}")}
+                    }
+                },index*130L)
+            }
+            notice("${selected.size} sessions retired. Fresh profiles created; disk deletion pending clean restart.")
+        }
+    }
+    private fun showBookmarks(){
+        if(store.bookmarks.isEmpty()){notice("No bookmarks yet");return}
+        val values=store.bookmarks.toTypedArray()
+        AlertDialog.Builder(this).setTitle("Bookmarks").setItems(values){_,which->
+            val target=store.focusId?.let{cards[it]}?:store.active().panes.firstNotNullOfOrNull{cards[it.id]}
+            if(target==null)notice("No browser ready yet") else target.loadAddress(values[which])
+        }.show()
+    }
     private fun workspaceMenu(){
         val options=arrayOf(if(store.columns==2)"Switch to 3 × 2 grid" else "Switch to 2 × 3 grid",
             if(store.active().panes.all{it.locked})"Unlock all six" else "Lock all six",
-            "Controlled test page", "Pending deletion status")
+            "Controlled test page", "Pending deletion status", "Select windows", "Bookmarks")
         AlertDialog.Builder(this).setItems(options){_,idx->when(idx){
             0->{store.columns=if(store.columns==2)3 else 2;store.save();positionCards(true)}
             1->{val value=!store.active().panes.all{it.locked};store.active().panes.forEach {it.locked=value;cards[it.id]?.lock?.locked=value};store.save()}
@@ -189,6 +325,8 @@ class MainActivity:Activity(){
                 store.active().panes.forEach {it.url="https://appassets.androidplatform.net/assets/isolation_test.html";cards[it.id]?.webView?.loadUrl(it.url)};persist()
             }}
             3->notice("${store.pendingDeletion.size} retired profiles still awaiting deletion on a clean process start")
+            4->enterSelection()
+            5->showBookmarks()
         }}.show()
     }
     fun paneMenu(card:PaneCard){
@@ -248,6 +386,7 @@ class MainActivity:Activity(){
             card.layoutParams=lp
             card.compact=r[2]<dp(155)
             card.focused=f==id
+            card.updateSelection(selecting && visible.any{it.id==id},selectedPanes.contains(id))
             if(animate&&oldW>0&&oldH>0&&oldX>-1000f){
                 card.post{
                     if(card.parent!==stage)return@post

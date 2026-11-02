@@ -31,6 +31,9 @@ class PaneCard(
     private val zoomMinus=TextView(host)
     private val zoomPlus=TextView(host)
     private val more=TextView(host)
+    val menuAnchor:View get()=more
+    private val selectionLayer=FrameLayout(host)
+    private val selectionMark=TextView(host)
     private val stack=LinearLayout(host)
     private val assetLoader=WebViewAssetLoader.Builder().addPathHandler("/assets/",WebViewAssetLoader.AssetsPathHandler(host)).build()
     private var baseUserAgent=""
@@ -98,8 +101,12 @@ class PaneCard(
         header.setBackgroundColor(Color.rgb(51,65,86))
         header.addView(lock,LayoutParams(host.dp(28),-1,Gravity.TOP or Gravity.LEFT))
         lock.locked=state.locked
-        lock.contentDescription="Lock browser"
-        lock.setOnClickListener {state.locked=!state.locked;lock.locked=state.locked;lock.pressedFeedback();host.persist()}
+        lock.contentDescription="Locked browser indicator; long press header to unlock"
+        lock.isClickable=false
+        lock.isFocusable=false
+        lock.setOnLongClickListener {host.windowContextMenu(this);true}
+        updateLockStatus()
+        header.setOnLongClickListener {host.windowContextMenu(this);true}
         address.setText(state.url)
         address.setSingleLine(true)
         address.textSize=10f
@@ -113,7 +120,7 @@ class PaneCard(
         address.setOnEditorActionListener { _, actionId, event ->
             if(actionId==EditorInfo.IME_ACTION_GO || event?.keyCode==KeyEvent.KEYCODE_ENTER){go();true}else false
         }
-        header.addView(address,LayoutParams(host.dp(78),host.dp(21),Gravity.CENTER_VERTICAL or Gravity.LEFT).apply{leftMargin=host.dp(28)})
+        header.addView(address,LayoutParams(host.dp(78),host.dp(21),Gravity.CENTER_VERTICAL or Gravity.LEFT).apply{leftMargin=host.dp(if(state.locked)28 else 4)})
         val right=LinearLayout(host).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         fun smallText(text:String):TextView = TextView(host).apply{
             this.text=text;textSize=15f;setTextColor(Color.argb(179,255,255,255))
@@ -131,11 +138,23 @@ class PaneCard(
         zoomMinus.contentDescription="Zoom out";zoomPlus.contentDescription="Zoom in";more.contentDescription="Browser options"
         zoomMinus.setOnClickListener {zoom(-WorkspacePolicy.ZOOM_STEP)}
         zoomPlus.setOnClickListener {zoom(WorkspacePolicy.ZOOM_STEP)}
-        more.setOnClickListener {host.paneMenu(this)}
+        more.setOnClickListener {host.windowContextMenu(this)}
+        more.setOnLongClickListener {host.windowContextMenu(this);true}
         header.addView(right,LayoutParams(-2,-1,Gravity.RIGHT or Gravity.CENTER_VERTICAL))
         body.addView(webView,LayoutParams(-1,-1))
         body.addView(cookie,LayoutParams(host.dp(32),host.dp(32),Gravity.BOTTOM or Gravity.LEFT))
         body.addView(expand,LayoutParams(host.dp(32),host.dp(32),Gravity.BOTTOM or Gravity.RIGHT))
+        // Selection shield prevents website interaction while selection mode is active.
+        selectionLayer.setBackgroundColor(Color.argb(48,82,149,252))
+        selectionLayer.visibility=View.GONE
+        selectionLayer.isClickable=true
+        selectionLayer.setOnClickListener{host.toggleWindowSelection(state.id)}
+        selectionMark.apply{
+            text="○";textSize=21f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
+            setBackgroundColor(Color.argb(200,30,42,62))
+        }
+        selectionLayer.addView(selectionMark,LayoutParams(host.dp(35),host.dp(35),Gravity.TOP or Gravity.RIGHT))
+        addView(selectionLayer,LayoutParams(-1,-1))
         cookie.contentDescription="Cookie editor";expand.contentDescription="Expand browser"
         cookie.setOnClickListener {cookie.pressedFeedback();host.cookieEditor(this)}
         expand.setOnClickListener {expand.pressedFeedback();host.focus(this)}
@@ -153,6 +172,7 @@ class PaneCard(
             }
         }
         updateControls()
+        updateLockStatus()
         webView.loadUrl(state.url)
     }
     private fun outline(color:Int)=GradientDrawable().apply{setColor(color);setStroke(host.dp(1),Color.rgb(70,83,101));cornerRadius=host.dp(6).toFloat()}
@@ -167,13 +187,27 @@ class PaneCard(
         if(lp.width!=trueW||lp.height!=trueH){lp.width=trueW;lp.height=trueH;webView.layoutParams=lp}
         webView.pivotX=0f;webView.pivotY=0f;webView.scaleX=sx;webView.scaleY=sy
     }
+    fun updateLockStatus(){
+        lock.locked=state.locked
+        lock.visibility=if(state.locked)View.VISIBLE else View.GONE
+        (address.layoutParams as? LayoutParams)?.let{params->
+            params.leftMargin=host.dp(if(state.locked)28 else 4)
+            address.layoutParams=params
+        }
+    }
+    fun updateSelection(active:Boolean,selected:Boolean){
+        selectionLayer.visibility=if(active)View.VISIBLE else View.GONE
+        selectionMark.text=if(selected)"✓" else "○"
+        selectionLayer.setBackgroundColor(if(selected)Color.argb(92,97,158,248) else Color.argb(16,97,158,248))
+        selectionLayer.contentDescription=if(selected)"Selected browser" else "Select browser"
+    }
     fun updateControls(){
         zoomMinus.visibility=if(compact) View.GONE else View.VISIBLE
         zoomPlus.visibility=if(compact) View.GONE else View.VISIBLE
-        more.visibility=if(compact) View.GONE else View.VISIBLE
+        more.visibility=View.VISIBLE
         // Address shrinks while pane is not focused; no popup editor.
         (address.layoutParams as LayoutParams).apply{
-            width=host.dp(if(compact) 46 else if(focused) 104 else 62)
+            width=host.dp(if(compact) 32 else if(focused) 104 else 62)
             address.layoutParams=this
         }
         indicator.visibility=if(state.zoom==100)View.GONE else View.VISIBLE
@@ -189,6 +223,10 @@ class PaneCard(
         (host.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(address.windowToken,0)
         address.clearFocus()
         state.url=next;host.persist();webView.loadUrl(next)
+    }
+    fun loadAddress(url:String){
+        if(interrupted)return
+        state.url=url;host.persist();address.setText(url);webView.loadUrl(url)
     }
     fun zoomByStep(direction:Int)=zoom(WorkspacePolicy.ZOOM_STEP*direction)
     private fun zoom(step:Int)=zoomTo((state.zoom+step).coerceIn(50,200))

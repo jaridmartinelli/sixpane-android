@@ -9,8 +9,8 @@ android {
         applicationId = "com.sixpane.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2-local-dev"
+        versionCode = 3
+        versionName = "0.3-selection-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes { release { isMinifyEnabled = false } }

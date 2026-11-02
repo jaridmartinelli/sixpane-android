@@ -65,6 +65,7 @@ class LocalStore(ctx:Context){
     private val prefs=ctx.getSharedPreferences("sixpane-local-v2",Context.MODE_PRIVATE)
     val spaces:MutableList<WorkspaceState> = mutableListOf()
     val pendingDeletion:MutableSet<String> = linkedSetOf()
+    val bookmarks:MutableSet<String> = linkedSetOf()
     var currentId:String=""
     var columns:Int=2
     var focusId:String?=null
@@ -75,6 +76,8 @@ class LocalStore(ctx:Context){
             for(i in 0 until list.length())spaces.add(WorkspaceState.from(list.getJSONObject(i)))
             val pending=j.optJSONArray("pending")?:JSONArray()
             for(i in 0 until pending.length())pendingDeletion.add(pending.getString(i))
+            val savedBookmarks=j.optJSONArray("bookmarks")?:JSONArray()
+            for(i in 0 until savedBookmarks.length())bookmarks.add(savedBookmarks.getString(i))
             currentId=j.optString("current", "")
             columns=if(j.optInt("columns",2)==3)3 else 2
             focusId=j.optString("focus", "").takeIf { it.isNotBlank() }
@@ -94,9 +97,33 @@ class LocalStore(ctx:Context){
         val j=JSONObject().apply{
             put("spaces",JSONArray().apply{spaces.forEach{put(it.json())}})
             put("pending",JSONArray().apply{pendingDeletion.forEach{put(it)}})
+            put("bookmarks",JSONArray().apply{bookmarks.forEach{put(it)}})
             put("current",currentId);put("columns",columns);put("focus",focusId?:"")
         }
         check(prefs.edit().putString("manifest",j.toString()).commit()) { "Could not durably save workspace manifest" }
+    }
+    fun bookmark(url:String){
+        if(url.startsWith("http://")||url.startsWith("https://")){
+            bookmarks.add(url);save()
+        }
+    }
+    /** Close selected individual windows and create new blank profiles in the same six slots. */
+    fun replacePanes(ids:Set<String>):List<Pair<PaneState,PaneState>> {
+        val current=active()
+        require(ids.isNotEmpty() && ids.all{id->current.panes.any{it.id==id}})
+        require(current.panes.none{it.id in ids && it.locked}) {"Locked windows must be unlocked first"}
+        val result=mutableListOf<Pair<PaneState,PaneState>>()
+        current.panes.forEachIndexed{index,old->
+            if(old.id in ids){
+                pendingDeletion.add(old.profile)
+                val replacement=PaneState()
+                current.panes[index]=replacement
+                result.add(old to replacement)
+            }
+        }
+        if(focusId in ids)focusId=null
+        save()
+        return result
     }
     fun create():WorkspaceState {
         require(WorkspacePolicy.canCreate(spaces.size))

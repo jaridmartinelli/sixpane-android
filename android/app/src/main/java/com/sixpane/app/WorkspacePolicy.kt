@@ -9,6 +9,8 @@ object WorkspacePolicy {
     const val ZOOM_STEP = 10
     fun canCreate(count: Int): Boolean = count in 0 until MAX_WORKSPACES
     fun canClose(tabLocked: Boolean): Boolean = !tabLocked
+    fun canCloseSelected(count:Int, anyLocked:Boolean):Boolean=count>0&&!anyLocked
+    fun selectionActionEnabled(count:Int):Boolean=count>0
     fun canReset(paneLocked: Boolean): Boolean = !paneLocked
     fun canChangeDesktop(paneLocked: Boolean): Boolean = !paneLocked
     fun canModifyCookies(paneLocked: Boolean): Boolean = !paneLocked
