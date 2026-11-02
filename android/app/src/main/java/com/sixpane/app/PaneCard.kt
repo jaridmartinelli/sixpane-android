@@ -56,6 +56,7 @@ class PaneCard(
             assetLoader.shouldInterceptRequest(request.url)
         override fun onPageFinished(view:WebView?, url:String?) {
             if(view!==webView||!webViewAlive||disposed)return
+            if(url.isNullOrEmpty()||url!=view?.url)return // Ignore completion from an abandoned navigation.
             if(!url.isNullOrEmpty() && url!=state.url){state.url=url;host.persist()}
             if(interrupted){
                 loadTimeout?.let{recoveryHandler.removeCallbacks(it)};loadTimeout=null
@@ -76,7 +77,7 @@ class PaneCard(
         }
         override fun onReceivedSslError(view:WebView,handler:SslErrorHandler,error:android.net.http.SslError){
             handler.cancel()
-            if(view===webView&&interrupted)recoveryLoadFailed()
+            if(view===webView&&interrupted&&error.url==view.url)recoveryLoadFailed()
         }
         override fun onRenderProcessGone(view:WebView?, detail:RenderProcessGoneDetail?):Boolean {
             if(view===webView&&!disposed){
