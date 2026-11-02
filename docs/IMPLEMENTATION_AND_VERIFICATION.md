@@ -59,3 +59,19 @@ H. Verify the 3x2 grid has accessible overflow and zoom controls when a pane is 
 - `results/policy_smoke.kt` — JDK-only policy test (passed).
 
 **Status:** implementation source produced; not an installable or verified production app. Original remote-server source is intentionally not included in this replacement package.
+
+
+## Window context and selection workflow (2026-11-02 source update)
+
+- Browser-header long press or the browser's vertical \`⋮\` opens window actions: Lock/Unlock, Select Window, Bookmark Page, Share Page. Do **not** intercept long presses inside the WebView; website text/link menus remain intact.
+- The **unlocked** browser lock icon is hidden. A **locked** browser has a small glowing red lock status in the top-left. Lock/unlock is in the context menu, not a dedicated icon tap. Workspace-tab locks remain separately visible.
+- Workspace \`⋮ → Select windows\` enters selection with **zero** selected, matching disabled-action behavior. Long-press a browser-header menu and choose Select Window to begin with that pane selected. All six in-workspace panes show selection circles and stop receiving website taps while selection mode is active.
+- Selection overflow has Select All, Deselect All, Lock Selected, Unlock Selected, Close Selected Windows, Bookmark Selected, Share Selected. Actions requiring an applicable selection are disabled when unavailable.
+- Close Selected Windows is deliberately destructive: it refuses if **any** selected pane is locked, requires confirmation, retires old UUID profiles, and generates fresh blank profiles in the same grid slots. Physical WebKit profile deletion occurs on a later cold start; the UI must never claim synchronous disk wipe.
+- Bookmarks save page URLs locally to the workspace manifest and can be reopened from the workspace menu. Share uses Android's OS sharing chooser. Neither action mixes cookies or sessions.
+- Screenshot-inspired actions not copied: **Pin** overlaps with existing destructive-action lock, **Send to device** is redundant in a phone-only app, **Grouping** lacks defined behavior compatible with SIXPANE's always-six-visible requirement, and a reliable **per-WebView Mute Site** API has not been established. Do not expose nonfunctional controls.
+- **Verification:** Compile and unit-test using GitHub Actions; subsequently test real long-press hit targets, zero/partial/all selection, lock blocking, close confirmation, and profile isolation on OnePlus Open. Screenshots/prototype do not count as real-device verification.
+
+### Build and signing incident / prevention
+
+The GitHub Actions debug APK workflow uses the runner's default debug signing key. Fresh CI runners may use different private keys, preventing an in-place update of a previously installed debug APK. **Never direct the user to uninstall an installed SIXPANE or wipe its data to resolve a signature mismatch without explicit consent and a verified backup/recovery plan.** Before a data-preserving update, provision secure persistent signing credentials and verify the signing certificate matches the installed app; otherwise disclose that in-place update is unverified.
