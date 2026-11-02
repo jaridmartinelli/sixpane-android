@@ -15,8 +15,9 @@ import java.net.URI
 /** Full-height cookie viewer: CURRENT URL only; Android CookieManager has no complete DevTools metadata API. */
 class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
     private val dialog=Dialog(activity,android.R.style.Theme_Material_NoActionBar)
-    private val manager get()=WebViewCompat.getProfile(card.webView).cookieManager
-    private val url get()=card.webView.url.orEmpty()
+    // The bound profile survives renderer replacement; dialog callbacks must not touch a dead view.
+    private lateinit var manager:android.webkit.CookieManager
+    private val url get()=card.state.url
     private var selected:String?=null
     private lateinit var list:LinearLayout
     private lateinit var search:EditText
@@ -40,6 +41,7 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
     }
     fun open(){
         if(card.interrupted){activity.notice("Browser renderer interrupted. Cookies cannot be inspected until recovery.");return}
+        manager=WebViewCompat.getProfile(card.webView).cookieManager
         val root=LinearLayout(activity).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(bg)}
         val bar=row().apply{setBackgroundColor(Color.rgb(28,27,33));setPadding(activity.dp(10),0,activity.dp(12),0)}
         bar.addView(action("‹"){dialog.dismiss()},LinearLayout.LayoutParams(activity.dp(44),activity.dp(52)))

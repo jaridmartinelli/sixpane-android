@@ -1,10 +1,15 @@
 package com.sixpane.app
 
 import android.app.*
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.*
+import android.net.Uri
+import android.provider.Settings
 import android.view.*
 import android.widget.*
 import android.text.InputType
@@ -32,8 +37,11 @@ class MainActivity:Activity(){
     private var pendingFailures=0
     private var lastLayoutWidth=0
     private var lastLayoutHeight=0
+    private var layoutGeneration=0
     private var textNotice:Toast?=null
     fun dp(value:Int):Int=(value*resources.displayMetrics.density).roundToInt()
+    fun paneIndex(id:String):Int=store.spaces.flatMap{it.panes}.indexOfFirst{it.id==id}+1
+    fun auditPanes():List<Pair<PaneState,PaneCard?>> = store.spaces.flatMap{it.panes}.map{it to cards[it.id]}
     override fun onCreate(state:Bundle?){
         super.onCreate(state)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -227,7 +235,6 @@ class MainActivity:Activity(){
     /** Thumb-reachable controls: long-press the minimal top strip or tap the pane's ⋮. */
     fun windowContextMenu(card:PaneCard){
         if(selecting){toggleWindowSelection(card.state.id);return}
-        if(card.interrupted){notice("Browser renderer interrupted");return}
         val dlg=Dialog(this)
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val palette=Color.rgb(38,49,65)
@@ -396,17 +403,68 @@ class MainActivity:Activity(){
     private fun workspaceMenu(){
         val options=arrayOf(if(store.columns==2)"Switch to 3 × 2 grid" else "Switch to 2 × 3 grid",
             if(store.active().panes.all{it.locked})"Unlock all six" else "Lock all six",
-            "Controlled test page", "Pending deletion status", "Select windows", "Bookmarks")
+            "Controlled test page", "Pending deletion status", "Select windows", "Bookmarks",
+            "Open in all panes · this workspace", "Open in all panes · all workspaces",
+            "Session audit", "Desktop UA: ${if(store.desktopUserAgent)"on" else "off"}",
+            "Battery optimization exemption")
         AlertDialog.Builder(this).setItems(options){_,idx->when(idx){
             0->{store.columns=if(store.columns==2)3 else 2;store.save();positionCards(true)}
             1->{val value=!store.active().panes.all{it.locked};store.active().panes.forEach {it.locked=value;cards[it.id]?.updateLockStatus()};store.save()}
             2->{confirm("Open controlled test pages?","Navigates all six browsers in this workspace to the local isolation test page. Existing live page state would be interrupted.","Open test pages"){
-                store.active().panes.forEach {it.url="https://appassets.androidplatform.net/assets/isolation_test.html";cards[it.id]?.webView?.loadUrl(it.url)};persist()
+                navigatePanes(store.active().panes.toList(),"https://appassets.androidplatform.net/assets/isolation_test.html")
             }}
             3->notice("${store.pendingDeletion.size} retired profiles still awaiting deletion on a clean process start")
             4->enterSelection()
             5->showBookmarks()
+            6->bulkNavigation(false)
+            7->bulkNavigation(true)
+            8->SessionAudit(this).open()
+            9->toggleGlobalUserAgent()
+            10->requestBatteryExemption(true)
         }}.show()
+    }
+    private fun navigatePanes(panes:List<PaneState>,url:String){
+        panes.forEach{pane->
+            val card=cards[pane.id]
+            if(card!=null)card.loadAddress(url) else pane.url=url
+        }
+        persist()
+    }
+    private fun bulkNavigation(allWorkspaces:Boolean){
+        // Snapshot the target identities; never read an already-loaded pane URL for this field.
+        val targets=if(allWorkspaces)store.spaces.flatMap{it.panes} else store.active().panes.toList()
+        val input=EditText(this).apply{
+            hint="Original portal URL";setSingleLine(true)
+            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setPadding(dp(18),dp(10),dp(18),dp(10))
+        }
+        val content=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            addView(TextView(this@MainActivity).apply{
+                text="Enter the original portal address. Each of the ${targets.size} existing panes enters independently. Never use a URL copied from a queued pane. This replaces their current live pages."
+                setPadding(dp(18),dp(10),dp(18),dp(10))
+            });addView(input)
+        }
+        val dialog=AlertDialog.Builder(this).setTitle("Open in ${targets.size} panes")
+            .setView(content).setNegativeButton("Cancel",null).setPositiveButton("Open",null).create()
+        dialog.setOnShowListener{
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener{
+                val url=BrowserPolicy.normalizeAddress(input.text.toString())
+                if(url==null||url=="about:blank"){input.error="Enter the original HTTP or HTTPS portal address";return@setOnClickListener}
+                val existing=store.spaces.flatMap{it.panes}.map{it.id}.toSet()
+                navigatePanes(targets.filter{it.id in existing},url)
+                dialog.dismiss()
+            }
+        };dialog.show()
+    }
+    private fun toggleGlobalUserAgent(){
+        if(store.spaces.any{ws->ws.panes.any{it.locked}}){notice("Unlock all panes before changing the shared user agent");return}
+        confirm("Change desktop UA for all panes?",
+            "This changes all browser request identities and may reload pages. Do this before joining a queue. The per-pane Desktop site toggle continues to control viewport fitting; when shared desktop UA is off it also selects desktop UA for that pane."){
+            if(store.spaces.any{ws->ws.panes.any{it.locked}}){notice("A pane was locked; change cancelled");return@confirm}
+            store.desktopUserAgent=!store.desktopUserAgent
+            cards.values.forEach{it.applyGlobalUserAgent()}
+        }
     }
     fun paneMenu(card:PaneCard){
         val choices=arrayOf(if(card.state.desktop)"Desktop site: on" else "Desktop site: off",
@@ -422,7 +480,6 @@ class MainActivity:Activity(){
         }}.show()
     }
     fun cookieEditor(card:PaneCard){CookieEditor(this,card).open()}
-    fun browserInterrupted(state:PaneState,reason:String){notice("Browser ${state.id.takeLast(5)} interrupted: $reason")}
     fun focus(card:PaneCard){
         store.focusId=if(store.focusId==card.state.id)null else card.state.id
         store.save();positionCards(true)
@@ -431,6 +488,7 @@ class MainActivity:Activity(){
         if(!started||!::stage.isInitialized)return
         val width=stage.width;val height=stage.height
         if(width<10||height<10)return
+        val layoutRun=++layoutGeneration
         val gap=dp(2);val visible=store.active().panes
         val f=store.focusId?.takeIf{id->visible.any{it.id==id}}
         val desired=mutableMapOf<String,IntArray>()
@@ -449,9 +507,11 @@ class MainActivity:Activity(){
             others.forEachIndexed{i,p->desired[p.id]=intArrayOf(mainW+gap*2,gap+i*(cellH+gap),stackW,cellH)}
         }
         for((id,card) in cards){
+            card.updatePaneNumber()
             val r=desired[id]
             if(r==null){
                 // Keep off-workspace WebViews allocated and attached; never pauseTimers/stopLoading.
+                card.animate().cancel()
                 card.x=-10000f
                 card.y=0f
                 card.visibility=View.VISIBLE
@@ -468,7 +528,7 @@ class MainActivity:Activity(){
             card.updateSelection(selecting && visible.any{it.id==id},selectedPanes.contains(id))
             if(animate&&oldW>0&&oldH>0&&oldX>-1000f){
                 card.post{
-                    if(card.parent!==stage)return@post
+                    if(card.parent!==stage||layoutRun!=layoutGeneration)return@post
                     card.pivotX=0f;card.pivotY=0f
                     card.scaleX=oldW.toFloat()/card.width.coerceAtLeast(1)
                     card.scaleY=oldH.toFloat()/card.height.coerceAtLeast(1)
@@ -479,16 +539,53 @@ class MainActivity:Activity(){
             }
         }
     }
-    override fun onConfigurationChanged(newConfig:Configuration){super.onConfigurationChanged(newConfig);stage.post{positionCards(false)}}
+    override fun onConfigurationChanged(newConfig:Configuration){super.onConfigurationChanged(newConfig);if(::stage.isInitialized)stage.post{positionCards(false)}}
+    override fun onStart(){
+        super.onStart()
+        if(started)try{startForegroundService(Intent(this,PaneKeepAliveService::class.java))}
+        catch(e:RuntimeException){notice("Background process priority unavailable: ${e.message}")}
+    }
+    override fun onResume(){
+        super.onResume()
+        if(!started)return
+        val prompts=getSharedPreferences("sixpane-runtime-prompts",MODE_PRIVATE)
+        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED
+            &&!prompts.getBoolean("notifications-asked",false)){
+            prompts.edit().putBoolean("notifications-asked",true).apply()
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),NOTIFICATION_REQUEST)
+        }else requestBatteryExemption()
+    }
+    override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray){
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults)
+        if(requestCode==NOTIFICATION_REQUEST){
+            if(grantResults.firstOrNull()!=PackageManager.PERMISSION_GRANTED)
+                notice("Notifications denied. Background service can still run; Android shows it in Active apps. Keep SIXPANE open for live sessions.")
+            requestBatteryExemption()
+        }
+    }
+    private fun requestBatteryExemption(explicit:Boolean=false){
+        val manager=getSystemService(PowerManager::class.java)
+        if(manager.isIgnoringBatteryOptimizations(packageName)){
+            if(explicit)notice("SIXPANE already has a battery optimization exemption")
+            return
+        }
+        val prompts=getSharedPreferences("sixpane-runtime-prompts",MODE_PRIVATE)
+        if(!explicit&&prompts.getBoolean("battery-asked",false))return
+        prompts.edit().putBoolean("battery-asked",true).apply()
+        try{startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,Uri.parse("package:$packageName")))}
+        catch(_:RuntimeException){notice("Battery exemption request unavailable. Set SIXPANE battery use to Unrestricted in Android app settings.")}
+    }
     override fun onPause(){
         cards.values.forEach{try{it.flushCookies()}catch(_:Exception){}}
-        store.save();super.onPause()
+        if(::store.isInitialized)store.save();super.onPause()
     }
     override fun onDestroy(){
         // A real Android Activity teardown necessarily loses in-memory JS runtime state.
         handler.removeCallbacksAndMessages(null)
         cards.values.forEach {try{it.destroyExplicitly()}catch(_:Throwable){}}
         cards.clear()
+        if(started)stopService(Intent(this,PaneKeepAliveService::class.java))
         super.onDestroy()
     }
+    companion object {private const val NOTIFICATION_REQUEST=42}
 }

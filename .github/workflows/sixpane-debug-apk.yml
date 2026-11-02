@@ -17,6 +17,11 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+      - name: Harness logic regression (simulated storage and time)
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sixpane-harness-test" --no-package-lock --no-save fake-indexeddb@6.0.0
+          NODE_PATH="$RUNNER_TEMP/sixpane-harness-test/node_modules" node results/harness_regression.cjs
       - name: Java 17
         uses: actions/setup-java@v4
         with:

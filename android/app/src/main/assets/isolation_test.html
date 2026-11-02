@@ -1,9 +1,86 @@
-<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>SIXPANE Local Test</title></head>
-<body style="font:16px system-ui;background:#172034;color:#eee"><h2>SIXPANE Controlled Test</h2>
-<div id="status">Timer: 0</div><div id="state"></div><button onclick="mark()">Write marker</button>
+<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>SIXPANE endurance harness</title>
+<style>
+body{font:15px system-ui;background:#172034;color:#eee;margin:12px}h1{font-size:18px}
+.value{font:700 20px monospace;overflow-wrap:anywhere;margin:5px 0 16px}#assertion{padding:8px;background:#24394d}
+.fail{color:#ff7777!important}small{color:#bfccdf}
+</style></head><body>
+<h1>SIXPANE isolation / endurance</h1>
+<div id="assertion">Starting storage checks…</div>
+<small>QID · cookie AND localStorage</small><div class="value" id="qid">…</div>
+<small>Independent localStorage value</small><div class="value" id="local">…</div>
+<small>Independent IndexedDB value</small><div class="value" id="idb">…</div>
+<div class="value" id="heartbeat">Heartbeat: 0</div>
+<div id="visibility"></div><div id="reloads"></div>
+<p><small>Heartbeat every 3s; automatic reload every 30s. Counts persist in this profile. Failures remain visible after later reloads. No button resets or remints sessions.</small></p>
 <script>
-let ticks=0;setInterval(()=>{ticks++;document.getElementById('status').textContent='Timer: '+ticks},1000);
-function mark(){let m='local-'+Math.floor(Math.random()*1e8);localStorage.setItem('sixpane-marker',m);document.cookie='sixpane-marker='+encodeURIComponent(m)+'; Secure; SameSite=Lax; Path=/';update()}
-function update(){document.getElementById('state').textContent='Storage: '+(localStorage.getItem('sixpane-marker')||'(empty)')+' / Cookie: '+document.cookie}
-update();
+'use strict';
+const QID='Queue-it-qid', LOCAL='Queue-it-local-only';
+const el=id=>document.getElementById(id);
+let total=0, pageTicks=0;
+function fail(message){
+  try{localStorage.setItem('sixpane.failure',message)}catch(_){}
+  el('assertion').textContent='FAIL: '+message;el('assertion').className='fail';
+}
+function randomValue(){
+  const bytes=new Uint8Array(16);crypto.getRandomValues(bytes);
+  return Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+}
+function cookieValue(name){
+  const row=document.cookie.split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='));
+  return row?decodeURIComponent(row.slice(name.length+1)):null;
+}
+async function indexedValue(reloads){
+  const db=await new Promise((resolve,reject)=>{
+    const request=indexedDB.open('sixpane-harness',1);
+    request.onupgradeneeded=()=>request.result.createObjectStore('values');
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error);request.onblocked=()=>reject(new Error('IndexedDB blocked'));
+  });
+  try {
+    return await new Promise((resolve,reject)=>{
+      const transaction=db.transaction('values','readwrite'), store=transaction.objectStore('values');
+      let value;
+      const request=store.get('idb-only');
+      request.onsuccess=()=>{
+        value=request.result;
+        if(!value){if(reloads>0)fail('IndexedDB value disappeared across reload');value=randomValue();store.put(value,'idb-only')}
+      };
+      transaction.oncomplete=()=>resolve(value);
+      transaction.onerror=()=>reject(transaction.error);transaction.onabort=()=>reject(transaction.error);
+    });
+  }finally{db.close()}
+}
+async function initialize(){
+  const reloads=Number(localStorage.getItem('sixpane.reloads')||0);
+  localStorage.setItem('sixpane.reloads',String(reloads+1));
+  el('reloads').textContent='Reload counter: '+reloads;
+  total=Number(localStorage.getItem('sixpane.heartbeats')||0);
+  el('heartbeat').textContent='Heartbeat: '+total+' · this load: 0';
+  const saved=localStorage.getItem(QID), cookie=cookieValue(QID), baseline=localStorage.getItem('sixpane.baseline-qid');
+  let qid=saved||cookie;
+  if(!qid){
+    if(reloads>0||baseline)fail('QID disappeared across reload');
+    qid=randomValue();localStorage.setItem(QID,qid);
+    document.cookie=QID+'='+encodeURIComponent(qid)+'; Path=/; Secure; SameSite=Lax; Max-Age=31536000';
+    localStorage.setItem('sixpane.baseline-qid',qid);
+  }else if(saved!==cookie||baseline!==qid){fail('QID changed or cookie/localStorage disagree')}
+  if(cookieValue(QID)!==qid)fail('QID cookie did not persist');
+  el('qid').textContent=qid;
+  let local=localStorage.getItem(LOCAL);
+  if(!local){if(reloads>0)fail('Local-only value disappeared across reload');local=randomValue();localStorage.setItem(LOCAL,local)}
+  el('local').textContent=local;
+  el('idb').textContent=await indexedValue(reloads);
+  const failure=localStorage.getItem('sixpane.failure');
+  if(failure)fail(failure);else el('assertion').textContent='PASS · QID unchanged in cookie + localStorage';
+}
+function visibility(){el('visibility').textContent='document.visibilityState: '+document.visibilityState}
+document.addEventListener('visibilitychange',visibility);visibility();
+setInterval(()=>{
+  total++;pageTicks++;
+  el('heartbeat').textContent='Heartbeat: '+total+' · this load: '+pageTicks;
+  try{localStorage.setItem('sixpane.heartbeats',String(total))}catch(e){fail('Heartbeat storage: '+e.message)}
+},3000);
+setTimeout(()=>location.reload(),30000);
+initialize().catch(e=>fail('Storage unavailable: '+e.message));
 </script></body></html>

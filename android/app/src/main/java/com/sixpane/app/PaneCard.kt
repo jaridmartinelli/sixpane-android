@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Handler
+import android.os.Looper
 import android.view.*
 import android.webkit.*
 import android.widget.*
@@ -12,18 +14,21 @@ import androidx.webkit.WebViewFeature
 import androidx.webkit.WebViewAssetLoader
 import kotlin.math.roundToInt
 
-/** Single attached, persistent WebView for one named profile. Never re-created to change layouts. */
+/** One named profile per card. Layout changes never replace the WebView; renderer death does. */
 class PaneCard(
     private val host:MainActivity,
     val state:PaneState
 ):FrameLayout(host) {
-    val webView:WebView
+    var webView:WebView
+        private set
     private val header=FrameLayout(host)
     private val body=FrameLayout(host)
     val lock=CornerIcon(host,CornerIcon.Kind.LOCK)
     private val cookie=CornerIcon(host,CornerIcon.Kind.COOKIE)
     private val expand=CornerIcon(host,CornerIcon.Kind.EXPAND)
     private val siteLabel=TextView(host)
+    private val paneNumber=TextView(host)
+    private val recoveryIndicator=TextView(host)
     private val indicator=TextView(host)
     private val more=TextView(host)
     val menuAnchor:View get()=more
@@ -32,6 +37,12 @@ class PaneCard(
     private val stack=LinearLayout(host)
     private val assetLoader=WebViewAssetLoader.Builder().addPathHandler("/assets/",WebViewAssetLoader.AssetsPathHandler(host)).build()
     private var baseUserAgent=""
+    private val recoveryHandler=Handler(Looper.getMainLooper())
+    private var webViewAlive=false
+    private var disposed=false
+    private var recoveryAttempts=0
+    private var retry:Runnable?=null
+    private var loadTimeout:Runnable?=null
     var interrupted=false
         private set
     private var lastWidth=0
@@ -44,17 +55,36 @@ class PaneCard(
         override fun shouldInterceptRequest(view:WebView, request:WebResourceRequest):WebResourceResponse? =
             assetLoader.shouldInterceptRequest(request.url)
         override fun onPageFinished(view:WebView?, url:String?) {
+            if(view!==webView||!webViewAlive||disposed)return
             if(!url.isNullOrEmpty() && url!=state.url){state.url=url;host.persist()}
+            if(interrupted){
+                loadTimeout?.let{recoveryHandler.removeCallbacks(it)};loadTimeout=null
+                interrupted=false;recoveryAttempts=0;recoveryIndicator.visibility=View.GONE
+            }
             updateSiteLabel()
         }
+        override fun onPageStarted(view:WebView?,url:String?,favicon:android.graphics.Bitmap?){
+            if(view!==webView||!webViewAlive||disposed)return
+            // Capture redirects before completion as well as normal page finishes.
+            if(!url.isNullOrEmpty()&&url!=state.url){state.url=url;host.persist();updateSiteLabel()}
+        }
+        override fun onReceivedError(view:WebView,request:WebResourceRequest,error:WebResourceError){
+            if(view===webView&&interrupted&&request.isForMainFrame)recoveryLoadFailed()
+        }
+        override fun onReceivedHttpError(view:WebView,request:WebResourceRequest,response:WebResourceResponse){
+            if(view===webView&&interrupted&&request.isForMainFrame&&response.statusCode>=400)recoveryLoadFailed()
+        }
+        override fun onReceivedSslError(view:WebView,handler:SslErrorHandler,error:android.net.http.SslError){
+            handler.cancel()
+            if(view===webView&&interrupted)recoveryLoadFailed()
+        }
         override fun onRenderProcessGone(view:WebView?, detail:RenderProcessGoneDetail?):Boolean {
-            interrupted=true
-            body.removeView(webView)
-            webView.destroy() // Android requires destroyed crashed WebViews to be discarded.
-            indicator.text="!"
-            indicator.visibility=View.VISIBLE
-            host.browserInterrupted(state,"Renderer exited; browser must be explicitly re-created")
-            return true // Never misreport process recovery as uninterrupted execution.
+            if(view===webView&&!disposed){
+                interrupted=true
+                discardWebView()
+                scheduleRecovery()
+            }
+            return true
         }
     }
     init {
@@ -63,32 +93,8 @@ class PaneCard(
         background=outline(Color.rgb(31,39,53))
         clipChildren=true;clipToPadding=true
         require(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) { "Multi-profile WebView unavailable" }
-        webView=WebView(host)
-        // MUST happen before any other WebView settings/client operations.
-        WebViewCompat.setProfile(webView,state.profile)
-        baseUserAgent=webView.settings.userAgentString
-        webView.settings.apply {
-            javaScriptEnabled=true
-            domStorageEnabled=true
-            databaseEnabled=true
-            loadsImagesAutomatically=true
-            javaScriptCanOpenWindowsAutomatically=false
-            setSupportMultipleWindows(false)
-            builtInZoomControls=true
-            displayZoomControls=false
-            useWideViewPort=true
-            loadWithOverviewMode=true
-            mediaPlaybackRequiresUserGesture=true
-        }
-        WebViewCompat.getProfile(webView).cookieManager.setAcceptThirdPartyCookies(webView,true)
-        webView.webViewClient=onPageChanged
-        webView.webChromeClient=object:WebChromeClient(){
-            override fun onProgressChanged(view:WebView?, newProgress:Int){
-                if(newProgress<100)indicator.text="·" else updateZoomIndicator()
-            }
-        }
-        updateDesktopWithoutReload()
-        webView.setInitialScale(state.zoom)
+        webView=createWebView()
+        webViewAlive=true
         val headerH=host.dp(20)
         addView(header,LayoutParams(-1,headerH,Gravity.TOP))
         addView(body,LayoutParams(-1,-1).apply { topMargin=headerH })
@@ -112,6 +118,12 @@ class PaneCard(
             leftMargin=host.dp(if(state.locked)24 else 2)
             rightMargin=host.dp(35)
         })
+        paneNumber.apply{
+            textSize=9f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
+            setBackgroundColor(Color.argb(210,28,39,55))
+            setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}
+        }
+        updatePaneNumber()
         // A lock is an indicator, not a persistent button. Long-press opens controls.
         lock.locked=state.locked
         lock.contentDescription="Browser locked; hold for browser controls"
@@ -134,6 +146,10 @@ class PaneCard(
         body.addView(webView,LayoutParams(-1,-1))
         body.addView(cookie,LayoutParams(host.dp(32),host.dp(32),Gravity.BOTTOM or Gravity.LEFT))
         body.addView(expand,LayoutParams(host.dp(32),host.dp(32),Gravity.BOTTOM or Gravity.RIGHT))
+        // Below the header, away from its lock and 36dp overflow hit target, even in Right Stack.
+        body.addView(paneNumber,LayoutParams(host.dp(20),host.dp(14),Gravity.TOP or Gravity.LEFT).apply{
+            leftMargin=host.dp(2);topMargin=host.dp(2)
+        })
         // Selection shield prevents website interaction while selection mode is active.
         selectionLayer.setBackgroundColor(Color.argb(48,82,149,252))
         selectionLayer.visibility=View.GONE
@@ -154,6 +170,14 @@ class PaneCard(
             setOnClickListener {zoomTo(100)}
         }
         body.addView(indicator,LayoutParams(host.dp(42),host.dp(22),Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
+        recoveryIndicator.apply{
+            textSize=10f;setTextColor(Color.rgb(255,215,125));gravity=Gravity.CENTER
+            setPadding(host.dp(4),host.dp(2),host.dp(4),host.dp(2))
+            setBackgroundColor(Color.argb(225,28,36,49));visibility=View.GONE
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            accessibilityLiveRegion=View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
+        body.addView(recoveryIndicator,LayoutParams(-2,-2,Gravity.CENTER))
         updateZoomIndicator()
         body.addOnLayoutChangeListener{_,l,t,r,b,_,_,_,_->
             val w=r-l;val h=b-t
@@ -165,8 +189,74 @@ class PaneCard(
         updateLockStatus()
         webView.loadUrl(state.url)
     }
+    private fun createWebView():WebView {
+        val fresh=WebView(host)
+        try {
+            // First operation on EVERY instance, including recovery. Never mint a profile ID here.
+            WebViewCompat.setProfile(fresh,state.profile)
+            baseUserAgent=fresh.settings.userAgentString
+            fresh.settings.apply {
+                javaScriptEnabled=true;domStorageEnabled=true;databaseEnabled=true
+                loadsImagesAutomatically=true;javaScriptCanOpenWindowsAutomatically=false
+                setSupportMultipleWindows(false)
+                builtInZoomControls=true;displayZoomControls=false
+                useWideViewPort=true;loadWithOverviewMode=!state.desktop
+                mediaPlaybackRequiresUserGesture=true
+                userAgentString=if(host.store.desktopUserAgent||state.desktop)BrowserPolicy.DESKTOP_USER_AGENT else baseUserAgent
+            }
+            WebViewCompat.getProfile(fresh).cookieManager.setAcceptThirdPartyCookies(fresh,true)
+            fresh.webViewClient=onPageChanged
+            fresh.webChromeClient=object:WebChromeClient(){
+                override fun onProgressChanged(view:WebView?,newProgress:Int){
+                    if(view!==webView||!webViewAlive)return
+                    if(newProgress<100)indicator.text="·" else updateZoomIndicator()
+                }
+            }
+            fresh.setInitialScale(state.zoom)
+            // Page drags belong to the page; no workspace gesture interceptor is installed.
+            return fresh
+        }catch(e:Exception){fresh.destroy();throw e}
+    }
+    private fun discardWebView(){
+        loadTimeout?.let{recoveryHandler.removeCallbacks(it)};loadTimeout=null
+        if(webViewAlive){webViewAlive=false;body.removeView(webView);webView.destroy()}
+    }
+    private fun recoveryLoadFailed(){
+        if(disposed||!interrupted)return
+        discardWebView();scheduleRecovery()
+    }
+    private fun scheduleRecovery(){
+        if(disposed||retry!=null)return
+        recoveryIndicator.visibility=View.VISIBLE
+        if(recoveryAttempts>=BrowserPolicy.MAX_RECOVERY_ATTEMPTS){
+            recoveryIndicator.text="Recovery stopped · 10/10";return
+        }
+        val attempt=recoveryAttempts+1
+        val delay=BrowserPolicy.recoveryDelayMs(attempt)
+        recoveryIndicator.text="Recovering $attempt/10 · ${delay/1000}s"
+        retry=Runnable {
+            retry=null
+            if(disposed)return@Runnable
+            recoveryAttempts=attempt
+            recoveryIndicator.text="Recovering $attempt/10"
+            try {
+                webView=createWebView();webViewAlive=true
+                body.addView(webView,0,LayoutParams(-1,-1))
+                if(lastWidth>0&&lastHeight>0)applyViewportDimensions(lastWidth,lastHeight)
+                loadTimeout=Runnable{recoveryLoadFailed()}.also{
+                    recoveryHandler.postDelayed(it,BrowserPolicy.RECOVERY_LOAD_TIMEOUT_MS)
+                }
+                webView.loadUrl(state.url)
+            }catch(_:Exception){discardWebView();scheduleRecovery()}
+        }.also{recoveryHandler.postDelayed(it,delay)}
+    }
+    fun updatePaneNumber(){
+        val index=host.paneIndex(state.id)
+        paneNumber.text=index.toString();paneNumber.contentDescription="Pane $index"
+    }
     private fun outline(color:Int)=GradientDrawable().apply{setColor(color);setStroke(host.dp(1),Color.rgb(58,71,89));cornerRadius=host.dp(3).toFloat()}
     private fun applyViewportDimensions(w:Int,h:Int){
+        if(!webViewAlive)return
         // Small genuine WebView viewport-size differences within identical visible card geometry.
         // View transforms visually fit the independent surface into its aligned host cell.
         val sx=WorkspacePolicy.normalViewScale(state.widthPercent)
@@ -199,24 +289,18 @@ class PaneCard(
         // Focus and grid changes never replace a WebView or force the toolbar visible.
         indicator.visibility=if(state.zoom==100)View.GONE else View.VISIBLE
     }
-    private fun normalize(raw:String):String?{
-        val t=raw.trim();if(t=="about:blank")return t
-        val candidate=if("://" in t)t else "https://$t"
-        return try{val u=android.net.Uri.parse(candidate);if(u.scheme in listOf("http","https")&&!u.host.isNullOrBlank())candidate else null}catch(_:Exception){null}
-    }
     /** Explicit submit from the thumb-reachable sheet: no navigation on focus loss. */
     fun submitAddress(raw:String):Boolean {
-        val next=normalize(raw) ?: return false
-        if(interrupted)return false
-        state.url=next
-        updateSiteLabel()
-        host.persist()
-        webView.loadUrl(next)
+        val next=BrowserPolicy.normalizeAddress(raw) ?: return false
+        if(disposed)return false
+        loadAddress(next)
         return true
     }
     fun loadAddress(url:String){
-        if(interrupted)return
-        state.url=url;host.persist();updateSiteLabel();webView.loadUrl(url)
+        if(disposed)return
+        state.url=url;host.persist();updateSiteLabel()
+        // A navigation during backoff updates the recovery target without changing its profile.
+        if(webViewAlive)webView.loadUrl(url)
     }
     fun zoomByStep(direction:Int)=zoom(WorkspacePolicy.ZOOM_STEP*direction)
     fun resetZoom(){zoomTo(100)}
@@ -224,35 +308,37 @@ class PaneCard(
     private fun zoomTo(target:Int){
         if(target==state.zoom)return
         // Apply relative zoom to the actual WebView, rather than CSS-zooming a screenshot.
-        webView.zoomBy(target.toFloat()/state.zoom.toFloat())
+        if(webViewAlive)webView.zoomBy(target.toFloat()/state.zoom.toFloat())
         state.zoom=target
         updateZoomIndicator();host.persist()
     }
     private fun updateZoomIndicator(){indicator.text=WorkspacePolicy.displayZoom(state.zoom);indicator.visibility=if(state.zoom==100)View.GONE else View.VISIBLE}
     private fun updateDesktopWithoutReload(){
-        webView.settings.userAgentString=if(state.desktop)baseUserAgent.replace(" Mobile","") else baseUserAgent
+        if(!webViewAlive)return
+        webView.settings.userAgentString=if(host.store.desktopUserAgent||state.desktop)BrowserPolicy.DESKTOP_USER_AGENT else baseUserAgent
         webView.settings.useWideViewPort=true
         webView.settings.loadWithOverviewMode=!state.desktop
     }
+    fun applyGlobalUserAgent(){updateDesktopWithoutReload()}
     fun toggleDesktop(){
         if(state.locked){blocked("Unlock browser to change Desktop mode");return}
         host.confirm("Change display mode?","This page will reload. Cookies stay in this browser."){
-            state.desktop=!state.desktop;updateDesktopWithoutReload();host.persist();webView.reload()
+            state.desktop=!state.desktop;updateDesktopWithoutReload();host.persist();if(webViewAlive)webView.reload()
         }
     }
-    fun back(){if(webView.canGoBack())webView.goBack()}
-    fun forward(){if(webView.canGoForward())webView.goForward()}
-    fun refresh(){webView.reload()}
+    fun back(){if(webViewAlive&&webView.canGoBack())webView.goBack()}
+    fun forward(){if(webViewAlive&&webView.canGoForward())webView.goForward()}
+    fun refresh(){if(webViewAlive)webView.reload()}
     fun reset(){
         if(state.locked){blocked("Reset blocked");return}
         host.confirm("Reset page?","This browser will navigate to a blank page; its cookies are preserved."){
-            webView.loadUrl("about:blank");state.url="about:blank";host.persist()
+            loadAddress("about:blank")
         }
     }
     fun blocked(reason:String){lock.blockedFeedback();host.notice(reason)}
     fun destroyExplicitly(){
-        if(!interrupted){webView.stopLoading();body.removeView(webView);webView.destroy()}
-        interrupted=true
+        disposed=true;recoveryHandler.removeCallbacksAndMessages(null);retry=null;loadTimeout=null
+        discardWebView();interrupted=true
     }
-    fun flushCookies(){if(!interrupted)WebViewCompat.getProfile(webView).cookieManager.flush()}
+    fun flushCookies(){if(webViewAlive)WebViewCompat.getProfile(webView).cookieManager.flush()}
 }

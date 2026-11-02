@@ -69,6 +69,10 @@ class LocalStore(ctx:Context){
     var currentId:String=""
     var columns:Int=2
     var focusId:String?=null
+    // Separate preference: the established workspace manifest format stays unchanged.
+    var desktopUserAgent:Boolean
+        get()=prefs.getBoolean("desktop-user-agent",true)
+        set(value){check(prefs.edit().putBoolean("desktop-user-agent",value).commit())}
     init {
         try {
             val j=JSONObject(prefs.getString("manifest", "{}")!!)

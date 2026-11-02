@@ -1,10 +1,25 @@
-2026-10-19
-LOCAL JVM POLICY TEST: PASS (Kotlin 1.9.0/JDK 21; limits, lock policy, zoom steps and indicators).
-ANDROID MANIFEST XML PARSE: PASS.
-REMOTE ARCHITECTURE REFERENCES: none in runtime source; 'no socket' appears only in comment.
-ANDROID SDK DETECTED: NO.
-GRADLE BUILD: NOT RUN (SDK and Gradle unavailable).
-ANDROID PHYSICAL-DEVICE TEST: NOT RUN.
-42 ACTIVE WEBVIEWS: NOT VERIFIED.
-FULL COOKIE / STORAGE ISOLATION: NOT VERIFIED.
-ANDROID PROFILE API USAGE: IMPLEMENTED IN SOURCE, NOT COMPILE-TESTED.
+2026-11-02 — session reliability update
+BASELINE: main 6b5bf87430f11870124a09d162a928c5a2616324
+LOCAL TOOLCHAIN: Java 17, Gradle 8.9, Android platform 35.
+SDK LEVELS: unchanged min 29 / target 35 / compile 35.
+ANDROID BUILD: PASS (:app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug).
+JVM TESTS: PASS, 8 tests, 0 failures/errors.
+LINT: PASS, warnings remain; no errors.
+MANIFEST XML: PASS.
+HARNESS LOGIC: PASS, 42 simulated stores, 60 simulated reloads, 600 heartbeat ticks each, same-store JS runtime recreation, negative cookie/localStorage/IndexedDB loss cases.
+HARNESS LIMIT: simulated time/storage, not real WebView isolation or Android scheduling.
+HOSTED CI: see Actions run associated with the delivered main-branch commit; local build does not imply hosted CI success.
+CONNECTED ANDROID DEVICES: none (adb devices empty).
+
+ACCEPTANCE STATUS (real-device checks):
+42 WebViews with distinct qid / localStorage-only / IndexedDB values: NOT RUN.
+All 42 heartbeats progressing off-workspace: NOT RUN.
+Unchanged qids over 30 real minutes of 30-second reloads: NOT RUN.
+Renderer kill/recovery, same profile/qid, other panes unaffected: NOT RUN.
+Audit zero duplicates with all three sources available: NOT RUN.
+Three-hour actual waiting-room session on OnePlus Open: NOT RUN.
+Fold/unfold, rotation, keyboard, drag scroll, lock/selection and permission-denial paths: NOT RUN.
+
+PRESERVATION: package IDs and preview suffix, existing signing/version setup, workspace manifest format and profile identities preserved. Recovery never constructs PaneState or creates a workspace. No default CookieManager, pauseTimers, URL interception/filtering, runtime proxy or remote browser was added. Off-workspace cards stay attached and VISIBLE.
+SIGNING: installed preview certificate match / safe in-place update NOT VERIFIED. No app uninstalled or cleared.
+DETAILS: docs/IMPLEMENTATION_AND_VERIFICATION.md, session reliability section.
