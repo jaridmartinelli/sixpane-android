@@ -4,10 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.text.InputType
 import android.view.*
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
 import android.webkit.*
 import android.widget.*
 import androidx.webkit.WebViewCompat
@@ -26,10 +23,8 @@ class PaneCard(
     val lock=CornerIcon(host,CornerIcon.Kind.LOCK)
     private val cookie=CornerIcon(host,CornerIcon.Kind.COOKIE)
     private val expand=CornerIcon(host,CornerIcon.Kind.EXPAND)
-    private val address=EditText(host)
+    private val siteLabel=TextView(host)
     private val indicator=TextView(host)
-    private val zoomMinus=TextView(host)
-    private val zoomPlus=TextView(host)
     private val more=TextView(host)
     val menuAnchor:View get()=more
     private val selectionLayer=FrameLayout(host)
@@ -50,7 +45,7 @@ class PaneCard(
             assetLoader.shouldInterceptRequest(request.url)
         override fun onPageFinished(view:WebView?, url:String?) {
             if(!url.isNullOrEmpty() && url!=state.url){state.url=url;host.persist()}
-            if(!address.hasFocus()) address.setText(state.url)
+            updateSiteLabel()
         }
         override fun onRenderProcessGone(view:WebView?, detail:RenderProcessGoneDetail?):Boolean {
             interrupted=true
@@ -94,53 +89,48 @@ class PaneCard(
         }
         updateDesktopWithoutReload()
         webView.setInitialScale(state.zoom)
-        val density=resources.displayMetrics.density
-        val headerH=(28*density).roundToInt()
+        val headerH=host.dp(20)
         addView(header,LayoutParams(-1,headerH,Gravity.TOP))
         addView(body,LayoutParams(-1,-1).apply { topMargin=headerH })
-        header.setBackgroundColor(Color.rgb(51,65,86))
-        header.addView(lock,LayoutParams(host.dp(28),-1,Gravity.TOP or Gravity.LEFT))
+        // Minimal chrome: only domain hint + overflow; URL/zoom controls live in a bottom sheet.
+        // The top strip (not the webpage itself) owns the long-press action.
+        header.setBackgroundColor(Color.rgb(38,49,64))
+        header.setOnLongClickListener { host.windowContextMenu(this);true }
+        siteLabel.apply {
+            textSize=9f
+            setTextColor(Color.argb(160,255,255,255))
+            gravity=Gravity.CENTER_VERTICAL
+            maxLines=1
+            ellipsize=android.text.TextUtils.TruncateAt.END
+            setPadding(host.dp(3),0,host.dp(3),0)
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnLongClickListener { host.windowContextMenu(this@PaneCard);true }
+            contentDescription="Hold for address and browser controls"
+        }
+        updateSiteLabel()
+        header.addView(siteLabel,LayoutParams(-1,-1).apply{
+            leftMargin=host.dp(if(state.locked)24 else 2)
+            rightMargin=host.dp(35)
+        })
+        // A lock is an indicator, not a persistent button. Long-press opens controls.
         lock.locked=state.locked
-        lock.contentDescription="Locked browser indicator; long press header to unlock"
+        lock.contentDescription="Browser locked; hold for browser controls"
         lock.isClickable=false
         lock.isFocusable=false
         lock.setOnLongClickListener {host.windowContextMenu(this);true}
+        header.addView(lock,LayoutParams(host.dp(24),-1,Gravity.TOP or Gravity.LEFT))
         updateLockStatus()
-        header.setOnLongClickListener {host.windowContextMenu(this);true}
-        address.setText(state.url)
-        address.setSingleLine(true)
-        address.textSize=10f
-        address.setTextColor(Color.WHITE)
-        address.setHintTextColor(Color.LTGRAY)
-        address.setPadding(host.dp(4),0,host.dp(3),0)
-        address.setSelectAllOnFocus(true)
-        address.inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-        address.imeOptions=EditorInfo.IME_ACTION_GO
-        address.setBackgroundColor(Color.rgb(36,49,68))
-        address.setOnEditorActionListener { _, actionId, event ->
-            if(actionId==EditorInfo.IME_ACTION_GO || event?.keyCode==KeyEvent.KEYCODE_ENTER){go();true}else false
+        more.apply {
+            text="⋮";textSize=17f
+            setTextColor(Color.argb(192,255,255,255))
+            gravity=Gravity.CENTER
+            setBackgroundColor(Color.TRANSPARENT)
+            contentDescription="Browser controls: address, zoom, lock and selection"
+            setOnClickListener {host.windowContextMenu(this@PaneCard)}
+            setOnLongClickListener {host.windowContextMenu(this@PaneCard);true}
         }
-        header.addView(address,LayoutParams(host.dp(78),host.dp(21),Gravity.CENTER_VERTICAL or Gravity.LEFT).apply{leftMargin=host.dp(if(state.locked)28 else 4)})
-        val right=LinearLayout(host).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        fun smallText(text:String):TextView = TextView(host).apply{
-            this.text=text;textSize=15f;setTextColor(Color.argb(179,255,255,255))
-            gravity=Gravity.CENTER;setOnTouchListener{v,e->
-                if(e.actionMasked==MotionEvent.ACTION_DOWN)v.animate().scaleX(.80f).scaleY(.80f).setDuration(90).start()
-                if(e.actionMasked==MotionEvent.ACTION_UP||e.actionMasked==MotionEvent.ACTION_CANCEL)v.animate().scaleX(1f).scaleY(1f).setDuration(130).start()
-                false
-            }
-        }
-        zoomMinus.text="−";zoomPlus.text="+";more.text="⋮"
-        listOf(zoomMinus,zoomPlus,more).forEach {x->
-            x.textSize=16f;x.setTextColor(Color.argb(179,255,255,255));x.gravity=Gravity.CENTER
-            right.addView(x,LinearLayout.LayoutParams(host.dp(24),host.dp(27)))
-        }
-        zoomMinus.contentDescription="Zoom out";zoomPlus.contentDescription="Zoom in";more.contentDescription="Browser options"
-        zoomMinus.setOnClickListener {zoom(-WorkspacePolicy.ZOOM_STEP)}
-        zoomPlus.setOnClickListener {zoom(WorkspacePolicy.ZOOM_STEP)}
-        more.setOnClickListener {host.windowContextMenu(this)}
-        more.setOnLongClickListener {host.windowContextMenu(this);true}
-        header.addView(right,LayoutParams(-2,-1,Gravity.RIGHT or Gravity.CENTER_VERTICAL))
+        // The glyph remains tiny; the invisible target is 36dp for one-handed use.
+        addView(more,LayoutParams(host.dp(36),host.dp(36),Gravity.TOP or Gravity.RIGHT))
         body.addView(webView,LayoutParams(-1,-1))
         body.addView(cookie,LayoutParams(host.dp(32),host.dp(32),Gravity.BOTTOM or Gravity.LEFT))
         body.addView(expand,LayoutParams(host.dp(32),host.dp(32),Gravity.BOTTOM or Gravity.RIGHT))
@@ -175,7 +165,7 @@ class PaneCard(
         updateLockStatus()
         webView.loadUrl(state.url)
     }
-    private fun outline(color:Int)=GradientDrawable().apply{setColor(color);setStroke(host.dp(1),Color.rgb(70,83,101));cornerRadius=host.dp(6).toFloat()}
+    private fun outline(color:Int)=GradientDrawable().apply{setColor(color);setStroke(host.dp(1),Color.rgb(58,71,89));cornerRadius=host.dp(3).toFloat()}
     private fun applyViewportDimensions(w:Int,h:Int){
         // Small genuine WebView viewport-size differences within identical visible card geometry.
         // View transforms visually fit the independent surface into its aligned host cell.
@@ -190,10 +180,14 @@ class PaneCard(
     fun updateLockStatus(){
         lock.locked=state.locked
         lock.visibility=if(state.locked)View.VISIBLE else View.GONE
-        (address.layoutParams as? LayoutParams)?.let{params->
-            params.leftMargin=host.dp(if(state.locked)28 else 4)
-            address.layoutParams=params
+        (siteLabel.layoutParams as? LayoutParams)?.let{params->
+            params.leftMargin=host.dp(if(state.locked)24 else 2)
+            siteLabel.layoutParams=params
         }
+    }
+    private fun updateSiteLabel(){
+        siteLabel.text=if(state.url=="about:blank") "New browser" else
+            try { android.net.Uri.parse(state.url).host ?: state.url } catch(_:Exception){state.url}
     }
     fun updateSelection(active:Boolean,selected:Boolean){
         selectionLayer.visibility=if(active)View.VISIBLE else View.GONE
@@ -202,14 +196,7 @@ class PaneCard(
         selectionLayer.contentDescription=if(selected)"Selected browser" else "Select browser"
     }
     fun updateControls(){
-        zoomMinus.visibility=if(compact) View.GONE else View.VISIBLE
-        zoomPlus.visibility=if(compact) View.GONE else View.VISIBLE
-        more.visibility=View.VISIBLE
-        // Address shrinks while pane is not focused; no popup editor.
-        (address.layoutParams as LayoutParams).apply{
-            width=host.dp(if(compact) 32 else if(focused) 104 else 62)
-            address.layoutParams=this
-        }
+        // Focus and grid changes never replace a WebView or force the toolbar visible.
         indicator.visibility=if(state.zoom==100)View.GONE else View.VISIBLE
     }
     private fun normalize(raw:String):String?{
@@ -217,18 +204,22 @@ class PaneCard(
         val candidate=if("://" in t)t else "https://$t"
         return try{val u=android.net.Uri.parse(candidate);if(u.scheme in listOf("http","https")&&!u.host.isNullOrBlank())candidate else null}catch(_:Exception){null}
     }
-    private fun go(){
-        val next=normalize(address.text.toString())
-        if(next==null){address.error="Enter a valid address";return}
-        (host.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(address.windowToken,0)
-        address.clearFocus()
-        state.url=next;host.persist();webView.loadUrl(next)
+    /** Explicit submit from the thumb-reachable sheet: no navigation on focus loss. */
+    fun submitAddress(raw:String):Boolean {
+        val next=normalize(raw) ?: return false
+        if(interrupted)return false
+        state.url=next
+        updateSiteLabel()
+        host.persist()
+        webView.loadUrl(next)
+        return true
     }
     fun loadAddress(url:String){
         if(interrupted)return
-        state.url=url;host.persist();address.setText(url);webView.loadUrl(url)
+        state.url=url;host.persist();updateSiteLabel();webView.loadUrl(url)
     }
     fun zoomByStep(direction:Int)=zoom(WorkspacePolicy.ZOOM_STEP*direction)
+    fun resetZoom(){zoomTo(100)}
     private fun zoom(step:Int)=zoomTo((state.zoom+step).coerceIn(50,200))
     private fun zoomTo(target:Int){
         if(target==state.zoom)return

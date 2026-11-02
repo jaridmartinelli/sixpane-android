@@ -9,17 +9,17 @@ android {
         applicationId = "com.sixpane.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3-selection-dev"
+        versionCode = 4
+        versionName = "0.4-onehand-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }
     buildTypes {
         debug {
-            // Debug preview is a separate installation, preserving existing SIXPANE app data.
-            applicationIdSuffix = ".preview"
+            // Independent one-hand preview ID; never overwrite old differently signed debug apps.
+            applicationIdSuffix = ".preview.onehand"
             versionNameSuffix = "-preview"
-            manifestPlaceholders["appLabel"] = "SIXPANE Preview"
+            manifestPlaceholders["appLabel"] = "SIXPANE One-Hand Preview"
         }
         release { isMinifyEnabled = false }
     }

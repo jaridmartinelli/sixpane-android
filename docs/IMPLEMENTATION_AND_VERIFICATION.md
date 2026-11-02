@@ -82,3 +82,13 @@ The GitHub Actions debug APK workflow uses the runner's default debug signing ke
 The prior v0.2 debug APK and the first v0.3 debug APK have **different** APK Signing Block certificate SHA-256 hashes (v0.2: \`0527e14c23211786820c0835b90af6985af367120d83c2c1a7b2def077b53540\`; v0.3: \`a80f75720b09f4351846c4021b44dc6be5fddbb1321d9950bd1e64775cf44406\`). An in-place update is not possible with these signatures.
 
 For device testing without endangering v0.2 profiles, the **debug-only** build now appends \`.preview\` to the package ID and labels the app **SIXPANE Preview**. Base/release ID remains \`com.sixpane.app\` unchanged. The preview installs as a separate, fresh app with no access to v0.2's cookie store. This **does not** establish stable signing for later preview updates, nor does it authorize uninstalling v0.2.
+
+
+## 2026-11-02 — One-handed minimal browser chrome (v0.4 preview)
+
+- Each local browser card uses a 20dp top strip with a short domain hint and a small vertical ⋮ glyph inside a 36dp transparent hit target. The always-visible URL edit field and zoom ± buttons have been removed.
+- Long-press the browser strip or tap its ⋮ to open thumb-reachable bottom controls: direct URL field (with Go/IME Go), zoom −/value reset/+, pane Lock/Unlock and Select. Secondary browser actions remain under “More browser tools”.
+- Website long-press gestures remain with the WebView itself; do not intercept those for app commands.
+- Inter-window grid gaps are 2dp; card stroke stays 1dp with small radius. Six aligned browser surfaces and the Right Stack remain. The red lock is visible only when a browser is locked; tab locks remain unchanged.
+- The Android debug preview changes its application ID to `com.sixpane.app.preview.onehand` to avoid an unsafe signature mismatch with existing debug apps. This **does not upgrade or reuse** cookies/data in v0.2 or v0.3. A stable production signing scheme must be established before shipping in-place updates.
+- Verification: compile the Android debug APK + JVM tests; on device, test long press only on card chrome, direct URL submission and IME Go, zoom per pane with 100% indicator hidden, red lock blocks desktop and cookie edits, multi-select/close, and visible page area before/after. Physical touch and background WebView behavior remain unverified until device tests.
