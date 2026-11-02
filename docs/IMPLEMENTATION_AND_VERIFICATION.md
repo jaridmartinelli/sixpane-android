@@ -75,3 +75,10 @@ H. Verify the 3x2 grid has accessible overflow and zoom controls when a pane is 
 ### Build and signing incident / prevention
 
 The GitHub Actions debug APK workflow uses the runner's default debug signing key. Fresh CI runners may use different private keys, preventing an in-place update of a previously installed debug APK. **Never direct the user to uninstall an installed SIXPANE or wipe its data to resolve a signature mismatch without explicit consent and a verified backup/recovery plan.** Before a data-preserving update, provision secure persistent signing credentials and verify the signing certificate matches the installed app; otherwise disclose that in-place update is unverified.
+
+
+### Verified side-by-side preview build workaround (2026-11-02)
+
+The prior v0.2 debug APK and the first v0.3 debug APK have **different** APK Signing Block certificate SHA-256 hashes (v0.2: \`0527e14c23211786820c0835b90af6985af367120d83c2c1a7b2def077b53540\`; v0.3: \`a80f75720b09f4351846c4021b44dc6be5fddbb1321d9950bd1e64775cf44406\`). An in-place update is not possible with these signatures.
+
+For device testing without endangering v0.2 profiles, the **debug-only** build now appends \`.preview\` to the package ID and labels the app **SIXPANE Preview**. Base/release ID remains \`com.sixpane.app\` unchanged. The preview installs as a separate, fresh app with no access to v0.2's cookie store. This **does not** establish stable signing for later preview updates, nor does it authorize uninstalling v0.2.
