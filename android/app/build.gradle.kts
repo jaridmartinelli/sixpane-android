@@ -16,10 +16,10 @@ android {
     }
     buildTypes {
         debug {
-            // Independent one-hand preview ID; never overwrite old differently signed debug apps.
-            applicationIdSuffix = ".preview.onehand"
+            // User-approved side-by-side install; existing One-Hand sessions remain in their original app.
+            applicationIdSuffix = ".preview.minimal"
             versionNameSuffix = "-preview"
-            manifestPlaceholders["appLabel"] = "SIXPANE One-Hand Preview"
+            manifestPlaceholders["appLabel"] = "SIXPANE Minimal"
         }
         release { isMinifyEnabled = false }
     }
