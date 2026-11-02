@@ -200,7 +200,10 @@ class MainActivity:Activity(){
         selecting=true
         selectedPanes.clear()
         if(initial!=null && store.active().panes.any{it.id==initial}) selectedPanes.add(initial)
+        // Select from the full six-pane grid rather than tiny Right Stack thumbnails.
+        if(store.focusId!=null){store.focusId=null;store.save()}
         updateSelection()
+        positionCards(true)
     }
     private fun exitSelection(){
         selecting=false;selectedPanes.clear();updateSelection()
