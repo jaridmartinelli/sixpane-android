@@ -37,14 +37,9 @@ jobs:
           profile: pixel_7
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set +e
-            gradle --project-dir "$GITHUB_WORKSPACE/android" --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.sixpane.app.FilteredTabsInstrumentedTest
-            status=$?
-            mkdir -p "$GITHUB_WORKSPACE/filter-evidence"
-            timeout 12s adb pull /sdcard/Android/data/com.sixpane.app.preview.filterpages/files/filtered-14.png "$GITHUB_WORKSPACE/filter-evidence/filtered-14.png" || true
-            timeout 12s adb exec-out screencap -p > "$GITHUB_WORKSPACE/filter-evidence/final-screen.png" || true
-            exit "$status"
+          # android-emulator-runner executes each script line in a separate shell;
+          # keep status capture and evidence collection in ONE script process.
+          script: bash "$GITHUB_WORKSPACE/tests/run_filter_emulator_smoke.sh"
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4

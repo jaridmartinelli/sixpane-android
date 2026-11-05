@@ -150,6 +150,29 @@ class FilteredTabsInstrumentedTest {
             )
             assertTrue("Filtered grid screenshot unavailable",device.takeScreenshot(shot))
             assertTrue(shot.length()>0)
+            // Put an independent copy in MediaStore Downloads so CI can fetch it
+            // after connectedDebugAndroidTest tears down the debug app.
+            try{
+                val resolver=InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
+                val values=android.content.ContentValues().apply{
+                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME,"sixpane-filtered-14.png")
+                    put(android.provider.MediaStore.Downloads.MIME_TYPE,"image/png")
+                    put(android.provider.MediaStore.Downloads.IS_PENDING,1)
+                }
+                val outputUri=resolver.insert(
+                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,values
+                )
+                if(outputUri!=null){
+                    resolver.openOutputStream(outputUri)?.use{dest->
+                        shot.inputStream().use{source->source.copyTo(dest)}
+                    }
+                    values.clear()
+                    values.put(android.provider.MediaStore.Downloads.IS_PENDING,0)
+                    resolver.update(outputUri,values,null,null)
+                }
+            }catch(e:Exception){
+                android.util.Log.w("SIXPANE-Test","Could not export screenshot evidence",e)
+            }
             click(scenario,"Lock filtered group 3")
             scenario.onActivity{a->
                 assertTrue(a.store.spaces.flatMap{it.panes}.slice(12..13).all{it.locked})
