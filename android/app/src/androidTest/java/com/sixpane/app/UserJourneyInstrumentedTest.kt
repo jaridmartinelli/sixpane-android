@@ -97,6 +97,40 @@ class UserJourneyInstrumentedTest {
     }
 
 
+    @Test fun windowLockMenuLabelsAndBlockedDesktopActionWorkByTouch(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try {
+            var x=-1;var y=-1;var id=""
+            scenario.onActivity{a->
+                val pane=a.auditPanes().first()
+                id=pane.first.id
+                val badge=pane.second!!.menuAnchor
+                val loc=IntArray(2);badge.getLocationOnScreen(loc)
+                x=loc[0]+badge.width/2;y=loc[1]+badge.height/2
+            }
+            assertTrue("Browser number badge is offscreen",x>=0&&y>=0)
+            assertTrue(device.click(x,y))
+            clickLabel("Lock")
+            scenario.onActivity{a->
+                val card=a.auditPanes().first{it.first.id==id}.second!!
+                assertTrue(card.state.locked)
+                assertEquals(View.VISIBLE,card.lock.visibility)
+            }
+            assertTrue(device.click(x,y))
+            clickLabel("Desktop mode (unlock first)")
+            scenario.onActivity{a->
+                val card=a.auditPanes().first{it.first.id==id}.second!!
+                assertTrue("Blocked action must not unlock browser",card.state.locked)
+                assertFalse("Locked window cannot toggle Desktop mode",card.state.desktop)
+            }
+            assertTrue(device.click(x,y))
+            clickLabel("Unlock")
+            scenario.onActivity{a->
+                assertFalse(a.auditPanes().first{it.first.id==id}.first.locked)
+            }
+        }finally{scenario.close()}
+    }
+
     @Test fun holdingNumberBadgeOpensPaneMenuWithoutHijackingWebView(){
         assertTrue(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE))
         val scenario=ActivityScenario.launch(MainActivity::class.java)
