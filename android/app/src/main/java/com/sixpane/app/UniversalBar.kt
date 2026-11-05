@@ -153,6 +153,7 @@ internal class UniversalBar(
         colorCount: Int,
         hasFilters: Boolean,
         hasFocusedPane: Boolean,
+        workspaceToolsEnabled: Boolean,
         columns: Int,
         onAction: (UniversalMenuAction) -> Unit,
     ) {
@@ -183,7 +184,7 @@ internal class UniversalBar(
         add(UniversalMenuAction.TOGGLE_GRID,if(columns==2)
             "Layout: 2 × 3 → 3 × 2" else "Layout: 3 × 2 → 2 × 3")
         if (hasFocusedPane) add(UniversalMenuAction.PANE_BOOKMARKS, "Bookmarks for this browser")
-        add(UniversalMenuAction.WORKSPACE_TOOLS, "Workspace tools")
+        add(UniversalMenuAction.WORKSPACE_TOOLS, "Workspace tools",workspaceToolsEnabled)
         add(UniversalMenuAction.SETTINGS, "Settings")
         popup.show()
     }

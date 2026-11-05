@@ -290,6 +290,7 @@ class MainActivity:Activity(){
             colorCount = store.selectedFrameColors.size,
             hasFilters = store.filterQuery.isNotBlank() || store.selectedFrameColors.isNotEmpty(),
             hasFocusedPane = store.focusId != null,
+            workspaceToolsEnabled = !filtering(),
             columns = store.columns,
         ) { action ->
             when (action) {
@@ -558,9 +559,10 @@ class MainActivity:Activity(){
         updateSelection()
     }
     private fun updateSelection(){
+        val visibleIds=currentFilteredPanes().map{it.id}.toSet()
         renderTabs();updateUniversalBar()
         cards.forEach{(id,card)->
-            card.updateSelection(selecting && currentFilteredPanes().any{it.id==id},selectedPanes.contains(id))
+            card.updateSelection(selecting && id in visibleIds,selectedPanes.contains(id))
         }
     }
     /** Exactly seven pane actions. A workspace-tab hold owns workspace-wide tools. */
@@ -597,38 +599,72 @@ class MainActivity:Activity(){
     }
     private fun selectionMenu()=universalMenu()
     private fun confirmCloseSelected()=confirmCloseWindows(selectedPanes.toSet())
+    /** Preserve the original source workspaces even when selecting virtual filter pages. */
     private fun confirmCloseWindows(requested:Set<String>){
-        val ws=store.active()
-        val selected=ws.panes.filter{it.id in requested}
+        val crossWorkspace=filtering()
+        val originalWorkspace=store.currentId
+        val available=if(crossWorkspace)allPanes() else store.active().panes
+        val selected=available.filter{it.id in requested}
         if(selected.isEmpty())return
+        val ids=selected.map{it.id}.toSet()
         if(selected.any{it.locked}){
             selected.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
-            notice("Unlock all selected windows before closing them")
+            notice("Unlock selected browsers before closing them");return
+        }
+        if(crossWorkspace && store.spaces.any{ws->ws.locked&&ws.panes.any{it.id in ids}}){
+            notice("Unlock the original workspace tabs before closing filtered browsers")
             return
         }
-        val currentId=ws.id
-        confirm("Close ${selected.size} window${if(selected.size==1)"" else "s"}?",
-            "Selected sessions and their saved browser data will be retired for deletion. New blank, isolated browsers will replace them to preserve SIXPANE's six-window layout. Disk cleanup may require an app restart.",
+        confirm("Close "+selected.size+" window"+(if(selected.size==1)"" else "s")+"?",
+            "These sessions and their saved browser data will be retired for deletion. "+
+            "Fresh isolated profiles replace them in their ORIGINAL workspaces. "+
+            "Disk cleanup may require a clean restart.",
             "Close & Replace"){
-            if(store.active().id!=currentId){notice("Workspace changed; close cancelled");return@confirm}
-            val ids=selected.map{it.id}.toSet()
-            if(store.active().panes.filter{it.id in ids}.any{it.locked}){
-                notice("Selected windows were locked; close cancelled");return@confirm
+            if(crossWorkspace!=filtering()||
+                (!crossWorkspace && store.currentId!=originalWorkspace)){
+                notice("The active view changed; close cancelled");return@confirm
             }
-            val replacements=store.replacePanes(ids)
-            replacements.forEach{(old,_)->cards.remove(old.id)?.let{stage.removeView(it);it.destroyExplicitly()}}
+            val live=allPanes().filter{it.id in ids}
+            if(live.size!=ids.size||live.any{it.locked}){
+                live.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
+                notice("A selected browser changed or was locked; close cancelled")
+                return@confirm
+            }
+            if(crossWorkspace&&store.spaces.any{ws->
+                ws.locked&&ws.panes.any{it.id in ids}
+            }){
+                notice("Source workspace became locked; close cancelled");return@confirm
+            }
+            val replacements=try{
+                if(crossWorkspace)store.replacePanesAcrossWorkspaces(ids)
+                else store.replacePanes(ids)
+            }catch(e:IllegalArgumentException){
+                notice("Close cancelled: "+e.message);return@confirm
+            }
+            replacements.forEach{(old,_)->
+                cards.remove(old.id)?.let{stage.removeView(it);it.destroyExplicitly()}
+            }
             exitSelection()
             replacements.forEachIndexed{index,(_,fresh)->
                 handler.postDelayed({
-                    if(!isFinishing&&!isDestroyed&&store.spaces.any{w->w.id==currentId&&w.panes.any{it.id==fresh.id}}){
+                    if(!isFinishing&&!isDestroyed &&
+                        store.spaces.any{ws->ws.panes.any{it.id==fresh.id}}){
                         try{
-                            val card=PaneCard(this,fresh);cards[fresh.id]=card
-                            stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)));positionCards(false)
-                        }catch(e:Throwable){notice("New window could not start: ${e.message}")}
+                            val card=PaneCard(this,fresh)
+                            cards[fresh.id]=card
+                            stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)))
+                            positionCards(false)
+                        }catch(e:Throwable){
+                            notice("New browser could not start: "+e.message)
+                        }
                     }
                 },index*130L)
             }
-            notice("${selected.size} sessions retired. Fresh profiles created; disk deletion pending clean restart.")
+            clampFilteredPage()
+            renderTabs()
+            positionCards(false)
+            notice(replacements.size.toString()+
+                " sessions retired; new profiles created in their original workspaces.")
         }
     }
     private fun showBookmarksForPane(id:String){
@@ -653,6 +689,7 @@ class MainActivity:Activity(){
             }.toTypedArray()){_,which->showBookmarksForPane(panes[which].id)}.show()
     }
     private fun workspaceMenu(){
+        if(filtering()){notice("Clear the filter to manage original workspaces");return}
         val options=arrayOf(
             if(store.active().panes.all{it.locked})"Unlock all six windows" else "Lock all six windows",
             "Select windows","Bookmarks",
