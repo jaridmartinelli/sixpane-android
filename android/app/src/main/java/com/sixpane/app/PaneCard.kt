@@ -54,6 +54,7 @@ class PaneCard(
         override fun onPageFinished(view:WebView?, url:String?) {
             if(view!==webView||!webViewAlive||disposed)return
             if(url.isNullOrEmpty()||url!=view?.url)return // Ignore completion from an abandoned navigation.
+            if(url=="about:blank" && state.url!="about:blank")return
             if(!url.isNullOrEmpty() && url!=state.url){state.url=url;host.persist()}
             if(interrupted){
                 loadTimeout?.let{recoveryHandler.removeCallbacks(it)};loadTimeout=null
@@ -63,6 +64,9 @@ class PaneCard(
         }
         override fun onPageStarted(view:WebView?,url:String?,favicon:android.graphics.Bitmap?){
             if(view!==webView||!webViewAlive||disposed)return
+            // A transient blank callback must not overwrite a saved page.
+            // Explicit resets already set state.url before navigation.
+            if(url=="about:blank" && state.url!="about:blank")return
             // Capture redirects before completion as well as normal page finishes.
             if(!url.isNullOrEmpty()&&url!=state.url){state.url=url;host.persist();updateSiteLabel();updateInteractionSurfaces();host.onPaneUrlChanged(state.id)}
         }
