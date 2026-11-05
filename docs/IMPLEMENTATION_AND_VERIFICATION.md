@@ -206,3 +206,20 @@ After the reported conflict, the user explicitly selected **Install alongside**.
 - Filtered-out WebViews remain allocated and attached, not destroyed or explicitly paused; Android execution guarantees still require device testing.
 - Existing global bookmark data is preserved for backward compatibility but no longer shown as cross-pane bookmarks.
 - New debug package identity avoids overwriting the earlier previews and risking data loss.
+
+
+## November 5, 2026 — Universal bar verification incidents (2 independent issues)
+
+1. **Feature build import conflict, caught by CI.**
+   - Evidence: GitHub Actions run 41970472895 failed with Kotlin compiler diagnostics for duplicate \`EditorInfo\` and \`InputMethodManager\` imports in \`MainActivity.kt\`.
+   - Cause: a source insertion added imports already present in the base file.
+   - Prevention: inspect existing imports before patching and require Android compilation on a non-production feature branch.
+   - Correction/verification: commit \`8ae9e0b5d41604a8da6365d8979f1bcab5f4bcb0\` removed the duplicates. Run 41970627733 completed successfully.
+
+2. **URL filter matched unrelated host substrings, caught during review.**
+   - Evidence: an early implementation would match \`notgoogle.com\` and \`?ref=google.com\` for a typed filter of \`google.com\`.
+   - Cause: indiscriminate case-insensitive substring search, without separate hostname matching for domain-shaped queries.
+   - Prevention: add positive and negative domain-matching tests, including subdomains and unrelated containing-hostnames.
+   - Correction/verification: commit \`bf028d5ec81444684e59aa6d6cc911f429d2f3de\` added URI-host-aware matching and regression tests. Run 41970855385 compiled successfully with 17 passing unit tests.
+
+No user app data or previously installed APKs were altered. Runtime behavior on the OnePlus Open remains unverified because the connected Termux device was offline.
