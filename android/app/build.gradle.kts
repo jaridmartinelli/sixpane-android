@@ -9,17 +9,17 @@ android {
         applicationId = "com.sixpane.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.11-native-pinch"
+        versionCode = 12
+        versionName = "0.12-filter-pages"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }
     buildTypes {
         debug {
             // User-approved side-by-side install; existing One-Hand sessions remain in their original app.
-            applicationIdSuffix = ".preview.pinch"
+            applicationIdSuffix = ".preview.filterpages"
             versionNameSuffix = "-preview"
-            manifestPlaceholders["appLabel"] = "SIXPANE Pinch Preview"
+            manifestPlaceholders["appLabel"] = "SIXPANE Filter Preview"
         }
         release { isMinifyEnabled = false }
     }
