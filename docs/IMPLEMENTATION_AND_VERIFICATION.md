@@ -258,3 +258,11 @@ The runtime test must visibly pass; adding the test is not itself proof of passa
 - **Prevention:** Add a single \`WorkspacePolicy.canCloseWorkspace(tabLocked,paneLocks)\` predicate and enforce it before opening confirmation, once more inside the confirmation callback, and at the durable storage mutation boundary.
 - **Verification criterion:** New JVM test rejects any locked child and a locked tab; CI must compile. Emulator flow must verify the visible lock behavior where feasible; user-device verification remains pending.
 - No browser profiles or persisted user state were touched while correcting the code.
+
+
+## November 5, 2026 — emulator workflow cwd and evidence failure
+
+- Evidence: GitHub Actions emulator run 42009038451 exited in \`BuildLayoutValidator\`: Gradle was launched from repository root instead of its \`android/\` Gradle project.
+- Root cause: the reactivecircus emulator action invoked lines of \`script:\` separately; changing directories on one line did not persist on the next. Separate post-emulator \`adb\` calls previously caused evidence collection to hang after device teardown.
+- Corrective action: move the full test process to \`tests/run_emulator_smoke.sh\`, invoked as exactly one runner script command. Use explicit \`gradle --project-dir "$GITHUB_WORKSPACE/android"\` and capture screenshots/logcat inside the emulator's lifetime with bounded timeouts.
+- Verification: Android instrumented compilation passed before emulator launch; the corrected integrated run must be inspected before asserting live UI success.

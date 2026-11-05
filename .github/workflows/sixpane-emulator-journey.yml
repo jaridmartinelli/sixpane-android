@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'android/**'
+      - 'tests/run_emulator_smoke.sh'
       - '.github/workflows/sixpane-emulator-journey.yml'
 jobs:
   emulator-journey:
@@ -37,19 +38,7 @@ jobs:
           profile: pixel_7
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set +e
-            mkdir -p "$GITHUB_WORKSPACE/emulator-evidence"
-            timeout 12s adb shell dumpsys webviewupdate > "$GITHUB_WORKSPACE/emulator-evidence/webview.txt" 2>&1 || true
-            cd "$GITHUB_WORKSPACE/android"
-            gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest
-            status=$?
-            cd "$GITHUB_WORKSPACE"
-            # Capture while emulator is still running. Never wait indefinitely for adb.
-            timeout 12s adb exec-out screencap -p > emulator-evidence/final-screen.png 2>/dev/null || true
-            timeout 12s adb logcat -d -t 4000 > emulator-evidence/logcat.txt 2>&1 || true
-            timeout 12s adb pull /sdcard/Android/data/com.sixpane.app.preview.compat/files/sixpane-user-journey.png emulator-evidence/user-journey.png 2>&1 || true
-            exit "$status"
+          script: bash "$GITHUB_WORKSPACE/tests/run_emulator_smoke.sh"
       - name: Save device-side observations
         if: always()
         run: |
