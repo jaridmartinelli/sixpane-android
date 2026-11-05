@@ -223,3 +223,28 @@ After the reported conflict, the user explicitly selected **Install alongside**.
    - Correction/verification: commit \`bf028d5ec81444684e59aa6d6cc911f429d2f3de\` added URI-host-aware matching and regression tests. Run 41970855385 compiled successfully with 17 passing unit tests.
 
 No user app data or previously installed APKs were altered. Runtime behavior on the OnePlus Open remains unverified because the connected Termux device was offline.
+
+
+## 2026-11-05 — Cleanup build runtime audit
+
+Scope: six requested toolbar/filter/bookmark behaviors. Tested the APK built from cleanup commit e7cdd8412a1e355017093ae57ed80ac94d5f737c on a disposable Android 15/API 35 emulator. This was not a test of a physical OnePlus device or Queue-it isolation. Production app code was not modified by this audit.
+
+Evidence: https://github.com/jaridmartinelli/sixpane-android/actions/runs/41987124985 (artifact sixpane-ui-audit-results: screenshots, UI dumps, results.json, logs). The installed APK's classes3.dex SHA-256 was checked against the cleanup build: 7eedcfb3edcca70f728a2387e49cba9343fd26988b6f72316b49f0afa97ab53a.
+
+Observed:
+- PASS: pane menu Enter URL with "coffee near me" navigated only that pane to https://www.google.com/search?q=coffee+near+me. This verifies the destination, not successful rendering of Google results.
+- UNVERIFIED: submitting the expanded address bar. Automation could not select the keyboard Go control; this is not evidence that app navigation is broken.
+- CURRENT REQUIREMENT GAP: all eight palette choices appeared checked, but applying saved only six. The user's new unlimited-color requirement supersedes the former six-color maximum.
+- FAIL: changing the expanded pane frame to Blue left the address field background unchanged at RGB(40,49,64). UniversalBar retains a fixed background.
+- FAIL: expanded overflow menu exposes batch actions but no direct focused-pane lock/color actions.
+- PARTIAL PASS: a bookmark saved through the star remained exclusive to pane 1 when pane 2 visited the same URL; star state and separation survived app restart. Reopening a saved bookmark was not reached because the setup navigation hit the Go-selector limitation.
+- PASS: google.com filtering showed panes 1 and 5 (Google and docs.google.com); unrelated panes were hidden, and clearing restored all six.
+- PASS: typed Blue filtering showed only blue panes, survived expansion/restoration and restart, and clearing restored all panes.
+- PASS: overflow remained accessible; batch lock/unlock and color affected only selected panes. Attempting Close selected while locked did not show confirmation or replace panes.
+
+Test-harness incidents and prevention:
+1. The first run's submit method did not establish actual expanded navigation. A visible Go selector was attempted in the second run; it remained inaccessible to that selector. Both affected outcomes are explicitly UNVERIFIED, not product failures. Future verification needs a keyboard-control interaction that is independently observed to submit.
+2. An immediate menu lookup missed a visible color-filter entry. Waiting before lookup/scroll allowed the second run to exercise all eight colors and observe saved state.
+3. Inspecting a child TextView's enabled flag misclassified a disabled Close selected row. Replaced that inference with an actual tap and assertions that no confirmation or pane replacement occurred. The second run verified the lock guard.
+
+Prevention status: no product fixes made or claimed. Existing UI checks reproduce the confirmed color/menu gaps; rerun affected checks after implementation. Session/cookie/bookmark storage files were untouched by the cleanup diff, but that does not establish full storage or Queue-it isolation.
