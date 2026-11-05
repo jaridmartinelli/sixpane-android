@@ -233,7 +233,7 @@ class UserJourneyInstrumentedTest {
             scenario.onActivity{a->
                 val card=a.auditPanes().first{it.first.id==id}.second!!
                 val settings=card.webView.settings
-                assertTrue("WebView pinch support disabled",settings.supportZoom)
+                assertTrue("WebView pinch support disabled",settings.supportZoom())
                 assertTrue("Built-in pinch gesture disabled",settings.builtInZoomControls)
                 assertFalse("On-screen zoom buttons must be hidden",settings.displayZoomControls)
                 card.loadAddress("https://appassets.androidplatform.net/assets/isolation_test.html")
