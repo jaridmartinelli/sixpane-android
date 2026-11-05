@@ -18,8 +18,6 @@ import android.text.TextWatcher
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.content.Context
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewFeature
 import java.util.Locale
