@@ -283,3 +283,17 @@ Prevention:
 Verification:
 - New CI compilation, unit tests and emulator gestures must complete; real text-selection behavior on the OnePlus Open requires manual verification.
 - The distinct v0.9 debug package suffix avoids overwriting any existing installed preview or its cookies.
+
+
+## November 5, 2026 — Compact one-hand Right Stack + workspace controls (v0.10)
+
+- Tap any Right Stack miniature to make it the expanded pane; thumbnail tap overlays are enabled only for miniature panes, protecting native text/link input inside the full-size webpage.
+- An empty \`about:blank\` pane has an additional full-surface tap/hold target; tapping expands it, holding opens its browser actions.
+- Right Stack width reduced from 23.5% to 18.5% (bounded for usability), without pausing, replacing, or renaming pane WebViews.
+- Number badge moved to the top right; its black backing is more translucent, and the invisible press target remains 44 × 36dp.
+- Chrome-style workspace tabs render only existing workspaces and one dimmed \`+ next\` affordance. Tapping the active tab never silently switches the grid layout; each existing tab can be locked or unlocked by long-press, and its lock icon remains accessible.
+- Universal top dots includes a one-action 2×3 ↔ 3×2 toggle and Settings. Workspace menu is limited to workspace tasks.
+- Settings contains theme (app chrome only), notification permission, battery exemption and a secondary Developer tools submenu. Permission prompts are no longer automatic on launch/resume.
+- Visible buttons and selection overlays have pressed ripple, active/disabled states where applicable. Red pane locks continue to glow; attempted protected actions jiggle the lock.
+- Distinct \`com.sixpane.app.preview.thumb\` debug identity avoids overwriting older preview installations.
+- Verification: Kotlin/Android build, unit tests, and the clean-emulator gesture tests. Treat device/website behavior as unverified until physically reproduced. Incidents from verification are tracked separately.

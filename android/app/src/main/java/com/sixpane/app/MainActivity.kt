@@ -347,7 +347,10 @@ class MainActivity:Activity(){
             val tabLock=CornerIcon(this,CornerIcon.Kind.LOCK).apply{
                 locked=ws.locked
                 contentDescription=(if(ws.locked)"Unlock" else "Lock")+" workspace "+(index+1)
-                setOnClickListener{toggleWorkspaceLock(ws)}
+                setOnClickListener{
+                    pressedFeedback()
+                    toggleWorkspaceLock(ws)
+                }
                 setOnLongClickListener{
                     performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     toggleWorkspaceLock(ws);true

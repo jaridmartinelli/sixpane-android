@@ -276,6 +276,8 @@ class PaneCard(
     fun updateControls(){
         // Focus and grid changes never replace WebViews or steal loaded-site gestures.
         expand.contentDescription=if(focused)"Restore six-window grid" else "Expand window ${host.paneIndex(state.id)}"
+        // A thumbnail is already entirely tappable; hide its redundant expand arrow.
+        expand.visibility=if(compact)View.GONE else View.VISIBLE
         updateInteractionSurfaces()
     }
     /** Explicit submit from the thumb-reachable sheet: no navigation on focus loss. */
