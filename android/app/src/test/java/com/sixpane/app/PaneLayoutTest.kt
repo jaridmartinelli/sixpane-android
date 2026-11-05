@@ -13,6 +13,18 @@ class PaneLayoutTest {
             if(focus!=null){val main=panes[focus];assertEquals(h-4,main.height);assertTrue(panes.filterIndexed{i,_->i!=focus}.all{it.x>main.x+main.width&&it.width<main.width})}
         }
     }
+    @Test fun filteredPanesFitAndStaySeparate(){
+        for(count in 0..6)for(columns in 2..3)for(focus in listOf(null,0)){
+            if(count==0&&focus!=null)continue
+            val rects=PaneLayout.visibleBounds(360,700,2,columns,count,focus,72,80)
+            assertEquals(count,rects.size)
+            rects.forEach{assertTrue(it.width>0&&it.height>0)}
+            rects.forEachIndexed{i,a->rects.drop(i+1).forEach{b->
+                assertFalse(a.x<b.x+b.width&&b.x<a.x+a.width&&a.y<b.y+b.height&&b.y<a.y+a.height)
+            }}
+            if(count==1)assertTrue(rects[0].width>=350)
+        }
+    }
     @Test fun restoreReturnsOriginalGridAfterResizing(){
         for(columns in 2..3){
             val original=PaneLayout.bounds(360,700,2,columns,null,72,80)
