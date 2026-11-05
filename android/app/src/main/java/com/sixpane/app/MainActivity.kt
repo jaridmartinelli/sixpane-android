@@ -25,6 +25,7 @@ class MainActivity:Activity(){
     private val handler=Handler(Looper.getMainLooper())
     private lateinit var screen:LinearLayout
     private lateinit var tabStrip:LinearLayout
+    private val tabLockIcons=mutableMapOf<String,CornerIcon>()
     private lateinit var universalBar: UniversalBar
     private lateinit var filterEmpty:TextView
     private val saveFilter=Runnable{if(::store.isInitialized)store.save()}
@@ -117,13 +118,17 @@ class MainActivity:Activity(){
         )
         screen.addView(universalBar.view,LinearLayout.LayoutParams(-1,dp(48)))
         screen.addView(stage,LinearLayout.LayoutParams(-1,0,1f))
-        screen.addView(tabStrip,LinearLayout.LayoutParams(-1,dp(48)))
+        screen.addView(HorizontalScrollView(this).apply{
+            isHorizontalScrollBarEnabled=false
+            addView(tabStrip,android.widget.FrameLayout.LayoutParams(-2,-1))
+        },LinearLayout.LayoutParams(-1,dp(48)))
         filterEmpty=TextView(this).apply{
             text="No windows match";gravity=Gravity.CENTER
             textSize=13f;setTextColor(Color.rgb(174,186,206));visibility=View.GONE
         }
         stage.addView(filterEmpty,FrameLayout.LayoutParams(-1,-1))
         setContentView(screen)
+        applyChromeTheme()
         renderTabs()
         updateUniversalBar()
         if(pendingFailures>0)notice("${pendingFailures} retired profiles await deletion on a later clean start; no IDs will be reused")
@@ -248,6 +253,7 @@ class MainActivity:Activity(){
             colorCount = store.selectedFrameColors.size,
             hasFilters = store.filterQuery.isNotBlank() || store.selectedFrameColors.isNotEmpty(),
             hasFocusedPane = store.focusId != null,
+            columns = store.columns,
         ) { action ->
             when (action) {
                 UniversalMenuAction.SELECT_MULTIPLE -> enterSelection()
@@ -278,6 +284,9 @@ class MainActivity:Activity(){
                 UniversalMenuAction.CLEAR_FILTERS -> clearAllFilters()
                 UniversalMenuAction.PANE_BOOKMARKS -> showFocusedBookmarks()
                 UniversalMenuAction.WORKSPACE_TOOLS -> workspaceMenu()
+                UniversalMenuAction.GRID_2_BY_3 -> changeGridColumns(2)
+                UniversalMenuAction.GRID_3_BY_2 -> changeGridColumns(3)
+                UniversalMenuAction.SETTINGS -> AppSettings(this).open()
             }
         }
     }
@@ -296,35 +305,80 @@ class MainActivity:Activity(){
             .setNegativeButton("Cancel",null).setPositiveButton(yes){_,_->action()}.show()
     }
     fun confirm(title:String,message:String,action:()->Unit)=confirm(title,message,"Continue",action)
+    /** Existing workspace tabs, immediately followed by one faded + tab. */
     private fun renderTabs(){
         tabStrip.removeAllViews()
-        repeat(WorkspacePolicy.MAX_WORKSPACES){index->
-            val ws=store.spaces.getOrNull(index)
-            val active=ws?.id==store.currentId
-            val next=index==store.spaces.size
-            val label=if(active)"${index+1}\n${store.columns}×${6/store.columns}" else if(next)"${index+1}\n+" else "${index+1}"
-            val tab=chromeButton(label,0){
-                if(ws==null){if(next)createWorkspace();return@chromeButton}
-                if(active){
-                    store.columns=if(store.columns==2)3 else 2;store.focusId=null;store.save();renderTabs();positionCards(true)
-                }else{
-                    store.currentId=ws.id;store.focusId=null;store.save();renderTabs();positionCards(true)
-                }
-            }.apply{
-                textSize=if(active||next)12f else 14f
-                isEnabled=(!selecting||active)&&(ws!=null||next)
-                alpha=if(ws==null).45f else 1f
-                setTextColor(if(active)Color.rgb(184,210,237) else Color.rgb(232,237,244))
-                background=GradientDrawable().apply{setColor(if(active)Color.rgb(45,64,85) else Color.TRANSPARENT);cornerRadius=dp(8).toFloat()}
-                contentDescription=if(ws==null)"Create workspace ${index+1}" else "Workspace ${index+1}${if(active)"; tap to swap layout" else ""}; hold for workspace tools"
-                if(ws!=null)setOnLongClickListener{
-                    if(selecting)selectionMenu()
-                    else{store.currentId=ws.id;store.focusId=null;store.save();renderTabs();positionCards(true);workspaceMenu()}
-                    true
-                }
+        tabLockIcons.clear()
+        val light=store.lightMode
+        tabStrip.setBackgroundColor(if(light)Color.rgb(225,233,242) else Color.rgb(17,23,29))
+        store.spaces.forEachIndexed{index,ws->
+            val active=ws.id==store.currentId
+            val tint=if(light)Color.rgb(197,215,237) else Color.rgb(45,64,85)
+            val base=GradientDrawable().apply{
+                setColor(if(active)tint else Color.TRANSPARENT);cornerRadius=dp(9).toFloat()
             }
-            tabStrip.addView(tab,LinearLayout.LayoutParams(0,dp(44),1f))
+            val tab=LinearLayout(this).apply{
+                orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
+                background=android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(Color.argb(85,130,165,205)),base,null)
+                contentDescription="Workspace "+(index+1)+
+                    (if(ws.locked)"; locked" else "")+"; hold to lock or unlock"
+                isEnabled=!selecting||active
+                setOnClickListener{
+                    if(ws.id!=store.currentId){
+                        store.currentId=ws.id;store.focusId=null;store.save()
+                        renderTabs();updateUniversalBar();positionCards(true)
+                    }
+                }
+                setOnLongClickListener{toggleWorkspaceLock(ws);true}
+            }
+            tab.addView(TextView(this).apply{
+                text=(index+1).toString();textSize=15f;gravity=Gravity.CENTER
+                setTextColor(if(light)Color.rgb(26,43,63) else Color.rgb(231,239,250))
+                isClickable=false
+            },LinearLayout.LayoutParams(0,-1,1f))
+            // Never replace the tab lock with an X or the workspace number.
+            val tabLock=CornerIcon(this,CornerIcon.Kind.LOCK).apply{
+                locked=ws.locked
+                contentDescription=(if(ws.locked)"Unlock" else "Lock")+" workspace "+(index+1)
+                setOnClickListener{toggleWorkspaceLock(ws)}
+                setOnLongClickListener{toggleWorkspaceLock(ws);true}
+                isEnabled=!selecting||active
+            }
+            tabLockIcons[ws.id]=tabLock
+            tab.addView(tabLock,LinearLayout.LayoutParams(dp(24),dp(36)))
+            tabStrip.addView(tab,LinearLayout.LayoutParams(dp(64),dp(44)).apply{rightMargin=dp(2)})
         }
+        val count=store.spaces.size
+        if(WorkspacePolicy.canCreate(count)){
+            val plus=chromeButton("+ "+(count+1),dp(62)){
+                if(!selecting)createWorkspace()
+            }.apply{
+                textSize=14f;alpha=.46f;isEnabled=!selecting
+                contentDescription="Create workspace "+(count+1)
+                setTextColor(if(light)Color.rgb(45,65,89) else Color.rgb(219,228,240))
+            }
+            tabStrip.addView(plus,LinearLayout.LayoutParams(dp(62),dp(44)))
+        }
+    }
+    private fun toggleWorkspaceLock(ws:WorkspaceState){
+        if(store.spaces.none{it.id==ws.id})return
+        ws.locked=!ws.locked;store.save();renderTabs()
+    }
+    private fun changeGridColumns(columns:Int){
+        if(store.columns==columns)return
+        store.columns=columns;store.save();positionCards(true)
+    }
+    /** Light mode styles the app chrome, never webpages or browser identities. */
+    fun applyChromeTheme(){
+        if(!::screen.isInitialized||!::universalBar.isInitialized)return
+        val light=store.lightMode
+        val surface=if(light)Color.rgb(235,241,249) else Color.rgb(15,21,31)
+        screen.setBackgroundColor(surface);stage.setBackgroundColor(surface)
+        tabStrip.setBackgroundColor(if(light)Color.rgb(225,233,242) else Color.rgb(17,23,29))
+        filterEmpty.setTextColor(if(light)Color.rgb(65,78,96) else Color.rgb(174,186,206))
+        universalBar.applyChromeTheme(light)
+        renderTabs()
     }
     private fun createWorkspace(){
         if(!WorkspacePolicy.canCreate(store.spaces.size))return
@@ -340,6 +394,7 @@ class MainActivity:Activity(){
     }
     private fun closeWorkspace(ws:WorkspaceState){
         if(!WorkspacePolicy.canCloseWorkspace(ws.locked,ws.panes.map{it.locked})){
+            tabLockIcons[ws.id]?.blockedFeedback()
             ws.panes.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
             notice("Unlock workspace and all six browsers before closing");return
         }
@@ -472,28 +527,30 @@ class MainActivity:Activity(){
             }.toTypedArray()){_,which->showBookmarksForPane(panes[which].id)}.show()
     }
     private fun workspaceMenu(){
-        val options=arrayOf(if(store.columns==2)"Switch to 3 × 2 grid" else "Switch to 2 × 3 grid",
-            if(store.active().panes.all{it.locked})"Unlock all six" else "Lock all six",
-            "Controlled test page", "Pending deletion status", "Select windows", "Bookmarks",
-            "Open in all panes · this workspace", "Open in all panes · all workspaces",
-            "Session audit", "Battery optimization exemption",
-            "Lock / unlock workspace", "Close workspace")
-        AlertDialog.Builder(this).setItems(options){_,idx->when(idx){
-            0->{store.columns=if(store.columns==2)3 else 2;store.save();positionCards(true)}
-            1->{val value=!store.active().panes.all{it.locked};store.active().panes.forEach {it.locked=value;cards[it.id]?.updateLockStatus()};store.save()}
-            2->{confirm("Open controlled test pages?","Navigates all six browsers in this workspace to the local isolation test page. Existing live page state would be interrupted.","Open test pages"){
-                navigatePanes(store.active().panes.toList(),"https://appassets.androidplatform.net/assets/isolation_test.html")
-            }}
-            3->notice("${store.pendingDeletion.size} retired profiles still awaiting deletion on a clean process start")
-            4->enterSelection()
-            5->showBookmarks()
-            6->bulkNavigation(false)
-            7->bulkNavigation(true)
-            8->SessionAudit(this).open()
-            9->requestBatteryExemption(true)
-            10->{store.active().locked=!store.active().locked;persist();renderTabs()}
-            11->closeWorkspace(store.active())
+        val options=arrayOf(
+            if(store.active().panes.all{it.locked})"Unlock all six windows" else "Lock all six windows",
+            "Select windows","Bookmarks",
+            "Open in all panes · this workspace","Open in all panes · all workspaces",
+            "Close workspace"
+        )
+        AlertDialog.Builder(this).setTitle("Workspace tools").setItems(options){_,idx->when(idx){
+            0->{
+                val value=!store.active().panes.all{it.locked}
+                store.active().panes.forEach{it.locked=value;cards[it.id]?.updateLockStatus()}
+                store.save()
+            }
+            1->enterSelection()
+            2->showBookmarks()
+            3->bulkNavigation(false)
+            4->bulkNavigation(true)
+            5->closeWorkspace(store.active())
         }}.show()
+    }
+    fun openControlledTestPage(){
+        confirm("Open controlled test pages?","This replaces the live pages in this workspace without deleting the six browser profiles.","Open test pages"){
+            navigatePanes(store.active().panes.toList(),
+                "https://appassets.androidplatform.net/assets/isolation_test.html")
+        }
     }
     private fun navigatePanes(panes:List<PaneState>,url:String){
         panes.forEach{pane->
@@ -555,7 +612,7 @@ class MainActivity:Activity(){
         val gap=dp(2);val visible=currentFilteredPanes()
         val f=store.focusId?.takeIf{id->visible.any{it.id==id}}
         val rects=PaneLayout.visibleBounds(width,height,gap,store.columns,visible.size,
-            f?.let{id->visible.indexOfFirst{it.id==id}},dp(72),dp(80))
+            f?.let{id->visible.indexOfFirst{it.id==id}},dp(54),dp(80))
         filterEmpty.visibility=if(visible.isEmpty())View.VISIBLE else View.GONE
         updateUniversalBar()
         val desired=visible.mapIndexed{i,p->val r=rects[i];p.id to intArrayOf(r.x,r.y,r.width,r.height)}.toMap()
@@ -576,7 +633,7 @@ class MainActivity:Activity(){
             lp.width=r[2].coerceAtLeast(1);lp.height=r[3].coerceAtLeast(1)
             lp.leftMargin=r[0];lp.topMargin=r[1]
             card.layoutParams=lp
-            card.compact=r[2]<dp(155)
+            card.compact=f!=null&&id!=f
             card.focused=f==id
             card.updateSelection(selecting && visible.any{it.id==id},selectedPanes.contains(id))
             if(animate&&oldW>0&&oldH>0&&oldX>-1000f){
@@ -604,35 +661,30 @@ class MainActivity:Activity(){
         if(started)try{startForegroundService(Intent(this,PaneKeepAliveService::class.java))}
         catch(e:RuntimeException){notice("Background process priority unavailable: ${e.message}")}
     }
-    override fun onResume(){
-        super.onResume()
-        if(!started)return
-        val prompts=getSharedPreferences("sixpane-runtime-prompts",MODE_PRIVATE)
-        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED
-            &&!prompts.getBoolean("notifications-asked",false)){
-            prompts.edit().putBoolean("notifications-asked",true).apply()
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),NOTIFICATION_REQUEST)
-        }else requestBatteryExemption()
+    override fun onResume(){super.onResume()}
+    /** Settings is the only entrypoint for permission requests. */
+    fun requestNotificationPermissionFromSettings(){
+        if(Build.VERSION.SDK_INT<33){notice("Notification controls are managed by Android");return}
+        if(checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED){
+            notice("Notifications already enabled");return
+        }
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),NOTIFICATION_REQUEST)
     }
     override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray){
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)
-        if(requestCode==NOTIFICATION_REQUEST){
-            if(grantResults.firstOrNull()!=PackageManager.PERMISSION_GRANTED)
-                notice("Notifications denied. Background service can still run; Android shows it in Active apps. Keep SIXPANE open for live sessions.")
-            requestBatteryExemption()
-        }
+        if(requestCode==NOTIFICATION_REQUEST)notice(
+            if(grantResults.firstOrNull()==PackageManager.PERMISSION_GRANTED)
+                "Notifications enabled" else "Notifications remain disabled"
+        )
     }
-    private fun requestBatteryExemption(explicit:Boolean=false){
+    fun requestBatteryExemption(explicit:Boolean=true){
         val manager=getSystemService(PowerManager::class.java)
         if(manager.isIgnoringBatteryOptimizations(packageName)){
-            if(explicit)notice("SIXPANE already has a battery optimization exemption")
+            if(explicit)notice("Battery optimization exemption already enabled")
             return
         }
-        val prompts=getSharedPreferences("sixpane-runtime-prompts",MODE_PRIVATE)
-        if(!explicit&&prompts.getBoolean("battery-asked",false))return
-        prompts.edit().putBoolean("battery-asked",true).apply()
         try{startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,Uri.parse("package:$packageName")))}
-        catch(_:RuntimeException){notice("Battery exemption request unavailable. Set SIXPANE battery use to Unrestricted in Android app settings.")}
+        catch(_:RuntimeException){notice("Open Android App info → Battery → Unrestricted for SIXPANE")}
     }
     override fun onPause(){
         handler.removeCallbacks(saveFilter)
