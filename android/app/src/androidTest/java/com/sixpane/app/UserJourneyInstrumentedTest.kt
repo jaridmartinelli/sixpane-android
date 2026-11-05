@@ -98,6 +98,58 @@ class UserJourneyInstrumentedTest {
         } finally {scenario.close()}
     }
 
+
+    @Test fun tappingBlankPaneAndRightStackMiniaturesSwapsFocusWithoutSessionReset(){
+        assertTrue(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE))
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            var first="";var second="";var ready=false
+            for(attempt in 0 until 45){
+                scenario.onActivity{activity->
+                    val entries=activity.auditPanes()
+                    ready=entries.size==6&&entries.all{it.second!=null}
+                    if(ready){first=entries[0].first.id;second=entries[1].first.id}
+                }
+                if(ready)break
+                Thread.sleep(220)
+            }
+            assertTrue("Six panes did not become available",ready)
+            fun clickCenter(id:String){
+                var x=-1;var y=-1
+                scenario.onActivity{activity->
+                    val pane=activity.auditPanes().first{it.first.id==id}.second!!
+                    val point=IntArray(2);pane.getLocationOnScreen(point)
+                    x=point[0]+pane.width/2;y=point[1]+pane.height/2
+                }
+                assertTrue("Pane center is outside the device",x>=0&&y>=0)
+                assertTrue("Touch injection failed",device.click(x,y))
+                Thread.sleep(500)
+            }
+            val originals=mutableMapOf<String,android.webkit.WebView>()
+            scenario.onActivity{activity->
+                activity.auditPanes().forEach{(pane,card)->originals[pane.id]=card!!.webView}
+                assertNull(activity.store.focusId)
+            }
+            clickCenter(first) // Empty page: single tap expands without pressing arrows.
+            scenario.onActivity{activity->
+                assertEquals(first,activity.store.focusId)
+                assertTrue(activity.auditPanes().first{it.first.id==second}.second!!.compact)
+            }
+            clickCenter(second) // Right stack: any tap switches expanded browser.
+            scenario.onActivity{activity->
+                assertEquals(second,activity.store.focusId)
+                assertTrue(activity.auditPanes().first{it.first.id==first}.second!!.compact)
+                assertEquals(6,activity.auditPanes().size)
+                assertTrue(activity.auditPanes().all{(pane,card)->
+                    originals[pane.id]===card!!.webView
+                })
+            }
+            // Tab 1 plus only +2: no unused 3-7 tabs should be rendered.
+            assertNotNull(device.wait(Until.findObject(By.desc("Create workspace 2")),3_000L))
+            assertNull(device.findObject(By.desc("Create workspace 7")))
+        } finally{scenario.close()}
+    }
+
     @Test fun userFlowGridBatchLocksFocusSearchBookmarksAndWorkspace(){
         assertTrue("Emulator WebView lacks MULTI_PROFILE; no credible 6-pane user test is possible",
             WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE))
