@@ -35,18 +35,24 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
+            set +e
             mkdir -p "$GITHUB_WORKSPACE/emulator-evidence"
-            adb shell dumpsys webviewupdate > "$GITHUB_WORKSPACE/emulator-evidence/webview.txt" || true
+            timeout 12s adb shell dumpsys webviewupdate > "$GITHUB_WORKSPACE/emulator-evidence/webview.txt" 2>&1 || true
             cd "$GITHUB_WORKSPACE/android"
             gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest
+            status=$?
+            cd "$GITHUB_WORKSPACE"
+            # Capture while emulator is still running. Never wait indefinitely for adb.
+            timeout 12s adb exec-out screencap -p > emulator-evidence/final-screen.png 2>/dev/null || true
+            timeout 12s adb logcat -d -t 4000 > emulator-evidence/logcat.txt 2>&1 || true
+            timeout 12s adb pull /sdcard/Android/data/com.sixpane.app.preview.compat/files/sixpane-user-journey.png emulator-evidence/user-journey.png 2>&1 || true
+            exit "$status"
       - name: Save device-side observations
         if: always()
         run: |
           mkdir -p emulator-evidence
           find android/app/build/outputs/androidTest-results -type f -name '*.xml' -exec cp --parents {} emulator-evidence/ \; 2>/dev/null || true
           find android/app/build/reports/androidTests -type f -exec cp --parents {} emulator-evidence/ \; 2>/dev/null || true
-          adb logcat -d -t 4000 > emulator-evidence/logcat.txt 2>/dev/null || true
-          adb pull /sdcard/Android/data/com.sixpane.app.preview.compat/files/sixpane-user-journey.png emulator-evidence/user-journey.png 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
