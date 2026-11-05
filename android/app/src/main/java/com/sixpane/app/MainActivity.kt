@@ -166,7 +166,8 @@ class MainActivity:Activity(){
                 updateUniversalBar();positionCards(false)
             }
         })
-        topAddress=field("Search Google or type URL")
+        topAddress=field("Google Search")
+        topAddress.setHintTextColor(Color.argb(130,255,255,255))
         topAddress.inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         topAddress.imeOptions=EditorInfo.IME_ACTION_GO
         topAddress.setOnEditorActionListener{_,actionId,_->
@@ -213,8 +214,9 @@ class MainActivity:Activity(){
             topFilter.hint=if(chosen.isEmpty())"Filter URL or color"
                 else "Colors: "+FramePalette.names.filter{it in chosen}.joinToString(", ")
         }else{
-            if(!topAddress.hasFocus()&&topAddress.text.toString()!=focused.url)
-                topAddress.setText(focused.url)
+            val displayAddress=if(focused.url=="about:blank")"" else focused.url
+            if(!topAddress.hasFocus()&&topAddress.text.toString()!=displayAddress)
+                topAddress.setText(displayAddress)
             val saved=store.bookmarkedInPane(focused.id,focused.url)
             topStar.text=if(saved)"★" else "☆"
             topStar.contentDescription=if(saved)"Remove bookmark from this browser" else "Bookmark this page in this browser"
@@ -357,11 +359,14 @@ class MainActivity:Activity(){
     fun confirm(title:String,message:String,action:()->Unit)=confirm(title,message,"Continue",action)
     private fun renderTabs(){
         tabStrip.removeAllViews()
+        // Seven equal-width slots at every screen width: never use a scrolling tab strip.
+        tabStrip.setPadding(dp(2),dp(2),dp(2),dp(2))
         repeat(WorkspacePolicy.MAX_WORKSPACES){index->
             val ws=store.spaces.getOrNull(index)
             val active=ws?.id==store.currentId
             val next=index==store.spaces.size
-            val label=if(active)"${index+1}\n${store.columns}×${6/store.columns}" else if(next)"${index+1}\n+" else "${index+1}"
+            val locked=ws?.locked==true
+            val label=if(locked)"${index+1}" else if(active)"${index+1}\n${store.columns}×${6/store.columns}" else if(next)"${index+1}\n+" else "${index+1}"
             val tab=smallButton(label,0){
                 if(ws==null){if(next)createWorkspace();return@smallButton}
                 if(active){
@@ -370,19 +375,44 @@ class MainActivity:Activity(){
                     store.currentId=ws.id;store.focusId=null;store.save();renderTabs();positionCards(true)
                 }
             }.apply{
-                textSize=if(active||next)12f else 14f
+                textSize=if(active||next||locked)12f else 14f
                 isEnabled=(!selecting||active)&&(ws!=null||next)
                 alpha=if(ws==null).45f else 1f
                 setTextColor(if(active)Color.rgb(184,210,237) else Color.rgb(232,237,244))
-                background=GradientDrawable().apply{setColor(if(active)Color.rgb(45,64,85) else Color.TRANSPARENT);cornerRadius=dp(8).toFloat()}
-                contentDescription=if(ws==null)"Create workspace ${index+1}" else "Workspace ${index+1}${if(active)"; tap to swap layout" else ""}; hold for workspace tools"
+                background=GradientDrawable().apply{
+                    setColor(if(active)Color.rgb(45,64,85) else Color.rgb(23,31,42))
+                    setStroke(dp(1),Color.rgb(76,89,104))
+                    cornerRadius=dp(6).toFloat()
+                }
+                if(locked){gravity=Gravity.TOP or Gravity.CENTER_HORIZONTAL;setPadding(0,dp(2),0,0)}
+                contentDescription=if(ws==null)"Create workspace ${index+1}" else
+                    "Workspace ${index+1}${if(locked)"; locked; tap red lock to unlock" else if(active)"; tap to swap layout" else ""}"
                 if(ws!=null)setOnLongClickListener{
-                    if(selecting)selectionMenu()
-                    else{store.currentId=ws.id;store.focusId=null;store.save();renderTabs();positionCards(true);workspaceMenu()}
+                    if(!ws.locked){
+                        ws.locked=true;store.save();renderTabs();notice("Workspace ${index+1} locked")
+                    }else notice("Tap the red lock on workspace ${index+1} to unlock")
                     true
                 }
             }
-            tabStrip.addView(tab,LinearLayout.LayoutParams(0,dp(44),1f))
+            val slot=FrameLayout(this)
+            slot.addView(tab,FrameLayout.LayoutParams(-1,-1))
+            if(locked){
+                val unlock=android.widget.ImageView(this).apply{
+                    setImageResource(android.R.drawable.ic_lock_lock)
+                    setColorFilter(Color.rgb(255,76,86))
+                    scaleType=android.widget.ImageView.ScaleType.CENTER_INSIDE
+                    setPadding(dp(5),dp(2),dp(5),dp(2))
+                    contentDescription="Unlock workspace ${index+1}"
+                    isClickable=true
+                    setOnClickListener{ws!!.locked=false;store.save();renderTabs()}
+                }
+                slot.addView(unlock,FrameLayout.LayoutParams(dp(30),dp(26),
+                    Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
+            }
+            val lp=LinearLayout.LayoutParams(0,dp(44),1f).apply{
+                leftMargin=dp(1);rightMargin=dp(1)
+            }
+            tabStrip.addView(slot,lp)
         }
     }
     private fun createWorkspace(){
@@ -443,7 +473,7 @@ class MainActivity:Activity(){
             card.updateSelection(selecting && store.active().panes.any{it.id==id},selectedPanes.contains(id))
         }
     }
-    /** Exactly seven pane actions. A workspace-tab hold owns workspace-wide tools. */
+    /** Exactly seven pane actions. Workspace tools remain in the universal menu. */
     fun windowContextMenu(card:PaneCard){
         if(selecting&&!selectedPanes.contains(card.state.id)){selectedPanes.add(card.state.id);updateSelection()}
         val targets=if(selecting&&selectedPanes.isNotEmpty())store.active().panes.filter{it.id in selectedPanes} else listOf(card.state)
