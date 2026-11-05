@@ -5,6 +5,9 @@ class FramePaletteTest {
     @Test fun urlQueriesMatchAndHideOtherHosts(){
         assertTrue(FramePalette.matches("https://www.Google.com/maps",FramePalette.colors[0],"google.com",emptySet()))
         assertFalse(FramePalette.matches("https://example.com",FramePalette.colors[0],"google.com",emptySet()))
+        assertFalse(FramePalette.matches("https://notgoogle.com",FramePalette.colors[0],"google.com",emptySet()))
+        assertFalse(FramePalette.matches("https://example.com/?ref=google.com",FramePalette.colors[0],"google.com",emptySet()))
+        assertTrue(FramePalette.matches("https://mail.google.com",FramePalette.colors[0],"google.com",emptySet()))
         assertTrue(FramePalette.matches("https://example.com",FramePalette.colors[0],"",emptySet()))
     }
     @Test fun colorTermsMatchFrameNotUrl(){

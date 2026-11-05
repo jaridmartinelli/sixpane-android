@@ -23,6 +23,17 @@ object FramePalette {
         if(q.isEmpty())return true
         val normalized=q.removePrefix("https://").removePrefix("http://").removePrefix("www.")
         val actual=url.lowercase(Locale.ROOT)
+        // A hostname-shaped query must not match e.g. notgoogle.com or URL parameters.
+        val hostQuery=Regex("""^(?:[a-z0-9-]+\.)+[a-z0-9-]+(?::[0-9]{1,5})?(?:/.*)?$""")
+            .matches(normalized)
+        if(hostQuery){
+            val requestedHost=normalized.substringBefore('/').substringBefore(':')
+            val requestedPath=normalized.substringAfter('/',"")
+            val uri=try{java.net.URI(url)}catch(_:Exception){return false}
+            val actualHost=uri.host?.lowercase(Locale.ROOT)?.removePrefix("www.")?:return false
+            if(actualHost!=requestedHost&&!actualHost.endsWith("."+requestedHost))return false
+            return requestedPath.isEmpty() || (uri.rawPath?:"").contains(requestedPath)
+        }
         return actual.contains(q)||actual.removePrefix("https://").removePrefix("http://")
             .removePrefix("www.").contains(normalized)
     }
