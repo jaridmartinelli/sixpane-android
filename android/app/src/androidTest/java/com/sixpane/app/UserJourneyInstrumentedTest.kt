@@ -211,6 +211,33 @@ class UserJourneyInstrumentedTest {
         }finally{scenario.close()}
     }
 
+
+    @Test fun paneZoomButtonsChangeAndResetScaleThroughRealWindowMenu(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            var x=0;var y=0;var id=""
+            scenario.onActivity{a->
+                val entry=a.auditPanes().first()
+                id=entry.first.id
+                val badge=entry.second?.menuAnchor
+                assertNotNull("Pane number absent",badge)
+                val point=IntArray(2);badge!!.getLocationOnScreen(point)
+                x=point[0]+badge.width/2;y=point[1]+badge.height/2
+            }
+            assertTrue(device.click(x,y))
+            clickLabel("Zoom")
+            val plus=device.wait(Until.findObject(By.desc("Zoom in 10 percent")),4_000L)
+            assertNotNull("Zoom + unavailable",plus)
+            plus.click()
+            scenario.onActivity{a->assertEquals(110,a.store.active().panes.first{it.id==id}.zoom)}
+            val reset=device.wait(Until.findObject(By.desc("Reset zoom to 100 percent")),4_000L)
+            assertNotNull("Zoom reset unavailable",reset)
+            reset.click()
+            scenario.onActivity{a->assertEquals(100,a.store.active().panes.first{it.id==id}.zoom)}
+            device.pressBack()
+        }finally{scenario.close()}
+    }
+
     @Test fun userFlowGridBatchLocksFocusSearchBookmarksAndWorkspace(){
         assertTrue("Emulator WebView lacks MULTI_PROFILE; no credible 6-pane user test is possible",
             WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE))
