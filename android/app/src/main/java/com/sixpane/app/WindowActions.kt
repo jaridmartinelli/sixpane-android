@@ -61,9 +61,7 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
         }
     }
     private fun colors(){
-        val names=arrayOf("Graphite","Blue","Teal","Amber","Purple","Rose","Silver","Green")
-        val values=arrayOf("#51606e","#82b6ff","#72dbcf","#e8bd76","#b5a0ef","#e89eae","#c8d1da","#9acb91")
         bottom(AlertDialog.Builder(host,android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Frame color")
-            .setItems(names){_,i->host.recolorWindows(ids,Color.parseColor(values[i]))}.create())
+            .setItems(FramePalette.names.toTypedArray()){_,i->host.recolorWindows(ids,FramePalette.colors[i])}.create())
     }
 }

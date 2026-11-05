@@ -15,7 +15,8 @@ data class PaneState(
     var desktop: Boolean = false,
     var zoom: Int = 100,
     val widthPercent: Int = randomDimension(),
-    val heightPercent: Int = randomDimension()
+    val heightPercent: Int = randomDimension(),
+    val bookmarks:MutableList<String> = mutableListOf()
 ) {
     companion object {
         private val random = SecureRandom()
@@ -33,13 +34,18 @@ data class PaneState(
         fun from(j: JSONObject): PaneState = PaneState(
             j.getString("id"), j.getString("profile"), j.optString("url", "about:blank"),
             j.optBoolean("locked"), j.optBoolean("desktop"), j.optInt("zoom", 100),
-            j.optInt("widthPercent", 100), j.optInt("heightPercent", 100)
+            j.optInt("widthPercent", 100), j.optInt("heightPercent", 100),
+            mutableListOf<String>().apply{
+                val saved=j.optJSONArray("paneBookmarks")?:JSONArray()
+                for(i in 0 until saved.length())add(saved.getString(i))
+            }
         )
     }
     fun json(): JSONObject = JSONObject().apply {
         put("id",id); put("profile",profile); put("url",url)
         put("locked",locked); put("desktop",desktop); put("zoom",zoom)
         put("widthPercent",widthPercent); put("heightPercent",heightPercent)
+        put("paneBookmarks",JSONArray().apply{bookmarks.forEach{put(it)}})
     }
 }
 data class WorkspaceState(
@@ -69,6 +75,8 @@ class LocalStore(ctx:Context){
     var currentId:String=""
     var columns:Int=2
     var focusId:String?=null
+    var filterQuery:String=""
+    val selectedFrameColors:MutableSet<String> = linkedSetOf()
     // Separate preference: the established workspace manifest format stays unchanged.
     var desktopUserAgent:Boolean
         get()=prefs.getBoolean("desktop-user-agent",true)
@@ -93,6 +101,13 @@ class LocalStore(ctx:Context){
             currentId=j.optString("current", "")
             columns=if(j.optInt("columns",2)==3)3 else 2
             focusId=j.optString("focus", "").takeIf { it.isNotBlank() }
+            filterQuery=j.optString("filterQuery", "")
+            val filters=j.optJSONArray("selectedFrameColors")?:JSONArray()
+            for(i in 0 until filters.length()){
+                val candidate=filters.getString(i)
+                if(candidate in FramePalette.names&&selectedFrameColors.size<FramePalette.MAX_SELECTED_COLORS)
+                    selectedFrameColors.add(candidate)
+            }
         } catch (_:Exception){
             // Never overwrite an unreadable manifest with new profiles: possible data loss.
             throw IllegalStateException("SIXPANE session manifest unreadable. Back up app data before repair.")
@@ -111,6 +126,8 @@ class LocalStore(ctx:Context){
             put("pending",JSONArray().apply{pendingDeletion.forEach{put(it)}})
             put("bookmarks",JSONArray().apply{bookmarks.forEach{put(it)}})
             put("current",currentId);put("columns",columns);put("focus",focusId?:"")
+            put("filterQuery",filterQuery)
+            put("selectedFrameColors",JSONArray().apply{selectedFrameColors.forEach{put(it)}})
         }
         check(prefs.edit().putString("manifest",j.toString()).commit()) { "Could not durably save workspace manifest" }
     }
@@ -119,6 +136,22 @@ class LocalStore(ctx:Context){
             bookmarks.add(url);save()
         }
     }
+    fun bookmarkForPane(id:String,url:String){
+        if(!url.startsWith("http://")&&!url.startsWith("https://"))return
+        val pane=spaces.flatMap{it.panes}.firstOrNull{it.id==id}?:return
+        if(url !in pane.bookmarks){pane.bookmarks.add(url);save()}
+    }
+    fun toggleBookmarkForPane(id:String,url:String):Boolean? {
+        if(!url.startsWith("http://")&&!url.startsWith("https://"))return null
+        val pane=spaces.flatMap{it.panes}.firstOrNull{it.id==id}?:return null
+        val added=if(url in pane.bookmarks){pane.bookmarks.remove(url);false}
+            else{pane.bookmarks.add(url);true}
+        save();return added
+    }
+    fun bookmarkedInPane(id:String,url:String):Boolean =
+        spaces.flatMap{it.panes}.firstOrNull{it.id==id}?.bookmarks?.contains(url)==true
+    fun bookmarksForPane(id:String):List<String> =
+        spaces.flatMap{it.panes}.firstOrNull{it.id==id}?.bookmarks?.toList()?:emptyList()
     /** Close selected individual windows and create new blank profiles in the same six slots. */
     fun replacePanes(ids:Set<String>):List<Pair<PaneState,PaneState>> {
         val current=active()

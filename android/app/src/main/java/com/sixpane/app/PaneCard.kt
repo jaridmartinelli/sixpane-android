@@ -58,12 +58,12 @@ class PaneCard(
                 loadTimeout?.let{recoveryHandler.removeCallbacks(it)};loadTimeout=null
                 interrupted=false;recoveryAttempts=0;recoveryIndicator.visibility=View.GONE
             }
-            updateSiteLabel()
+            updateSiteLabel();host.onPaneUrlChanged(state.id)
         }
         override fun onPageStarted(view:WebView?,url:String?,favicon:android.graphics.Bitmap?){
             if(view!==webView||!webViewAlive||disposed)return
             // Capture redirects before completion as well as normal page finishes.
-            if(!url.isNullOrEmpty()&&url!=state.url){state.url=url;host.persist();updateSiteLabel()}
+            if(!url.isNullOrEmpty()&&url!=state.url){state.url=url;host.persist();updateSiteLabel();host.onPaneUrlChanged(state.id)}
         }
         override fun onReceivedError(view:WebView,request:WebResourceRequest,error:WebResourceError){
             if(view===webView&&interrupted&&request.isForMainFrame)recoveryLoadFailed()
@@ -251,7 +251,7 @@ class PaneCard(
     }
     fun loadAddress(url:String){
         if(disposed)return
-        state.url=url;host.persist();updateSiteLabel()
+        state.url=url;host.persist();updateSiteLabel();host.onPaneUrlChanged(state.id)
         // A navigation during backoff updates the recovery target without changing its profile.
         if(webViewAlive)webView.loadUrl(url)
     }

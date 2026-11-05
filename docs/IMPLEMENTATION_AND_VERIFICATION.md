@@ -196,3 +196,13 @@ After the reported conflict, the user explicitly selected **Install alongside**.
 - Keyboard Go triggers the existing dialog submit action; no navigation occurs solely from focus loss.
 - A separate debug application ID (\`.preview.search\`) avoids overwriting prior signed preview installations and preserves their saved profiles.
 - JUnit tests cover search queries, encoding, URLs, local development addresses, blank input, and bulk-validation separation.
+
+
+## November 4, 2026 — Universal top bar and profile bookmarks
+
+- Grid has persistent URL/color search; color picker supports six selected frame colors, OR-matched.
+- Focus view turns the search field into a navigation bar and bookmark star, scoped to that named pane profile.
+- Global top-right vertical dots give access to batch locking, selection, bookmark batch-add, color assignment and other workspace tools.
+- Filtered-out WebViews remain allocated and attached, not destroyed or explicitly paused; Android execution guarantees still require device testing.
+- Existing global bookmark data is preserved for backward compatibility but no longer shown as cross-pane bookmarks.
+- New debug package identity avoids overwriting the earlier previews and risking data loss.

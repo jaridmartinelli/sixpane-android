@@ -9,17 +9,17 @@ android {
         applicationId = "com.sixpane.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.6-search"
+        versionCode = 7
+        versionName = "0.7-universal"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }
     buildTypes {
         debug {
             // User-approved side-by-side install; existing One-Hand sessions remain in their original app.
-            applicationIdSuffix = ".preview.search"
+            applicationIdSuffix = ".preview.universal"
             versionNameSuffix = "-preview"
-            manifestPlaceholders["appLabel"] = "SIXPANE Search Preview"
+            manifestPlaceholders["appLabel"] = "SIXPANE Universal Preview"
         }
         release { isMinifyEnabled = false }
     }
