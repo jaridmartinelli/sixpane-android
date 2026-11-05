@@ -166,7 +166,8 @@ class MainActivity:Activity(){
                 updateUniversalBar();positionCards(false)
             }
         })
-        topAddress=field("Search Google or type URL")
+        topAddress=field("Google Search")
+        topAddress.setHintTextColor(Color.argb(130,255,255,255))
         topAddress.inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         topAddress.imeOptions=EditorInfo.IME_ACTION_GO
         topAddress.setOnEditorActionListener{_,actionId,_->
@@ -213,8 +214,9 @@ class MainActivity:Activity(){
             topFilter.hint=if(chosen.isEmpty())"Filter URL or color"
                 else "Colors: "+FramePalette.names.filter{it in chosen}.joinToString(", ")
         }else{
-            if(!topAddress.hasFocus()&&topAddress.text.toString()!=focused.url)
-                topAddress.setText(focused.url)
+            val displayAddress=if(focused.url=="about:blank")"" else focused.url
+            if(!topAddress.hasFocus()&&topAddress.text.toString()!=displayAddress)
+                topAddress.setText(displayAddress)
             val saved=store.bookmarkedInPane(focused.id,focused.url)
             topStar.text=if(saved)"★" else "☆"
             topStar.contentDescription=if(saved)"Remove bookmark from this browser" else "Bookmark this page in this browser"
