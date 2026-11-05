@@ -473,7 +473,7 @@ class MainActivity:Activity(){
             card.updateSelection(selecting && store.active().panes.any{it.id==id},selectedPanes.contains(id))
         }
     }
-    /** Exactly seven pane actions. A workspace-tab hold owns workspace-wide tools. */
+    /** Exactly seven pane actions. Workspace tools remain in the universal menu. */
     fun windowContextMenu(card:PaneCard){
         if(selecting&&!selectedPanes.contains(card.state.id)){selectedPanes.add(card.state.id);updateSelection()}
         val targets=if(selecting&&selectedPanes.isNotEmpty())store.active().panes.filter{it.id in selectedPanes} else listOf(card.state)
