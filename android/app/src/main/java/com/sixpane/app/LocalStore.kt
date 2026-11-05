@@ -77,6 +77,10 @@ class LocalStore(ctx:Context){
     var focusId:String?=null
     var filterQuery:String=""
     val selectedFrameColors:MutableSet<String> = linkedSetOf()
+    // Only app chrome, never a webpage or browser profile.
+    var lightMode:Boolean
+        get()=prefs.getBoolean("light-chrome",false)
+        set(value){check(prefs.edit().putBoolean("light-chrome",value).commit())}
     // Separate preference: the established workspace manifest format stays unchanged.
     var desktopUserAgent:Boolean
         get()=prefs.getBoolean("desktop-user-agent",true)

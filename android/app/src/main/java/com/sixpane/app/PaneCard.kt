@@ -22,6 +22,8 @@ class PaneCard(
     var webView:WebView
         private set
     private val body=FrameLayout(host)
+    private val thumbnailTap=FrameLayout(host)
+    private val blankTap=FrameLayout(host)
     val lock=CornerIcon(host,CornerIcon.Kind.LOCK)
     private val expand=CornerIcon(host,CornerIcon.Kind.EXPAND)
     private val paneNumber=TextView(host)
@@ -57,12 +59,12 @@ class PaneCard(
                 loadTimeout?.let{recoveryHandler.removeCallbacks(it)};loadTimeout=null
                 interrupted=false;recoveryAttempts=0;recoveryIndicator.visibility=View.GONE
             }
-            updateSiteLabel();host.onPaneUrlChanged(state.id)
+            updateSiteLabel();updateInteractionSurfaces();host.onPaneUrlChanged(state.id)
         }
         override fun onPageStarted(view:WebView?,url:String?,favicon:android.graphics.Bitmap?){
             if(view!==webView||!webViewAlive||disposed)return
             // Capture redirects before completion as well as normal page finishes.
-            if(!url.isNullOrEmpty()&&url!=state.url){state.url=url;host.persist();updateSiteLabel();host.onPaneUrlChanged(state.id)}
+            if(!url.isNullOrEmpty()&&url!=state.url){state.url=url;host.persist();updateSiteLabel();updateInteractionSurfaces();host.onPaneUrlChanged(state.id)}
         }
         override fun onReceivedError(view:WebView,request:WebResourceRequest,error:WebResourceError){
             if(view===webView&&interrupted&&request.isForMainFrame)recoveryLoadFailed()
@@ -94,6 +96,28 @@ class PaneCard(
         // Only overlays occupy app chrome: no header, URL strip, cookie button or overflow bar.
         addView(body,LayoutParams(-1,-1).apply{setMargins(host.dp(1),host.dp(1),host.dp(1),host.dp(1))})
         body.addView(webView,LayoutParams(-1,-1))
+        // A miniaturized Right Stack window is a single tap target: it switches focus
+        // without sending the tap to the loaded webpage or resetting its session.
+        thumbnailTap.apply{
+            isClickable=true;isFocusable=true
+            contentDescription="Switch window into expanded view"
+            background=android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(Color.argb(70,255,255,255)),null,null)
+            setOnClickListener{host.focus(this@PaneCard)}
+            setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}
+        }
+        body.addView(thumbnailTap,LayoutParams(-1,-1))
+        // Blank panes have no interactive webpage. Taps expand; holds open controls.
+        // This overlay is never enabled over a loaded site's selectable text.
+        blankTap.apply{
+            isClickable=true;isFocusable=true
+            contentDescription="Empty window: tap to expand, hold for controls"
+            background=android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(Color.argb(55,255,255,255)),null,null)
+            setOnClickListener{if(!focused)host.focus(this@PaneCard)}
+            setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}
+        }
+        body.addView(blankTap,LayoutParams(-1,-1))
         badge.apply{
             orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
             // Transparent 44x36dp touch target around the visible 24x22dp number badge.
@@ -101,17 +125,19 @@ class PaneCard(
             setBackgroundColor(Color.TRANSPARENT)
             minimumWidth=host.dp(44);minimumHeight=host.dp(36)
             contentDescription="Window controls: long press number"
-            setOnClickListener{host.windowContextMenu(this@PaneCard)}
+            setOnClickListener{
+                if(compact)host.focus(this@PaneCard) else host.windowContextMenu(this@PaneCard)
+            }
             setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}
         }
         paneNumber.apply{
             textSize=11f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
-            setBackgroundColor(Color.argb(232,12,18,25))
+            setBackgroundColor(Color.argb(132,12,18,25))
         }
         badge.addView(paneNumber,LinearLayout.LayoutParams(host.dp(24),host.dp(22)))
         lock.isClickable=false;lock.isFocusable=false
         badge.addView(lock,LinearLayout.LayoutParams(host.dp(16),host.dp(22)))
-        body.addView(badge,LayoutParams(host.dp(44),host.dp(36),Gravity.TOP or Gravity.LEFT).apply{leftMargin=host.dp(3);topMargin=host.dp(3)})
+        body.addView(badge,LayoutParams(host.dp(44),host.dp(36),Gravity.TOP or Gravity.RIGHT).apply{rightMargin=host.dp(3);topMargin=host.dp(3)})
         updatePaneNumber()
         // Retain expand / restore outside the seven-item menu; the WebViews resize in place.
         body.addView(expand,LayoutParams(host.dp(44),host.dp(44),Gravity.BOTTOM or Gravity.RIGHT))
@@ -239,9 +265,14 @@ class PaneCard(
         selectionLayer.setBackgroundColor(if(selected)Color.argb(92,97,158,248) else Color.argb(16,97,158,248))
         selectionLayer.contentDescription=if(selected)"Selected browser" else "Select browser"
     }
+    private fun updateInteractionSurfaces(){
+        thumbnailTap.visibility=if(compact)View.VISIBLE else View.GONE
+        blankTap.visibility=if(!compact&&state.url=="about:blank")View.VISIBLE else View.GONE
+    }
     fun updateControls(){
-        // Focus and grid changes never replace a WebView or force the toolbar visible.
+        // Focus and grid changes never replace WebViews or steal loaded-site gestures.
         expand.contentDescription=if(focused)"Restore six-window grid" else "Expand window ${host.paneIndex(state.id)}"
+        updateInteractionSurfaces()
     }
     /** Explicit submit from the thumb-reachable sheet: no navigation on focus loss. */
     fun submitAddress(raw:String):Boolean {
@@ -252,7 +283,7 @@ class PaneCard(
     }
     fun loadAddress(url:String){
         if(disposed)return
-        state.url=url;host.persist();updateSiteLabel();host.onPaneUrlChanged(state.id)
+        state.url=url;host.persist();updateSiteLabel();updateInteractionSurfaces();host.onPaneUrlChanged(state.id)
         // A navigation during backoff updates the recovery target without changing its profile.
         if(webViewAlive)webView.loadUrl(url)
     }
