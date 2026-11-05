@@ -284,8 +284,8 @@ class MainActivity:Activity(){
                 UniversalMenuAction.CLEAR_FILTERS -> clearAllFilters()
                 UniversalMenuAction.PANE_BOOKMARKS -> showFocusedBookmarks()
                 UniversalMenuAction.WORKSPACE_TOOLS -> workspaceMenu()
-                UniversalMenuAction.GRID_2_BY_3 -> changeGridColumns(2)
-                UniversalMenuAction.GRID_3_BY_2 -> changeGridColumns(3)
+                UniversalMenuAction.TOGGLE_GRID ->
+                    changeGridColumns(if(store.columns==2)3 else 2)
                 UniversalMenuAction.SETTINGS -> AppSettings(this).open()
             }
         }

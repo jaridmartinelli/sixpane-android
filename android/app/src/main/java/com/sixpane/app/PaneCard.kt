@@ -122,7 +122,9 @@ class PaneCard(
             orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
             // Transparent 44x36dp touch target around the visible 24x22dp number badge.
             // Webpage long presses remain owned by Android WebView (text/link selection).
-            setBackgroundColor(Color.TRANSPARENT)
+            background=android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(Color.argb(90,190,208,230)),
+                android.graphics.drawable.ColorDrawable(Color.TRANSPARENT),null)
             minimumWidth=host.dp(44);minimumHeight=host.dp(36)
             contentDescription="Window controls: long press number"
             setOnClickListener{
@@ -145,6 +147,8 @@ class PaneCard(
         selectionLayer.setBackgroundColor(Color.argb(48,82,149,252))
         selectionLayer.visibility=View.GONE
         selectionLayer.isClickable=true
+        selectionLayer.foreground=android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(Color.argb(80,255,255,255)),null,null)
         selectionLayer.setOnClickListener{host.toggleWindowSelection(state.id)}
         selectionMark.apply{
             text="○";textSize=21f;setTextColor(Color.WHITE);gravity=Gravity.CENTER

@@ -9,17 +9,17 @@ android {
         applicationId = "com.sixpane.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.9-text-selection"
+        versionCode = 10
+        versionName = "0.10-thumb-controls"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }
     buildTypes {
         debug {
             // User-approved side-by-side install; existing One-Hand sessions remain in their original app.
-            applicationIdSuffix = ".preview.textselection"
+            applicationIdSuffix = ".preview.thumb"
             versionNameSuffix = "-preview"
-            manifestPlaceholders["appLabel"] = "SIXPANE Text Selection"
+            manifestPlaceholders["appLabel"] = "SIXPANE Thumb Preview"
         }
         release { isMinifyEnabled = false }
     }

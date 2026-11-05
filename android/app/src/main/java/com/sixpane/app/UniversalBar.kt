@@ -180,15 +180,8 @@ internal class UniversalBar(
         add(UniversalMenuAction.FILTER_COLORS, "Filter colors ($colorCount/${FramePalette.MAX_SELECTED_COLORS})")
         add(UniversalMenuAction.CLEAR_FILTERS, "Clear filters", hasFilters)
         // Choose a layout here; never require a special tap on the workspace tab.
-        for((action,label,col) in listOf(
-            Triple(UniversalMenuAction.GRID_2_BY_3,"2 × 3 layout",2),
-            Triple(UniversalMenuAction.GRID_3_BY_2,"3 × 2 layout",3)
-        )){
-            popup.menu.add(label).apply{
-                isCheckable=true;isChecked=(columns==col)
-                setOnMenuItemClickListener{onAction(action);true}
-            }
-        }
+        add(UniversalMenuAction.TOGGLE_GRID,if(columns==2)
+            "Layout: 2 × 3 → 3 × 2" else "Layout: 3 × 2 → 2 × 3")
         if (hasFocusedPane) add(UniversalMenuAction.PANE_BOOKMARKS, "Bookmarks for this browser")
         add(UniversalMenuAction.WORKSPACE_TOOLS, "Workspace tools")
         add(UniversalMenuAction.SETTINGS, "Settings")
@@ -199,7 +192,7 @@ internal class UniversalBar(
 internal enum class UniversalMenuAction {
     SELECT_MULTIPLE, EXIT_SELECTION, SELECT_VISIBLE, DESELECT_ALL, LOCK_SELECTED,
     UNLOCK_SELECTED, CLOSE_SELECTED, BOOKMARK_SELECTED, SHARE_SELECTED, COLOR_SELECTED,
-    FILTER_COLORS, CLEAR_FILTERS, GRID_2_BY_3, GRID_3_BY_2, PANE_BOOKMARKS,
+    FILTER_COLORS, CLEAR_FILTERS, TOGGLE_GRID, PANE_BOOKMARKS,
     WORKSPACE_TOOLS, SETTINGS,
 }
 
