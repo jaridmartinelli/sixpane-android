@@ -25,6 +25,7 @@ class MainActivity:Activity(){
     private val handler=Handler(Looper.getMainLooper())
     private lateinit var screen:LinearLayout
     private lateinit var tabStrip:LinearLayout
+    private lateinit var tabScroller:HorizontalScrollView
     private val tabLockIcons=mutableMapOf<String,CornerIcon>()
     private lateinit var universalBar: UniversalBar
     private lateinit var filterEmpty:TextView
@@ -118,10 +119,11 @@ class MainActivity:Activity(){
         )
         screen.addView(universalBar.view,LinearLayout.LayoutParams(-1,dp(48)))
         screen.addView(stage,LinearLayout.LayoutParams(-1,0,1f))
-        screen.addView(HorizontalScrollView(this).apply{
+        tabScroller=HorizontalScrollView(this).apply{
             isHorizontalScrollBarEnabled=false
             addView(tabStrip,android.widget.FrameLayout.LayoutParams(-2,-1))
-        },LinearLayout.LayoutParams(-1,dp(48)))
+        }
+        screen.addView(tabScroller,LinearLayout.LayoutParams(-1,dp(48)))
         filterEmpty=TextView(this).apply{
             text="No windows match";gravity=Gravity.CENTER
             textSize=13f;setTextColor(Color.rgb(174,186,206));visibility=View.GONE
@@ -324,13 +326,17 @@ class MainActivity:Activity(){
                 contentDescription="Workspace "+(index+1)+
                     (if(ws.locked)"; locked" else "")+"; hold to lock or unlock"
                 isEnabled=!selecting||active
+                isSelected=active
                 setOnClickListener{
                     if(ws.id!=store.currentId){
                         store.currentId=ws.id;store.focusId=null;store.save()
                         renderTabs();updateUniversalBar();positionCards(true)
                     }
                 }
-                setOnLongClickListener{toggleWorkspaceLock(ws);true}
+                setOnLongClickListener{
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    toggleWorkspaceLock(ws);true
+                }
             }
             tab.addView(TextView(this).apply{
                 text=(index+1).toString();textSize=15f;gravity=Gravity.CENTER
@@ -342,7 +348,10 @@ class MainActivity:Activity(){
                 locked=ws.locked
                 contentDescription=(if(ws.locked)"Unlock" else "Lock")+" workspace "+(index+1)
                 setOnClickListener{toggleWorkspaceLock(ws)}
-                setOnLongClickListener{toggleWorkspaceLock(ws);true}
+                setOnLongClickListener{
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    toggleWorkspaceLock(ws);true
+                }
                 isEnabled=!selecting||active
             }
             tabLockIcons[ws.id]=tabLock
@@ -384,6 +393,7 @@ class MainActivity:Activity(){
         if(!WorkspacePolicy.canCreate(store.spaces.size))return
         try{
             val new=store.create();renderTabs();positionCards(false)
+            tabScroller.post{tabScroller.fullScroll(View.FOCUS_RIGHT)}
             new.panes.forEachIndexed{i,p->handler.postDelayed({
                 if(!isFinishing&&!isDestroyed&&store.spaces.any{w->w.id==new.id&&w.panes.any{it.id==p.id}}){
                     try{val card=PaneCard(this,p);cards[p.id]=card;stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)));positionCards(false)}
