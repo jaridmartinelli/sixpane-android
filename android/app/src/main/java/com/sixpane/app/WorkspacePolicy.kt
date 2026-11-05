@@ -9,6 +9,9 @@ object WorkspacePolicy {
     const val ZOOM_STEP = 10
     fun canCreate(count: Int): Boolean = count in 0 until MAX_WORKSPACES
     fun canClose(tabLocked: Boolean): Boolean = !tabLocked
+    /** Protect an entire workspace whenever its tab OR any contained browser is locked. */
+    fun canCloseWorkspace(tabLocked:Boolean,paneLocks:List<Boolean>):Boolean =
+        !tabLocked && !paneLocks.any{it}
     fun canCloseSelected(count:Int, anyLocked:Boolean):Boolean=count>0&&!anyLocked
     fun selectionActionEnabled(count:Int):Boolean=count>0
     fun canReset(paneLocked: Boolean): Boolean = !paneLocked

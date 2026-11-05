@@ -248,3 +248,13 @@ Added \`UserJourneyInstrumentedTest\` to exercise:
 
 This is an **emulator-only** fresh install. No stored user profiles, real website queues, external WAF challenge or actual OnePlus Open are accessed.
 The runtime test must visibly pass; adding the test is not itself proof of passage.
+
+
+## November 5, 2026 — consequential lock-protection defect corrected in combined preview
+
+- **Evidence before correction:** \`MainActivity.closeWorkspace()\` checked only \`WorkspaceState.locked\`. \`LocalStore.close()\` also checked only this field, even when one or more child pane locks were true.
+- **Impact:** A user could select Close Workspace and retire locked individual browser profiles despite their protected status. This is a meaningful potential data-loss/authorization failure.
+- **Root cause:** Workspace-level and individual-pane lock policy had separate gate paths, and the model-level close operation omitted child locks.
+- **Prevention:** Add a single \`WorkspacePolicy.canCloseWorkspace(tabLocked,paneLocks)\` predicate and enforce it before opening confirmation, once more inside the confirmation callback, and at the durable storage mutation boundary.
+- **Verification criterion:** New JVM test rejects any locked child and a locked tab; CI must compile. Emulator flow must verify the visible lock behavior where feasible; user-device verification remains pending.
+- No browser profiles or persisted user state were touched while correcting the code.

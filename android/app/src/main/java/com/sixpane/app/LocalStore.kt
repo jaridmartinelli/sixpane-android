@@ -176,7 +176,10 @@ class LocalStore(ctx:Context){
     }
     /** Tombstone profile identifiers first, before any attempt at physical deletion. */
     fun close(id:String):WorkspaceState {
-        val w=spaces.first{it.id==id};require(!w.locked)
+        val w=spaces.first{it.id==id}
+        require(WorkspacePolicy.canCloseWorkspace(w.locked,w.panes.map{it.locked})) {
+            "Unlock workspace tab and all its browsers before closing"
+        }
         w.panes.forEach { pendingDeletion.add(it.profile) }
         spaces.remove(w)
         if(spaces.isEmpty())spaces.add(WorkspaceState()) // new six, never reusing retired identities

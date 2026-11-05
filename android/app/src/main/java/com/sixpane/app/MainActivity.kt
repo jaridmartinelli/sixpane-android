@@ -339,8 +339,17 @@ class MainActivity:Activity(){
         }catch(e:Exception){notice("Cannot create workspace: ${e.message}")}
     }
     private fun closeWorkspace(ws:WorkspaceState){
-        if(ws.locked){notice("Workspace locked");return}
+        if(!WorkspacePolicy.canCloseWorkspace(ws.locked,ws.panes.map{it.locked})){
+            ws.panes.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
+            notice("Unlock workspace and all six browsers before closing");return
+        }
         confirm("Close workspace?","All six browser sessions will close immediately and their stored profiles will be retired for deletion. Disk cleanup may require a clean app restart. New workspaces start with fresh profiles.","Close & Delete"){
+            // Recheck the live locks at confirmation time. Never delete protected profiles.
+            val current=store.spaces.firstOrNull{it.id==ws.id}?:return@confirm
+            if(!WorkspacePolicy.canCloseWorkspace(current.locked,current.panes.map{it.locked})){
+                current.panes.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
+                notice("Workspace or a browser became locked; close cancelled");return@confirm
+            }
             // Don't mark cleanup complete while WebKit still has references to the profiles.
             store.close(ws.id) // durable tombstone FIRST: even a crash cannot restore these profiles
             for(p in ws.panes){
