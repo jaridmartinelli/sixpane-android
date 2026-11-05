@@ -127,6 +127,14 @@ class FilteredTabsInstrumentedTest {
                     assertSame(originalWebViews[p.id],card!!.webView)
                 }
             }
+            // Device-side screenshot provides visual evidence of two fixed-size
+            // browser cells and four untouched background slots.
+            val shot=java.io.File(
+                InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null),
+                "filtered-14.png"
+            )
+            assertTrue("Filtered grid screenshot unavailable",device.takeScreenshot(shot))
+            assertTrue(shot.length()>0)
             click(scenario,"Lock filtered group 3")
             scenario.onActivity{a->
                 assertTrue(a.store.spaces.flatMap{it.panes}.slice(12..13).all{it.locked})
