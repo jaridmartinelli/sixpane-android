@@ -59,6 +59,45 @@ class UserJourneyInstrumentedTest {
         device.waitForIdle()
     }
 
+
+    @Test fun holdingNumberBadgeOpensPaneMenuWithoutHijackingWebView(){
+        assertTrue(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE))
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try {
+            var id=""
+            var ready=false
+            repeat(30){
+                scenario.onActivity{ a->
+                    val first=a.auditPanes().firstOrNull()
+                    id=first?.first?.id.orEmpty()
+                    ready=first?.second!=null
+                }
+                if(ready)return@repeat
+                Thread.sleep(230)
+            }
+            assertTrue("Window 1 failed to start",ready)
+            var x=0;var y=0
+            scenario.onActivity{a->
+                val first=a.auditPanes().first{it.first.id==id}.second!!
+                val badge=first.menuAnchor
+                assertTrue("Number badge must own a long-press handler",badge.isLongClickable)
+                val loc=IntArray(2);badge.getLocationOnScreen(loc)
+                x=loc[0]+badge.width/2
+                y=loc[1]+badge.height/2
+            }
+            assertTrue("Holding number failed",device.swipe(x,y,x,y,130))
+            val menu=device.wait(Until.findObject(By.text("Window 1")),5_000L)
+            assertNotNull("Number long press did not open window controls",menu)
+            device.pressBack()
+            device.waitForIdle()
+            scenario.onActivity{ a->
+                assertEquals(6,a.store.active().panes.size)
+                assertTrue(a.auditPanes().all{it.second==null ||
+                    it.second!!.webView.settings.javaScriptEnabled})
+            }
+        } finally {scenario.close()}
+    }
+
     @Test fun userFlowGridBatchLocksFocusSearchBookmarksAndWorkspace(){
         assertTrue("Emulator WebView lacks MULTI_PROFILE; no credible 6-pane user test is possible",
             WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE))

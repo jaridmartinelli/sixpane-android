@@ -266,3 +266,20 @@ The runtime test must visibly pass; adding the test is not itself proof of passa
 - Root cause: the reactivecircus emulator action invoked lines of \`script:\` separately; changing directories on one line did not persist on the next. Separate post-emulator \`adb\` calls previously caused evidence collection to hang after device teardown.
 - Corrective action: move the full test process to \`tests/run_emulator_smoke.sh\`, invoked as exactly one runner script command. Use explicit \`gradle --project-dir "$GITHUB_WORKSPACE/android"\` and capture screenshots/logcat inside the emulator's lifetime with bounded timeouts.
 - Verification: Android instrumented compilation passed before emulator launch; the corrected integrated run must be inspected before asserting live UI success.
+
+
+## November 5, 2026 — Restore website text selection while retaining numbered-pane long press
+
+Incident: WebView long-press listeners intercepted webpage text selection, links, and copy operations.
+Cause: \`PaneCard.createWebView()\` assigned a window-context menu long-click handler directly to the WebView. The full pane body and selection overlay also registered long-click handlers.
+Correction:
+- Remove app-owned long presses from the WebView, pane body, and selection overlay.
+- Keep the long-press menu on the numbered pane badge only; preserve tapping the badge to open the same menu for discoverability.
+- Use an invisible 44x36dp badge touch target while retaining the small visible 24x22dp numbered badge and conditional red lock indicator.
+- Preserve all named profiles, cookies, viewport dimensions, bookmarks, workspace locks, URLs, the global batch menu, and the native device user agent.
+Prevention:
+- The Android APK workflow fails if the WebView/body/selection overlay registers an app long-press handler.
+- A clean emulator gesture test holds the numbered badge and expects the window actions menu.
+Verification:
+- New CI compilation, unit tests and emulator gestures must complete; real text-selection behavior on the OnePlus Open requires manual verification.
+- The distinct v0.9 debug package suffix avoids overwriting any existing installed preview or its cookies.

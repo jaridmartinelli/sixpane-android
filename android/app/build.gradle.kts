@@ -9,17 +9,17 @@ android {
         applicationId = "com.sixpane.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.8-compat"
+        versionCode = 9
+        versionName = "0.9-text-selection"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }
     buildTypes {
         debug {
             // User-approved side-by-side install; existing One-Hand sessions remain in their original app.
-            applicationIdSuffix = ".preview.compat"
+            applicationIdSuffix = ".preview.textselection"
             versionNameSuffix = "-preview"
-            manifestPlaceholders["appLabel"] = "SIXPANE Compatibility Preview"
+            manifestPlaceholders["appLabel"] = "SIXPANE Text Selection"
         }
         release { isMinifyEnabled = false }
     }

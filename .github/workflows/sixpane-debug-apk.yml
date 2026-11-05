@@ -48,6 +48,16 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Check native text selection is not hijacked by pane long presses
+        shell: bash
+        run: |
+          set -euo pipefail
+          PANE='android/app/src/main/java/com/sixpane/app/PaneCard.kt'
+          if grep -En '(fresh|body|webView|selectionLayer)\.setOnLongClickListener' "$PANE"; then
+            echo 'Web content or full-pane overlay is intercepting long presses'; exit 1
+          fi
+          grep -Fq 'setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}' "$PANE"
+          grep -Fq 'contentDescription="Window controls: long press number"' "$PANE"
       - name: Check genuine WebView UA is not overridden
         shell: bash
         run: |

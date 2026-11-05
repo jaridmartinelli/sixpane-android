@@ -94,18 +94,24 @@ class PaneCard(
         // Only overlays occupy app chrome: no header, URL strip, cookie button or overflow bar.
         addView(body,LayoutParams(-1,-1).apply{setMargins(host.dp(1),host.dp(1),host.dp(1),host.dp(1))})
         body.addView(webView,LayoutParams(-1,-1))
-        body.setOnLongClickListener{host.windowContextMenu(this);true}
         badge.apply{
             orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.argb(232,12,18,25))
+            // Transparent 44x36dp touch target around the visible 24x22dp number badge.
+            // Webpage long presses remain owned by Android WebView (text/link selection).
+            setBackgroundColor(Color.TRANSPARENT)
+            minimumWidth=host.dp(44);minimumHeight=host.dp(36)
+            contentDescription="Window controls: long press number"
             setOnClickListener{host.windowContextMenu(this@PaneCard)}
             setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}
         }
-        paneNumber.apply{textSize=11f;setTextColor(Color.WHITE);gravity=Gravity.CENTER}
+        paneNumber.apply{
+            textSize=11f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
+            setBackgroundColor(Color.argb(232,12,18,25))
+        }
         badge.addView(paneNumber,LinearLayout.LayoutParams(host.dp(24),host.dp(22)))
         lock.isClickable=false;lock.isFocusable=false
         badge.addView(lock,LinearLayout.LayoutParams(host.dp(16),host.dp(22)))
-        body.addView(badge,LayoutParams(-2,host.dp(22),Gravity.TOP or Gravity.LEFT).apply{leftMargin=host.dp(3);topMargin=host.dp(3)})
+        body.addView(badge,LayoutParams(host.dp(44),host.dp(36),Gravity.TOP or Gravity.LEFT).apply{leftMargin=host.dp(3);topMargin=host.dp(3)})
         updatePaneNumber()
         // Retain expand / restore outside the seven-item menu; the WebViews resize in place.
         body.addView(expand,LayoutParams(host.dp(44),host.dp(44),Gravity.BOTTOM or Gravity.RIGHT))
@@ -114,7 +120,6 @@ class PaneCard(
         selectionLayer.visibility=View.GONE
         selectionLayer.isClickable=true
         selectionLayer.setOnClickListener{host.toggleWindowSelection(state.id)}
-        selectionLayer.setOnLongClickListener{host.windowContextMenu(this);true}
         selectionMark.apply{
             text="○";textSize=21f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
             setBackgroundColor(Color.argb(200,30,42,62))
@@ -160,7 +165,6 @@ class PaneCard(
                     if(newProgress<100)indicator.text="·" else updateZoomIndicator()
                 }
             }
-            fresh.setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}
             fresh.setBackgroundColor(Color.rgb(23,32,39))
             fresh.setInitialScale(state.zoom)
             // Page drags belong to the page; no workspace gesture interceptor is installed.
