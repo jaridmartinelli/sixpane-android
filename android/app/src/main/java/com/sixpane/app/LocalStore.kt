@@ -174,6 +174,36 @@ class LocalStore(ctx:Context){
         save()
         return result
     }
+    /**
+     * Close panes selected from a temporary filter page, even when they belong
+     * to different original workspaces. Preserve all other profile identities.
+     * Never mutate workspace membership merely to display a filtered page.
+     */
+    fun replacePanesAcrossWorkspaces(ids:Set<String>):List<Pair<PaneState,PaneState>>{
+        val all=spaces.flatMap{it.panes}
+        require(ids.isNotEmpty()&&all.count{it.id in ids}==ids.size) {
+            "Every selected pane must still exist"
+        }
+        require(all.none{it.id in ids&&it.locked}){"Locked browsers must be unlocked first"}
+        require(spaces.none{it.locked&&it.panes.any{p->p.id in ids}}) {
+            "Unlock the original workspace tab before replacing a browser"
+        }
+        val replacements=mutableListOf<Pair<PaneState,PaneState>>()
+        spaces.forEach{space->
+            space.panes.forEachIndexed{index,old->
+                if(old.id in ids){
+                    pendingDeletion.add(old.profile)
+                    val replacement=PaneState()
+                    space.panes[index]=replacement
+                    replacements.add(old to replacement)
+                }
+            }
+        }
+        if(focusId in ids)focusId=null
+        save()
+        return replacements
+    }
+
     fun create():WorkspaceState {
         require(WorkspacePolicy.canCreate(spaces.size))
         val w=WorkspaceState();spaces.add(w);currentId=w.id;focusId=null;save();return w
