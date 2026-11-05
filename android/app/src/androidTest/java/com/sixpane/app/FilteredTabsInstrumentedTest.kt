@@ -109,13 +109,28 @@ class FilteredTabsInstrumentedTest {
                 })
             }
             click(scenario,"Filtered tab 3, 2 windows")
-            Thread.sleep(500)
+            // Wait for the actual selected tab AND its six-slot geometry to settle;
+            // screen tapping can precede the Android layout pass.
+            waitFor(scenario){a->
+                val selected=find(a.window.decorView){
+                    it.isSelected&&it.contentDescription?.toString()
+                        ?.startsWith("Filtered tab 3, 2 windows")==true
+                }
+                val onScreen=a.auditPanes().count{
+                    val card=it.second
+                    val lp=card?.layoutParams as? android.widget.FrameLayout.LayoutParams
+                    card!=null&&lp!=null&&lp.leftMargin>=0&&card.x>=0f
+                }
+                selected!=null&&onScreen==2
+            }
             scenario.onActivity{a->
                 assertEquals(18,a.auditPanes().size)
                 val visible=a.auditPanes().filter{
-                    it.second!=null&&it.second!!.x>=0f&&it.second!!.x<10000f
+                    val card=it.second
+                    val lp=card?.layoutParams as? android.widget.FrameLayout.LayoutParams
+                    card!=null&&lp!=null&&lp.leftMargin>=0&&card.x>=0f
                 }
-                assertEquals(2,visible.size)
+                assertEquals("Only two matched browser cards may occupy the six-slot grid",2,visible.size)
                 assertEquals(originalIds.slice(12..13),visible.map{it.first.id})
                 visible.forEach{
                     assertEquals(gridWidth,it.second!!.width)

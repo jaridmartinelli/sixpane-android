@@ -790,10 +790,20 @@ class MainActivity:Activity(){
             card.updatePaneNumber()
             val r=desired[id]
             if(r==null){
-                // Keep off-workspace WebViews allocated and attached; never pauseTimers/stopLoading.
+                // Hidden pages stay live and attached, without pauseTimers/stopLoading.
+                // A negative layout margin is stable across parent re-layouts,
+                // unlike View.setX(), which may be reset after resize/keyboard changes.
                 card.animate().cancel()
-                card.x=-10000f
-                card.y=0f
+                card.translationX=0f
+                card.translationY=0f
+                card.scaleX=1f
+                card.scaleY=1f
+                val offscreen=card.layoutParams as FrameLayout.LayoutParams
+                if(offscreen.leftMargin!=-10000 || offscreen.topMargin!=0){
+                    offscreen.leftMargin=-10000
+                    offscreen.topMargin=0
+                    card.layoutParams=offscreen
+                }
                 card.visibility=View.VISIBLE
                 continue
             }
