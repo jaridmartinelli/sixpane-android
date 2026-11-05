@@ -1,0 +1,47 @@
+name: SIXPANE user workflow audit
+on:
+  push:
+    branches: [audit/runtime-verification]
+    paths:
+      - 'tests/sixpane_ui_audit.py'
+      - '.github/workflows/sixpane-ui-audit.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  actual-apk-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download existing v0.7 APK
+        uses: actions/download-artifact@v4
+        with:
+          name: sixpane-android-build-results
+          run-id: 41971057477
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: tested-apk
+      - name: Install UI driver
+        run: python3 -m pip install uiautomator2==3.7.1
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Exercise actual Android controls
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          ram-size: 3072M
+          emulator-boot-timeout: 300
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: python3 -u tests/sixpane_ui_audit.py
+      - name: Preserve observed outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sixpane-ui-audit-results
+          path: ui-audit-results/
+          retention-days: 14
