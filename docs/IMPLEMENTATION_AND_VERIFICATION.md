@@ -297,3 +297,13 @@ Verification:
 - Visible buttons and selection overlays have pressed ripple, active/disabled states where applicable. Red pane locks continue to glow; attempted protected actions jiggle the lock.
 - Distinct \`com.sixpane.app.preview.thumb\` debug identity avoids overwriting older preview installations.
 - Verification: Kotlin/Android build, unit tests, and the clean-emulator gesture tests. Treat device/website behavior as unverified until physically reproduced. Incidents from verification are tracked separately.
+
+
+## November 5, 2026 — Pinch zoom replaces zoom buttons
+
+- User refinement supersedes the provisional \`−/+ Zoom\` sheet. Removed the \`Zoom\` entry and the step/reset controls entirely from window actions.
+- WebView now explicitly enables \`setSupportZoom(true)\` plus built-in pinch gestures and disables the deprecated on-screen WebView zoom buttons. The existing viewport/focus modes do not recreate a WebView.
+- Empty-pane and thumbnail tap overlays remain in place for navigation. They are disabled over full-size loaded webpages so two-finger gestures remain the website/WebView's native input.
+- Each pane retains its profile, cookies, URL and previously saved zoom metadata. Native pinch doesn't manufacture or modify profile identifiers; no user data clearing.
+- A clean Android emulator instrumentation test performs real two-pointer pinch-open and pinch-close gestures against a controlled local page and asserts scale changes and WebView identity continuity.
+- Older v0.10 installation is protected by a distinct \`com.sixpane.app.preview.pinch\` debug package ID.

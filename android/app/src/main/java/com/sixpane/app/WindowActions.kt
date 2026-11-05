@@ -4,9 +4,6 @@ import android.app.AlertDialog
 import android.graphics.Color
 import android.view.Gravity
 import android.widget.EditText
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
 
 /** Transient pane controls; no persistent browser toolbar. */
 class WindowActions(private val host:MainActivity,private val origin:PaneCard,private val targets:List<PaneState>){
@@ -16,7 +13,7 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
         dialog.window?.setGravity(Gravity.BOTTOM)
     }
     fun open(){
-        val labels=arrayOf("Lock","Desktop mode","Enter URL","Zoom","Edit cookies","Close window","Select multiple","Frame color")
+        val labels=arrayOf("Lock","Desktop mode","Enter URL","Edit cookies","Close window","Select multiple","Frame color")
         bottom(AlertDialog.Builder(host,android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
             .setTitle(if(targets.size==1)"Window ${host.paneIndex(origin.state.id)}" else "${targets.size} selected windows")
             .setItems(labels){_,which->when(which){
@@ -25,11 +22,10 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
                     val next=!targets.all{it.desktop};targets.forEach{host.windowCard(it.id)?.setDesktopMode(next)}
                 }
                 2->address()
-                3->zoomControls()
-                4->if(targets.size!=1)host.notice("Select one window to edit cookies") else if(unlocked())host.cookieEditor(origin)
-                5->host.closeWindows(ids)
-                6->host.toggleSelectionFromMenu(origin)
-                7->colors()
+                3->if(targets.size!=1)host.notice("Select one window to edit cookies") else if(unlocked())host.cookieEditor(origin)
+                4->host.closeWindows(ids)
+                5->host.toggleSelectionFromMenu(origin)
+                6->colors()
             }}.create())
     }
     private fun unlocked():Boolean{
@@ -63,42 +59,6 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
                 true
             }else false
         }
-    }
-    /** Reversible per-pane zoom; even locked panes may zoom without losing cookies. */
-    private fun zoomControls(){
-        if(targets.size!=1){host.notice("Open zoom for one window at a time");return}
-        val row=LinearLayout(host).apply{
-            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
-            setPadding(host.dp(12),host.dp(6),host.dp(12),host.dp(6))
-        }
-        val minus=Button(host).apply{
-            text="−";textSize=22f;contentDescription="Zoom out 10 percent"
-        }
-        val percentage=Button(host).apply{
-            text=WorkspacePolicy.displayZoom(origin.state.zoom).ifEmpty{"100%"}
-            textSize=14f;contentDescription="Reset zoom to 100 percent"
-        }
-        val plus=Button(host).apply{
-            text="+";textSize=22f;contentDescription="Zoom in 10 percent"
-        }
-        fun refresh(){
-            percentage.text=origin.state.zoom.toString()+"%"
-            minus.isEnabled=origin.state.zoom>WorkspacePolicy.MIN_ZOOM
-            plus.isEnabled=origin.state.zoom<WorkspacePolicy.MAX_ZOOM
-            percentage.isEnabled=origin.state.zoom!=100
-        }
-        minus.setOnClickListener{origin.zoomByStep(-1);refresh()}
-        plus.setOnClickListener{origin.zoomByStep(1);refresh()}
-        percentage.setOnClickListener{origin.resetZoom();refresh()}
-        row.addView(minus,LinearLayout.LayoutParams(0,host.dp(52),1f))
-        row.addView(percentage,LinearLayout.LayoutParams(0,host.dp(52),1.5f))
-        row.addView(plus,LinearLayout.LayoutParams(0,host.dp(52),1f))
-        refresh()
-        bottom(AlertDialog.Builder(host,android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
-            .setTitle("Window zoom")
-            .setView(row)
-            .setNegativeButton("Done",null)
-            .create())
     }
     private fun colors(){
         bottom(AlertDialog.Builder(host,android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Frame color")

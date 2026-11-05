@@ -9,17 +9,17 @@ android {
         applicationId = "com.sixpane.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.10-thumb-controls"
+        versionCode = 11
+        versionName = "0.11-native-pinch"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }
     buildTypes {
         debug {
             // User-approved side-by-side install; existing One-Hand sessions remain in their original app.
-            applicationIdSuffix = ".preview.thumb"
+            applicationIdSuffix = ".preview.pinch"
             versionNameSuffix = "-preview"
-            manifestPlaceholders["appLabel"] = "SIXPANE Thumb Preview"
+            manifestPlaceholders["appLabel"] = "SIXPANE Pinch Preview"
         }
         release { isMinifyEnabled = false }
     }

@@ -212,29 +212,65 @@ class UserJourneyInstrumentedTest {
     }
 
 
-    @Test fun paneZoomButtonsChangeAndResetScaleThroughRealWindowMenu(){
+    @Test fun nativePinchZoomsInAndOutWithoutToolbarButtonsOrProfileReplacement(){
+        assertTrue(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE))
         val scenario=ActivityScenario.launch(MainActivity::class.java)
         try{
-            var x=0;var y=0;var id=""
-            scenario.onActivity{a->
-                val entry=a.auditPanes().first()
-                id=entry.first.id
-                val badge=entry.second?.menuAnchor
-                assertNotNull("Pane number absent",badge)
-                val point=IntArray(2);badge!!.getLocationOnScreen(point)
-                x=point[0]+badge.width/2;y=point[1]+badge.height/2
+            var id=""
+            var original:android.webkit.WebView?=null
+            var ready=false
+            for(attempt in 0 until 45){
+                scenario.onActivity{a->
+                    val entry=a.auditPanes().firstOrNull()
+                    id=entry?.first?.id.orEmpty()
+                    original=entry?.second?.webView
+                    ready=entry?.second!=null
+                }
+                if(ready)break
+                Thread.sleep(220)
             }
-            assertTrue(device.click(x,y))
-            clickLabel("Zoom")
-            val plus=device.wait(Until.findObject(By.desc("Zoom in 10 percent")),4_000L)
-            assertNotNull("Zoom + unavailable",plus)
-            plus.click()
-            scenario.onActivity{a->assertEquals(110,a.store.active().panes.first{it.id==id}.zoom)}
-            val reset=device.wait(Until.findObject(By.desc("Reset zoom to 100 percent")),4_000L)
-            assertNotNull("Zoom reset unavailable",reset)
-            reset.click()
-            scenario.onActivity{a->assertEquals(100,a.store.active().panes.first{it.id==id}.zoom)}
-            device.pressBack()
+            assertTrue("First WebView did not start",ready)
+            scenario.onActivity{a->
+                val card=a.auditPanes().first{it.first.id==id}.second!!
+                val settings=card.webView.settings
+                assertTrue("WebView pinch support disabled",settings.supportZoom)
+                assertTrue("Built-in pinch gesture disabled",settings.builtInZoomControls)
+                assertFalse("On-screen zoom buttons must be hidden",settings.displayZoomControls)
+                card.loadAddress("https://appassets.androidplatform.net/assets/isolation_test.html")
+            }
+            tapView(scenario,id) // Use visible expand control to reach full-size webpage.
+            var loaded=false
+            for(attempt in 0 until 50){
+                scenario.onActivity{a->
+                    val w=a.auditPanes().first{it.first.id==id}.second!!.webView
+                    loaded=w.progress==100&&w.url.orEmpty().contains("isolation_test.html")
+                }
+                if(loaded)break
+                Thread.sleep(200)
+            }
+            assertTrue("Controlled webpage failed to load",loaded)
+            // UiAutomator injects real two-pointer pinch gestures through the screen.
+            val browser=device.wait(Until.findObject(By.clazz("android.webkit.WebView")),10_000L)
+            assertNotNull("Webpage not accessible for pinch gesture",browser)
+            var originalScale=0f
+            scenario.onActivity{a->originalScale=a.auditPanes().first{it.first.id==id}.second!!.webView.scale}
+            browser.pinchOpen(.75f)
+            Thread.sleep(650)
+            var expandedScale=0f
+            scenario.onActivity{a->expandedScale=a.auditPanes().first{it.first.id==id}.second!!.webView.scale}
+            assertTrue("Pinch-open did not increase WebView page scale: $originalScale -> $expandedScale",
+                expandedScale>originalScale*1.04f)
+            browser.pinchClose(.55f)
+            Thread.sleep(650)
+            var closedScale=0f
+            scenario.onActivity{a->
+                val card=a.auditPanes().first{it.first.id==id}.second!!
+                closedScale=card.webView.scale
+                assertSame("Pinching must not replace WebView",original,card.webView)
+                assertEquals("Pinching must not change the pane profile",id,card.state.id)
+            }
+            assertTrue("Pinch-close did not reduce WebView page scale: $expandedScale -> $closedScale",
+                closedScale<expandedScale*.98f)
         }finally{scenario.close()}
     }
 

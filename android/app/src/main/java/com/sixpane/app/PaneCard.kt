@@ -183,6 +183,8 @@ class PaneCard(
                 javaScriptEnabled=true;domStorageEnabled=true;databaseEnabled=true
                 loadsImagesAutomatically=true;javaScriptCanOpenWindowsAutomatically=false
                 setSupportMultipleWindows(false)
+                // Native Android WebView gestures, no SIXPANE zoom buttons.
+                setSupportZoom(true)
                 builtInZoomControls=true;displayZoomControls=false
                 useWideViewPort=true;loadWithOverviewMode=!state.desktop
                 mediaPlaybackRequiresUserGesture=true
@@ -292,16 +294,6 @@ class PaneCard(
         state.url=url;host.persist();updateSiteLabel();updateInteractionSurfaces();host.onPaneUrlChanged(state.id)
         // A navigation during backoff updates the recovery target without changing its profile.
         if(webViewAlive)webView.loadUrl(url)
-    }
-    fun zoomByStep(direction:Int)=zoom(WorkspacePolicy.ZOOM_STEP*direction)
-    fun resetZoom(){zoomTo(100)}
-    private fun zoom(step:Int)=zoomTo((state.zoom+step).coerceIn(50,200))
-    private fun zoomTo(target:Int){
-        if(target==state.zoom)return
-        // Apply relative zoom to the actual WebView, rather than CSS-zooming a screenshot.
-        if(webViewAlive)webView.zoomBy(target.toFloat()/state.zoom.toFloat())
-        state.zoom=target
-        updateZoomIndicator();host.persist()
     }
     private fun updateZoomIndicator(){indicator.text=WorkspacePolicy.displayZoom(state.zoom);indicator.visibility=if(state.zoom==100)View.GONE else View.VISIBLE}
     private fun updateDesktopWithoutReload(){
