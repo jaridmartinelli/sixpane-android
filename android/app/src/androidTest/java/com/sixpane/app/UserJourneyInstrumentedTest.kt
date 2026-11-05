@@ -25,6 +25,21 @@ class UserJourneyInstrumentedTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val device = UiDevice.getInstance(instrumentation)
 
+    @org.junit.Before
+    fun resetDisposableEmulatorFixture(){
+        val app=instrumentation.targetContext
+        // NEVER clear a real phone's data or a non-preview package.
+        val hw=android.os.Build.HARDWARE.lowercase()
+        val fingerprint=android.os.Build.FINGERPRINT.lowercase()
+        val emulator=hw.contains("ranchu")||hw.contains("goldfish")||
+            fingerprint.contains("generic")||fingerprint.contains("sdk_gphone")
+        assertTrue("Destructive test fixture reset is emulator-only",emulator)
+        assertEquals("com.sixpane.app.preview.filterpages",app.packageName)
+        assertTrue("Test manifest reset failed",
+            app.getSharedPreferences("sixpane-local-v2",android.content.Context.MODE_PRIVATE)
+                .edit().clear().commit())
+    }
+
     private fun clickLabel(label:String){
         val item=device.wait(Until.findObject(By.text(label)),8_000L)
         assertNotNull("Expected menu item: $label",item)
