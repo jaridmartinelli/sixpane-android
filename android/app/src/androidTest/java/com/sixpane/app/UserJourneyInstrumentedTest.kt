@@ -45,6 +45,8 @@ class UserJourneyInstrumentedTest {
         var x=-1;var y=-1
         scenario.onActivity{activity->
             val target=findControl(activity.window.decorView,prefix)
+                ?:if(prefix=="Window selection and batch actions")
+                    findControl(activity.window.decorView,"Window batch actions:") else null
             assertNotNull("On-screen control not found: "+prefix,target)
             val loc=IntArray(2);target!!.getLocationOnScreen(loc)
             x=loc[0]+target.width/2
