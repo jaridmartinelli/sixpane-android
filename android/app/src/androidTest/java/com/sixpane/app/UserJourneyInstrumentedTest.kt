@@ -34,7 +34,7 @@ class UserJourneyInstrumentedTest {
         val emulator=hw.contains("ranchu")||hw.contains("goldfish")||
             fingerprint.contains("generic")||fingerprint.contains("sdk_gphone")
         assertTrue("Destructive test fixture reset is emulator-only",emulator)
-        assertEquals("com.sixpane.app.preview.filterpages",app.packageName)
+        assertEquals("com.sixpane.app.preview.filterview",app.packageName)
         assertTrue("Test manifest reset failed",
             app.getSharedPreferences("sixpane-local-v2",android.content.Context.MODE_PRIVATE)
                 .edit().clear().commit())

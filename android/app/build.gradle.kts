@@ -9,17 +9,17 @@ android {
         applicationId = "com.sixpane.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.12-filter-pages"
+        versionCode = 13
+        versionName = "0.13-filter-view"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }
     buildTypes {
         debug {
             // User-approved side-by-side install; existing One-Hand sessions remain in their original app.
-            applicationIdSuffix = ".preview.filterpages"
+            applicationIdSuffix = ".preview.filterview"
             versionNameSuffix = "-preview"
-            manifestPlaceholders["appLabel"] = "SIXPANE Filter Preview"
+            manifestPlaceholders["appLabel"] = "SIXPANE Filter View Preview"
         }
         release { isMinifyEnabled = false }
     }
