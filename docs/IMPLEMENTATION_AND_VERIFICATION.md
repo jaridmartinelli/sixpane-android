@@ -223,3 +223,11 @@ After the reported conflict, the user explicitly selected **Install alongside**.
    - Correction/verification: commit \`bf028d5ec81444684e59aa6d6cc911f429d2f3de\` added URI-host-aware matching and regression tests. Run 41970855385 compiled successfully with 17 passing unit tests.
 
 No user app data or previously installed APKs were altered. Runtime behavior on the OnePlus Open remains unverified because the connected Termux device was offline.
+
+## November 5, 2026 — Blank address hint and compact, lockable workspace tabs
+
+- Focused pane URLs remain `about:blank` internally. The universal address field shows the translucent `Google Search` hint with empty actual text only when that focused pane URL is `about:blank`; typing searches/URLs and navigating real pages are unchanged.
+- All seven workspace slots remain in one equal-width bottom row on narrow phones, without horizontal scrolling. Each has a contained outline and a narrow separation; inactive/empty slots remain visible.
+- Long-press an existing workspace tab to set its existing `WorkspaceState.locked` flag, protecting the workspace from closure. A red lock image appears on that tab; tap that image to remove the lock. Tap the numbered portion to switch workspaces (or swap the active grid layout). The workspace tools remain accessible through the global three-dot menu.
+- Workspace locks are independent of per-pane locks; no pane profile IDs, cookies, live WebViews or saved browsing data are changed by these UI actions.
+- Verification still needed: compile/JVM tests in GitHub Actions; on-device checks at standard mobile widths, all seven slots, lock accessibility, click/hold hit zones, keyboard resizing, switching without reloading and session continuity. No physical device test has been performed for this change.
