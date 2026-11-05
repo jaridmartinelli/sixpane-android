@@ -1,10 +1,16 @@
 name: SIXPANE Android debug APK
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'results/harness_regression.cjs'
+      - '.github/workflows/sixpane-debug-apk.yml'
   push:
     branches: [main]
     paths:
       - 'android/**'
+      - 'results/harness_regression.cjs'
       - '.github/workflows/sixpane-debug-apk.yml'
 
 permissions:
@@ -17,6 +23,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Harness logic regression (simulated storage and time)
         shell: bash
         run: |

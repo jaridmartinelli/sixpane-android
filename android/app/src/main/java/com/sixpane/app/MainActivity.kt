@@ -13,11 +13,6 @@ import android.provider.Settings
 import android.view.*
 import android.widget.*
 import android.text.InputType
-import android.text.Editable
-import android.text.TextWatcher
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
-import android.content.Context
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewFeature
 import java.util.Locale
@@ -30,14 +25,8 @@ class MainActivity:Activity(){
     private val handler=Handler(Looper.getMainLooper())
     private lateinit var screen:LinearLayout
     private lateinit var tabStrip:LinearLayout
-    private lateinit var topBar:LinearLayout
-    private lateinit var topFilter:EditText
-    private lateinit var topAddress:EditText
-    private lateinit var topStar:TextView
-    private lateinit var topClear:TextView
-    private lateinit var topDots:TextView
+    private lateinit var universalBar: UniversalBar
     private lateinit var filterEmpty:TextView
-    private var updatingTop=false
     private val saveFilter=Runnable{if(::store.isInitialized)store.save()}
     private var selecting=false
     private val selectedPanes=linkedSetOf<String>()
@@ -116,8 +105,17 @@ class MainActivity:Activity(){
                 if(r-l!=lastLayoutWidth||b-t!=lastLayoutHeight){lastLayoutWidth=r-l;lastLayoutHeight=b-t;positionCards(false)}
             }
         }
-        setupUniversalBar()
-        screen.addView(topBar,LinearLayout.LayoutParams(-1,dp(48)))
+        universalBar = UniversalBar(
+            activity = this,
+            initialFilter = store.filterQuery,
+            onFilterChanged = ::onFilterChanged,
+            onAddressSubmitted = ::submitFocusedAddress,
+            onBookmarkClick = ::toggleFocusedBookmark,
+            onBookmarkLongClick = ::showFocusedBookmarks,
+            onClearFilters = ::clearAllFilters,
+            onMenuClick = ::universalMenu,
+        )
+        screen.addView(universalBar.view,LinearLayout.LayoutParams(-1,dp(48)))
         screen.addView(stage,LinearLayout.LayoutParams(-1,0,1f))
         screen.addView(tabStrip,LinearLayout.LayoutParams(-1,dp(48)))
         filterEmpty=TextView(this).apply{
@@ -131,122 +129,70 @@ class MainActivity:Activity(){
         if(pendingFailures>0)notice("${pendingFailures} retired profiles await deletion on a later clean start; no IDs will be reused")
     }
 
-    /**
-     * Universal control occupies a single compact row, never a second permanent toolbar.
-     * Filtering changes only pane geometry; it never destroys or reloads WebViews.
-     */
-    private fun setupUniversalBar(){
-        topBar=LinearLayout(this).apply{
-            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
-            setPadding(dp(5),dp(3),dp(5),dp(3))
-            setBackgroundColor(Color.rgb(19,26,37))
+    private fun onFilterChanged(query: String) {
+        store.filterQuery = query
+        handler.removeCallbacks(saveFilter)
+        handler.postDelayed(saveFilter, 250L)
+        if (selecting) {
+            val allowed = currentFilteredPanes().map { it.id }.toSet()
+            selectedPanes.retainAll(allowed)
+            updateSelection()
         }
-        fun field(hintText:String):EditText=EditText(this).apply{
-            hint=hintText;textSize=13f;setSingleLine(true)
-            setTextColor(Color.WHITE);setHintTextColor(Color.rgb(146,159,179))
-            setPadding(dp(10),0,dp(7),0)
-            inputType=InputType.TYPE_CLASS_TEXT
-            background=GradientDrawable().apply{
-                setColor(Color.rgb(39,49,64));cornerRadius=dp(8).toFloat()
-            }
-        }
-        topFilter=field("Filter URL or color")
-        topFilter.imeOptions=EditorInfo.IME_ACTION_SEARCH
-        topFilter.addTextChangedListener(object:TextWatcher{
-            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
-            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){}
-            override fun afterTextChanged(s:Editable?){
-                if(updatingTop||!::store.isInitialized)return
-                store.filterQuery=s?.toString().orEmpty()
-                handler.removeCallbacks(saveFilter);handler.postDelayed(saveFilter,250L)
-                if(selecting){
-                    val allowed=currentFilteredPanes().map{it.id}.toSet()
-                    selectedPanes.retainAll(allowed);updateSelection()
-                }
-                updateUniversalBar();positionCards(false)
-            }
-        })
-        topAddress=field("Search Google or type URL")
-        topAddress.inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-        topAddress.imeOptions=EditorInfo.IME_ACTION_GO
-        topAddress.setOnEditorActionListener{_,actionId,_->
-            if(actionId==EditorInfo.IME_ACTION_GO){submitFocusedAddress();true}else false
-        }
-        topStar=smallButton("☆",40){
-            val id=store.focusId?:return@smallButton
-            val pane=store.active().panes.firstOrNull{it.id==id}?:return@smallButton
-            val added=store.toggleBookmarkForPane(id,pane.url)
-            when(added){
-                true->notice("Saved to this browser's bookmarks")
-                false->notice("Removed from this browser's bookmarks")
-                null->notice("Open a webpage before bookmarking")
-            }
-            updateUniversalBar()
-        }
-        topStar.setOnLongClickListener{
-            store.focusId?.let{showBookmarksForPane(it)};true
-        }
-        topClear=smallButton("×",34){clearAllFilters()}
-        topDots=smallButton("⋮",42){universalMenu()}
-        topDots.contentDescription="Window selection and batch actions"
-        topBar.addView(topFilter,LinearLayout.LayoutParams(0,-1,1f))
-        topBar.addView(topAddress,LinearLayout.LayoutParams(0,-1,1f))
-        topBar.addView(topStar,LinearLayout.LayoutParams(dp(40),-1))
-        topBar.addView(topClear,LinearLayout.LayoutParams(dp(34),-1))
-        topBar.addView(topDots,LinearLayout.LayoutParams(dp(42),-1))
-        updatingTop=true;topFilter.setText(store.filterQuery);updatingTop=false
+        updateUniversalBar()
+        positionCards(false)
     }
-    private fun updateUniversalBar(){
-        if(!::topBar.isInitialized||!::store.isInitialized)return
-        val focused=store.active().panes.firstOrNull{it.id==store.focusId}
-        val inFocus=focused!=null
-        topFilter.visibility=if(inFocus)View.GONE else View.VISIBLE
-        topAddress.visibility=if(inFocus)View.VISIBLE else View.GONE
-        topStar.visibility=if(inFocus)View.VISIBLE else View.GONE
-        topClear.visibility=if(!inFocus &&
-            (store.filterQuery.isNotBlank()||store.selectedFrameColors.isNotEmpty()))View.VISIBLE else View.GONE
-        if(!inFocus){
-            if(!topFilter.hasFocus()&&topFilter.text.toString()!=store.filterQuery){
-                updatingTop=true;topFilter.setText(store.filterQuery);updatingTop=false
-            }
-            val chosen=store.selectedFrameColors
-            topFilter.hint=if(chosen.isEmpty())"Filter URL or color"
-                else "Colors: "+FramePalette.names.filter{it in chosen}.joinToString(", ")
-        }else{
-            if(!topAddress.hasFocus()&&topAddress.text.toString()!=focused.url)
-                topAddress.setText(focused.url)
-            val saved=store.bookmarkedInPane(focused.id,focused.url)
-            topStar.text=if(saved)"★" else "☆"
-            topStar.contentDescription=if(saved)"Remove bookmark from this browser" else "Bookmark this page in this browser"
-        }
-        topDots.contentDescription=if(selecting)
-            "Window batch actions: "+selectedPanes.size+" selected" else "Window selection and batch actions"
+
+    private fun updateUniversalBar() {
+        if (!::universalBar.isInitialized) return
+        val focused = store.active().panes.firstOrNull { it.id == store.focusId }
+        universalBar.render(
+            filterQuery = store.filterQuery,
+            selectedColors = store.selectedFrameColors,
+            focusedUrl = focused?.url,
+            bookmarked = focused?.let { store.bookmarkedInPane(it.id, it.url) } == true,
+            selectionCount = selectedPanes.size.takeIf { selecting },
+        )
     }
-    private fun submitFocusedAddress(){
-        val id=store.focusId?:return
-        val raw=topAddress.text.toString()
-        val card=cards[id]
-        val success=if(card!=null)card.submitAddress(raw) else{
-            val url=BrowserPolicy.resolveAddressOrSearch(raw)
-            if(url==null)false else {
-                store.active().panes.firstOrNull{it.id==id}?.url=url;store.save();true
-            }
+
+    private fun toggleFocusedBookmark() {
+        val id = store.focusId ?: return
+        val pane = store.active().panes.firstOrNull { it.id == id } ?: return
+        when (store.toggleBookmarkForPane(id, pane.url)) {
+            true -> notice("Saved to this browser's bookmarks")
+            false -> notice("Removed from this browser's bookmarks")
+            null -> notice("Open a webpage before bookmarking")
         }
-        if(!success){topAddress.error="Enter a URL or search";return}
-        topAddress.clearFocus()
-        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-            .hideSoftInputFromWindow(topAddress.windowToken,0)
         updateUniversalBar()
     }
+
+    private fun showFocusedBookmarks() {
+        store.focusId?.let { showBookmarksForPane(it) }
+    }
+
+    private fun submitFocusedAddress(raw: String) {
+        val id = store.focusId ?: return
+        val card = cards[id]
+        val success = if (card != null) card.submitAddress(raw) else {
+            val url = BrowserPolicy.resolveAddressOrSearch(raw)
+            if (url == null) false else {
+                store.active().panes.firstOrNull { it.id == id }?.url = url
+                store.save()
+                true
+            }
+        }
+        universalBar.finishAddressSubmission(success)
+        if (success) updateUniversalBar()
+    }
+
     fun onPaneUrlChanged(id:String){
-        if(!::topBar.isInitialized)return
+        if(!::universalBar.isInitialized)return
         if(store.focusId==id)updateUniversalBar()
         if(store.filterQuery.isNotBlank())positionCards(false)
     }
     private fun clearAllFilters(){
         store.filterQuery=""
         store.selectedFrameColors.clear();store.save()
-        updatingTop=true;topFilter.setText("");updatingTop=false
+        universalBar.setFilterText("")
         if(selecting){selectedPanes.clear();updateSelection()}
         updateUniversalBar();positionCards(true)
     }
@@ -280,7 +226,7 @@ class MainActivity:Activity(){
                 store.selectedFrameColors.clear();store.selectedFrameColors.addAll(chosen)
                 // Selecting picker chips explicitly replaces the prior typed filter.
                 store.filterQuery="";store.save()
-                updatingTop=true;topFilter.setText("");updatingTop=false
+                universalBar.setFilterText("")
                 if(selecting){selectedPanes.clear();updateSelection()}
                 updateUniversalBar();positionCards(true)
             }.create()
@@ -292,49 +238,48 @@ class MainActivity:Activity(){
         selectedPanes.addAll(currentFilteredPanes().map{it.id})
         updateSelection()
     }
-    /** Permanent top-right menu in both grid and focus modes. */
-    private fun universalMenu(){
-        val popup=PopupMenu(this,topDots)
-        val count=selectedPanes.size
-        val panes=store.active().panes.filter{it.id in selectedPanes}
-        val anyLocked=panes.any{it.locked}
-        val anyUnlocked=panes.any{!it.locked}
-        popup.menu.add(if(selecting)"Exit selection" else "Select multiple")
-        popup.menu.add("Select all visible")
-        popup.menu.add("Deselect all").isEnabled=count>0
-        popup.menu.add("Lock selected").isEnabled=anyUnlocked
-        popup.menu.add("Unlock selected").isEnabled=anyLocked
-        popup.menu.add("Close selected").isEnabled=count>0&&!anyLocked
-        popup.menu.add("Bookmark selected").isEnabled=count>0
-        popup.menu.add("Share selected").isEnabled=count>0
-        popup.menu.add("Set selected frame color").isEnabled=count>0
-        popup.menu.add("Filter colors ("+store.selectedFrameColors.size+"/6)")
-        popup.menu.add("Clear filters").isEnabled=store.filterQuery.isNotBlank()||
-            store.selectedFrameColors.isNotEmpty()
-        if(store.focusId!=null)popup.menu.add("Bookmarks for this browser")
-        popup.menu.add("Workspace tools")
-        popup.setOnMenuItemClickListener{item->
-            when(item.title.toString()){
-                "Select multiple"->enterSelection()
-                "Exit selection"->exitSelection()
-                "Select all visible"->selectVisiblePanes()
-                "Deselect all"->{selectedPanes.clear();updateSelection()}
-                "Lock selected"->{panes.forEach{it.locked=true;cards[it.id]?.updateLockStatus()}
-                    store.save();updateSelection()}
-                "Unlock selected"->{panes.forEach{it.locked=false;cards[it.id]?.updateLockStatus()}
-                    store.save();updateSelection()}
-                "Close selected"->confirmCloseSelected()
-                "Bookmark selected"->{panes.forEach{store.bookmarkForPane(it.id,it.url)}
-                    notice("Saved bookmarks in "+panes.size+" browsers");updateUniversalBar()}
-                "Share selected"->shareUrls(panes.map{it.url})
-                "Set selected frame color"->chooseColorForSelected()
-                "Clear filters"->clearAllFilters()
-                "Bookmarks for this browser"->store.focusId?.let{showBookmarksForPane(it)}
-                "Workspace tools"->workspaceMenu()
-                else->if(item.title.toString().startsWith("Filter colors"))pickFilterColors()
-            };true
+    private fun universalMenu() {
+        val panes = store.active().panes.filter { it.id in selectedPanes }
+        universalBar.showMenu(
+            selecting = selecting,
+            selectionCount = selectedPanes.size,
+            anyLocked = panes.any { it.locked },
+            anyUnlocked = panes.any { !it.locked },
+            colorCount = store.selectedFrameColors.size,
+            hasFilters = store.filterQuery.isNotBlank() || store.selectedFrameColors.isNotEmpty(),
+            hasFocusedPane = store.focusId != null,
+        ) { action ->
+            when (action) {
+                UniversalMenuAction.SELECT_MULTIPLE -> enterSelection()
+                UniversalMenuAction.EXIT_SELECTION -> exitSelection()
+                UniversalMenuAction.SELECT_VISIBLE -> selectVisiblePanes()
+                UniversalMenuAction.DESELECT_ALL -> {
+                    selectedPanes.clear()
+                    updateSelection()
+                }
+                UniversalMenuAction.LOCK_SELECTED, UniversalMenuAction.UNLOCK_SELECTED -> {
+                    val lock = action == UniversalMenuAction.LOCK_SELECTED
+                    panes.forEach {
+                        it.locked = lock
+                        cards[it.id]?.updateLockStatus()
+                    }
+                    store.save()
+                    updateSelection()
+                }
+                UniversalMenuAction.CLOSE_SELECTED -> confirmCloseSelected()
+                UniversalMenuAction.BOOKMARK_SELECTED -> {
+                    panes.forEach { store.bookmarkForPane(it.id, it.url) }
+                    notice("Saved bookmarks in ${panes.size} browsers")
+                    updateUniversalBar()
+                }
+                UniversalMenuAction.SHARE_SELECTED -> shareUrls(panes.map { it.url })
+                UniversalMenuAction.COLOR_SELECTED -> chooseColorForSelected()
+                UniversalMenuAction.FILTER_COLORS -> pickFilterColors()
+                UniversalMenuAction.CLEAR_FILTERS -> clearAllFilters()
+                UniversalMenuAction.PANE_BOOKMARKS -> showFocusedBookmarks()
+                UniversalMenuAction.WORKSPACE_TOOLS -> workspaceMenu()
+            }
         }
-        popup.show()
     }
     private fun chooseColorForSelected(){
         val ids=selectedPanes.toSet()
@@ -343,10 +288,6 @@ class MainActivity:Activity(){
             .setItems(FramePalette.names.toTypedArray()){_,which->
                 recolorWindows(ids,FramePalette.colors[which])
             }.show()
-    }
-    private fun smallButton(label:String,width:Int=32,action:()->Unit):TextView=TextView(this).apply{
-        text=label;textSize=17f;setTextColor(Color.argb(208,255,255,255));gravity=Gravity.CENTER
-        setBackgroundColor(Color.TRANSPARENT);setOnClickListener{action()};minWidth=dp(width)
     }
     fun persist(){store.save()}
     fun notice(message:String){textNotice?.cancel();textNotice=Toast.makeText(this,message,Toast.LENGTH_LONG);textNotice?.show()}
@@ -362,8 +303,8 @@ class MainActivity:Activity(){
             val active=ws?.id==store.currentId
             val next=index==store.spaces.size
             val label=if(active)"${index+1}\n${store.columns}×${6/store.columns}" else if(next)"${index+1}\n+" else "${index+1}"
-            val tab=smallButton(label,0){
-                if(ws==null){if(next)createWorkspace();return@smallButton}
+            val tab=chromeButton(label,0){
+                if(ws==null){if(next)createWorkspace();return@chromeButton}
                 if(active){
                     store.columns=if(store.columns==2)3 else 2;store.focusId=null;store.save();renderTabs();positionCards(true)
                 }else{
