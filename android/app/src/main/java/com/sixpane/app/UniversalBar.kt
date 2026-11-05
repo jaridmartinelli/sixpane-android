@@ -90,6 +90,18 @@ internal class UniversalBar(
         }
     }
 
+    fun applyChromeTheme(light:Boolean){
+        val chrome=if(light)Color.rgb(237,242,248) else Color.rgb(19,26,37)
+        val fieldColor=if(light)Color.WHITE else Color.rgb(39,49,64)
+        val foreground=if(light)Color.rgb(26,38,54) else Color.WHITE
+        val hint=if(light)Color.rgb(97,113,131) else Color.rgb(146,159,179)
+        view.setBackgroundColor(chrome)
+        listOf(filter,address).forEach{
+            it.setTextColor(foreground);it.setHintTextColor(hint)
+            it.background=GradientDrawable().apply{setColor(fieldColor);cornerRadius=dp(8).toFloat()}
+        }
+        listOf(star,clear,dots).forEach{it.setTextColor(foreground)}
+    }
     fun setFilterText(query: String) {
         updatingFilter = true
         filter.setText(query)
@@ -141,6 +153,7 @@ internal class UniversalBar(
         colorCount: Int,
         hasFilters: Boolean,
         hasFocusedPane: Boolean,
+        columns: Int,
         onAction: (UniversalMenuAction) -> Unit,
     ) {
         val popup = PopupMenu(activity, dots)
@@ -166,8 +179,19 @@ internal class UniversalBar(
         add(UniversalMenuAction.COLOR_SELECTED, "Set selected frame color", hasSelection)
         add(UniversalMenuAction.FILTER_COLORS, "Filter colors ($colorCount/${FramePalette.MAX_SELECTED_COLORS})")
         add(UniversalMenuAction.CLEAR_FILTERS, "Clear filters", hasFilters)
+        // Choose a layout here; never require a special tap on the workspace tab.
+        for((action,label,col) in listOf(
+            Triple(UniversalMenuAction.GRID_2_BY_3,"2 × 3 layout",2),
+            Triple(UniversalMenuAction.GRID_3_BY_2,"3 × 2 layout",3)
+        )){
+            popup.menu.add(label).apply{
+                isCheckable=true;isChecked=(columns==col)
+                setOnMenuItemClickListener{onAction(action);true}
+            }
+        }
         if (hasFocusedPane) add(UniversalMenuAction.PANE_BOOKMARKS, "Bookmarks for this browser")
         add(UniversalMenuAction.WORKSPACE_TOOLS, "Workspace tools")
+        add(UniversalMenuAction.SETTINGS, "Settings")
         popup.show()
     }
 }
@@ -175,7 +199,8 @@ internal class UniversalBar(
 internal enum class UniversalMenuAction {
     SELECT_MULTIPLE, EXIT_SELECTION, SELECT_VISIBLE, DESELECT_ALL, LOCK_SELECTED,
     UNLOCK_SELECTED, CLOSE_SELECTED, BOOKMARK_SELECTED, SHARE_SELECTED, COLOR_SELECTED,
-    FILTER_COLORS, CLEAR_FILTERS, PANE_BOOKMARKS, WORKSPACE_TOOLS,
+    FILTER_COLORS, CLEAR_FILTERS, GRID_2_BY_3, GRID_3_BY_2, PANE_BOOKMARKS,
+    WORKSPACE_TOOLS, SETTINGS,
 }
 
 internal fun Context.chromeButton(label: String, widthPx: Int, action: () -> Unit): TextView =
@@ -184,7 +209,9 @@ internal fun Context.chromeButton(label: String, widthPx: Int, action: () -> Uni
         textSize = 17f
         setTextColor(Color.argb(208, 255, 255, 255))
         gravity = Gravity.CENTER
-        setBackgroundColor(Color.TRANSPARENT)
+        background=android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(Color.argb(80,160,187,222)),
+            android.graphics.drawable.ColorDrawable(Color.TRANSPARENT),null)
         setOnClickListener { action() }
         minWidth = widthPx
     }
