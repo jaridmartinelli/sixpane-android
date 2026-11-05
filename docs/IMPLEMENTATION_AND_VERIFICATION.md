@@ -233,3 +233,18 @@ No user app data or previously installed APKs were altered. Runtime behavior on 
 - Existing named WebView profiles, workspaces, cookie jars, bookmarks, viewport values and user data are not regenerated or migrated by this code change.
 - A separate 0.8 Compatibility Preview package identity protects existing v0.2–0.7 preview data, signing identities and sessions.
 - Compilation, pure JVM tests, static User-Agent regression check, Android instrumented UA test, and emulator user-journey test must be reported separately. Emulator and phone results are not interchangeable. Security checks on external websites are not bypassed or guaranteed to pass.
+
+
+## User-flow smoke test — dedicated emulator, clean new preview install
+
+Added \`UserJourneyInstrumentedTest\` to exercise:
+- startup of six independently profiled WebViews and their actual system User-Agent strings;
+- permanent top-right dots, select multiple, select all visible, lock/unlock selected;
+- expand / collapse (Right Stack) via actual corner touch targets;
+- focused address input, local controlled test page navigation and a per-browser bookmark;
+- URL/color grid filter while preserving six allocated WebViews;
+- workspace creation with six fresh profile IDs, preserving old workspace bookmarks;
+- emulator screenshot capture and debug logs in a separate run.
+
+This is an **emulator-only** fresh install. No stored user profiles, real website queues, external WAF challenge or actual OnePlus Open are accessed.
+The runtime test must visibly pass; adding the test is not itself proof of passage.
