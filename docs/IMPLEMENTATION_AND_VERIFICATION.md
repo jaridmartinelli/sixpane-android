@@ -307,3 +307,29 @@ Verification:
 - Each pane retains its profile, cookies, URL and previously saved zoom metadata. Native pinch doesn't manufacture or modify profile identifiers; no user data clearing.
 - A clean Android emulator instrumentation test performs real two-pointer pinch-open and pinch-close gestures against a controlled local page and asserts scale changes and WebView identity continuity.
 - Older v0.10 installation is protected by a distinct \`com.sixpane.app.preview.pinch\` debug package ID.
+
+
+## November 5, 2026 — Global filtered six-slot view
+
+Approved behavior:
+- A non-empty top filter (URL text, typed color, or up to six picker colors) searches **all** real workspaces, not only the active workspace.
+- Matching pane identities are grouped in stable original workspace/pane order into temporary pages of up to six. Example: **14 matches -> 6 + 6 + 2**; four slots on the third page are empty stage background. This arithmetic correction supersedes "three on the third page" in the user description.
+- Each temporary page uses **full six-cell** geometry in both 2 × 3 and 3 × 2 modes; partial pages never expand their matches to fill missing cells.
+- Only temporary filtered tabs are shown while filtering; no additional workspaces are created or deleted. The original workspace tabs and adjacent dimmed \`+\` return when the filter is cleared.
+- The original workspaces, per-pane profile names, cookies, storage, bookmark ownership, zoom, locks and per-pane viewport differences remain unchanged by filtering, paging and clearing.
+- Clicking a filtered tab changes only the displayed group; long-press/tap lock on that filtered tab locks the panes currently in that temporary group, **not** the source workspace tab.
+- Batch actions on a temporary page act on the selected real pane identities even when they originate from different workspaces. Cross-workspace closing rechecks live locks (including source workspace locks) and tombstones only explicitly selected profiles; replacements stay in the originals.
+- Source workspace management is disabled while the temporary filtered view is active to avoid destructive ambiguity.
+- New side-by-side debug package identity \`com.sixpane.app.preview.filterpages\` prevents accidental overwrites of earlier test APKs and their saved profiles.
+
+Verification and limits:
+- Four Android-independent \`FilteredPanePagesTest\` regression cases check 14 -> 6+6+2, unchanged full-size geometry, empty results and focused geometry.
+- \`FilteredTabsInstrumentedTest\` exercises actual taps on \`+2\`, \`+3\`, filter text entry, filtered tabs, grouped locks and clear, while checking 18 live pane identities and their WebView instances. Captures \`filtered-14.png\` with visual evidence of empty cells.
+- Emulator gesture test and physical OnePlus Open verification must each be reported as completed or unverified based on observed results; CI compilation alone does not prove touch behavior.
+
+### Incident — instrumented test API compilation failure
+- Evidence: Android emulator runs 42028441280 and 42028441144 failed compiling \`UserJourneyInstrumentedTest.kt\` line 236 because \`settings.supportZoom\` was used as a property rather than calling \`settings.supportZoom()\`.
+- Cause: Android WebSettings method API misused in instrumentation code, a regression from the native pinch-to-zoom test edit.
+- Repair: Commit \`dc1648650e35d4ade181671994d3b652c636e2fa\` fixes the call without changing Android browser implementation.
+- Prevention: Require \`:app:assembleDebugAndroidTest\` alongside \`:app:testDebugUnitTest :app:assembleDebug\` before calling an interaction change build-ready; a successful app APK alone does not compile instrumentation sources.
+- Verification: Emulator workflows after the fix reach their "Enable KVM" and "Tap actual filter and tabs on clean emulator" stages, confirming instrumentation compilation. Runtime gesture results are assessed separately.
