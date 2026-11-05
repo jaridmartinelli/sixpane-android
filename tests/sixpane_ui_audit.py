@@ -12,8 +12,8 @@ def adb(*args):
 assert adb('get-serialno').strip().startswith('emulator-'), 'Refusing to modify a physical device'
 apk = next(Path('tested-apk').rglob('*.apk'))
 with zipfile.ZipFile(apk) as z:
-    dex_hash = hashlib.sha256(z.read('classes.dex')).hexdigest()
-assert dex_hash == 'a484314846fe8d859de22743fea1d65d0c498b56ed0fb53a192677b52fd245ca', 'Wrong application code'
+    dex_hash = hashlib.sha256(z.read('classes3.dex')).hexdigest()
+assert dex_hash == '7eedcfb3edcca70f728a2387e49cba9343fd26988b6f72316b49f0afa97ab53a', 'Wrong application code'
 adb('install', '-r', '-g', str(apk))
 adb('shell', 'wm', 'size', '900x1200')
 adb('shell', 'wm', 'density', '240')
@@ -43,7 +43,7 @@ def fresh():
 
 def label(text):
     q = d(textMatches='(?i)' + re.escape(text))
-    if not q.exists:
+    if not q.wait(timeout=4):
         s = d(scrollable=True)
         if s.exists:
             s.scroll.to(textMatches='(?i)' + re.escape(text), max_swipes=4)
@@ -134,7 +134,7 @@ def expanded_address():
     for text, predicate in [('weather', lambda u: 'google.com/search?' in u and 'weather' in u),
                             ('coffee near me', lambda u: 'google.com/search?' in u and 'coffee' in u),
                             ('example.com', lambda u: u.startswith('https://example.com'))]:
-        edit(text); d.send_action('go')
+        edit(text); label('Go')
         url = wait_for_url(1, predicate)
         observed.append({'input': text, 'url': url, 'bar': d(className='android.widget.EditText').get_text()})
     assert d(text='⋮').exists, 'Expanded menu is missing'
@@ -143,7 +143,7 @@ def expanded_address():
 def unlimited_colors():
     dots()
     q = d(textStartsWith='Filter colors (')
-    if not q.exists: d(scrollable=True).scroll.to(textStartsWith='Filter colors (', max_swipes=4)
+    if not q.wait(timeout=4): d(scrollable=True).scroll.to(textStartsWith='Filter colors (', max_swipes=4)
     q.click()
     names = ['Graphite','Blue','Teal','Amber','Purple','Rose','Silver','Green']
     for name in names: label(name)
@@ -186,7 +186,7 @@ def bookmarks():
     assert d(text='☆').wait(timeout=15), 'Pane 2 bookmark state changed after restart'
     restore(); expand(1)
     assert d(text='★').exists, 'Pane 1 bookmark did not survive restart'
-    edit('https://www.google.com'); d.send_action('go')
+    edit('https://www.google.com'); label('Go')
     wait_for_url(1, lambda u: 'google.com' in u)
     dots(); label('Bookmarks for this browser')
     saved = current_panes()[0]['paneBookmarks'][0]
@@ -231,7 +231,12 @@ def batch_actions():
     assert locks==[True,True,False,False,False,False], 'Wrong locked panes: '+str(locks)
     dots()
     close = d(text='Close selected')
-    assert close.exists and not close.info['enabled'], 'Locked selection can close'
+    assert close.wait(timeout=4), 'Close row missing'
+    ids_before=[p['id'] for p in current_panes()]
+    close.click(); time.sleep(.5)
+    assert not d(text='Close & Replace').exists, 'Locked selection opened close confirmation'
+    assert [p['id'] for p in current_panes()]==ids_before, 'Locked panes were replaced'
+    assert d(text='Unlock selected').exists, 'Disabled close did not retain menu'
     label('Unlock selected')
     dots(); label('Set selected frame color'); label('Blue')
     panes=current_panes();_, colors=runtime_state()

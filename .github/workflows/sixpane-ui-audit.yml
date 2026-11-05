@@ -14,11 +14,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Download existing v0.7 APK
+      - name: Download cleanup branch APK
         uses: actions/download-artifact@v4
         with:
           name: sixpane-android-build-results
-          run-id: 41971057477
+          run-id: 41984121454
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: tested-apk
       - name: Install UI driver
