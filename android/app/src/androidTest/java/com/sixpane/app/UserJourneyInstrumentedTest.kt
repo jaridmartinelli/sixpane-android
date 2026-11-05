@@ -31,11 +31,31 @@ class UserJourneyInstrumentedTest {
         item.click()
         device.waitForIdle()
     }
-    private fun openTopMenu(){
-        val menu=device.wait(Until.findObject(By.descContains("Window selection and batch actions")),8_000L)
-        assertNotNull("Universal top-right dots missing",menu)
-        menu.click()
+    private fun findControl(v:View,prefix:String):View? {
+        if(v.contentDescription?.toString()?.startsWith(prefix)==true && v.isShown)return v
+        if(v is ViewGroup)for(i in 0 until v.childCount){
+            findControl(v.getChildAt(i),prefix)?.let{return it}
+        }
+        return null
+    }
+    /** Inject a real screen tap using the native View's on-screen bounds.
+      * Accessibility queries can omit the top bar while multiple WebViews load.
+      */
+    private fun tapControl(scenario:ActivityScenario<MainActivity>,prefix:String){
+        var x=-1;var y=-1
+        scenario.onActivity{activity->
+            val target=findControl(activity.window.decorView,prefix)
+            assertNotNull("On-screen control not found: "+prefix,target)
+            val loc=IntArray(2);target!!.getLocationOnScreen(loc)
+            x=loc[0]+target.width/2
+            y=loc[1]+target.height/2
+        }
+        assertTrue("Control outside screen: "+prefix+" "+x+","+y,x>=0&&y>=0)
+        assertTrue("Touch injection failed: "+prefix,device.click(x,y))
         device.waitForIdle()
+    }
+    private fun openTopMenu(scenario:ActivityScenario<MainActivity>) {
+        tapControl(scenario,"Window selection and batch actions")
     }
     private fun findExpand(v:View):View? {
         if(v is CornerIcon&&v.kind==CornerIcon.Kind.EXPAND)return v
@@ -150,6 +170,45 @@ class UserJourneyInstrumentedTest {
         } finally{scenario.close()}
     }
 
+
+    @Test fun settingsLayoutAndWorkspaceTabLockRespondToRealUserTaps(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            var columns=2
+            scenario.onActivity{a->columns=a.store.columns}
+            openTopMenu(scenario)
+            clickLabel(if(columns==2)"Layout: 2 × 3 → 3 × 2" else "Layout: 3 × 2 → 2 × 3")
+            scenario.onActivity{a->assertNotEquals(columns,a.store.columns)}
+            openTopMenu(scenario)
+            clickLabel(if(columns==2)"Layout: 3 × 2 → 2 × 3" else "Layout: 2 × 3 → 3 × 2")
+            scenario.onActivity{a->assertEquals(columns,a.store.columns)}
+            openTopMenu(scenario)
+            clickLabel("Settings")
+            clickLabel("Appearance")
+            clickLabel("Light")
+            scenario.onActivity{a->assertTrue(a.store.lightMode)}
+            openTopMenu(scenario)
+            clickLabel("Settings")
+            clickLabel("Appearance")
+            clickLabel("Dark")
+            scenario.onActivity{a->assertFalse(a.store.lightMode)}
+            var x=-1;var y=-1;var wasLocked=false
+            scenario.onActivity{a->
+                wasLocked=a.store.active().locked
+                val tab=findControl(a.window.decorView,"Workspace 1")
+                assertNotNull("Workspace 1 tab absent",tab)
+                val location=IntArray(2);tab!!.getLocationOnScreen(location)
+                x=location[0]+tab.width/2
+                y=location[1]+tab.height/2
+            }
+            assertTrue(device.swipe(x,y,x,y,130))
+            scenario.onActivity{a->assertEquals(!wasLocked,a.store.active().locked)}
+            // The second hold restores original state so no other journey is affected.
+            assertTrue(device.swipe(x,y,x,y,130))
+            scenario.onActivity{a->assertEquals(wasLocked,a.store.active().locked)}
+        }finally{scenario.close()}
+    }
+
     @Test fun userFlowGridBatchLocksFocusSearchBookmarksAndWorkspace(){
         assertTrue("Emulator WebView lacks MULTI_PROFILE; no credible 6-pane user test is possible",
             WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE))
@@ -177,17 +236,17 @@ class UserJourneyInstrumentedTest {
             }
 
             // Operate the actual permanent top-right menu like a user.
-            openTopMenu()
+            openTopMenu(scenario)
             clickLabel("Select multiple")
-            openTopMenu()
+            openTopMenu(scenario)
             clickLabel("Select all visible")
-            openTopMenu()
+            openTopMenu(scenario)
             clickLabel("Lock selected")
             scenario.onActivity{a->assertTrue(a.store.active().panes.all{it.locked})}
-            openTopMenu()
+            openTopMenu(scenario)
             clickLabel("Unlock selected")
             scenario.onActivity{a->assertTrue(a.store.active().panes.none{it.locked})}
-            openTopMenu()
+            openTopMenu(scenario)
             clickLabel("Exit selection")
 
             // Tap the native expand control, then use the actual address bar and bookmark star.
