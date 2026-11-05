@@ -467,8 +467,8 @@ class MainActivity:Activity(){
             if(store.active().panes.all{it.locked})"Unlock all six" else "Lock all six",
             "Controlled test page", "Pending deletion status", "Select windows", "Bookmarks",
             "Open in all panes · this workspace", "Open in all panes · all workspaces",
-            "Session audit", "Desktop UA: ${if(store.desktopUserAgent)"on" else "off"}",
-            "Battery optimization exemption", "Lock / unlock workspace", "Close workspace")
+            "Session audit", "Battery optimization exemption",
+            "Lock / unlock workspace", "Close workspace")
         AlertDialog.Builder(this).setItems(options){_,idx->when(idx){
             0->{store.columns=if(store.columns==2)3 else 2;store.save();positionCards(true)}
             1->{val value=!store.active().panes.all{it.locked};store.active().panes.forEach {it.locked=value;cards[it.id]?.updateLockStatus()};store.save()}
@@ -481,10 +481,9 @@ class MainActivity:Activity(){
             6->bulkNavigation(false)
             7->bulkNavigation(true)
             8->SessionAudit(this).open()
-            9->toggleGlobalUserAgent()
-            10->requestBatteryExemption(true)
-            11->{store.active().locked=!store.active().locked;persist();renderTabs()}
-            12->closeWorkspace(store.active())
+            9->requestBatteryExemption(true)
+            10->{store.active().locked=!store.active().locked;persist();renderTabs()}
+            11->closeWorkspace(store.active())
         }}.show()
     }
     private fun navigatePanes(panes:List<PaneState>,url:String){
@@ -520,15 +519,6 @@ class MainActivity:Activity(){
                 dialog.dismiss()
             }
         };dialog.show()
-    }
-    private fun toggleGlobalUserAgent(){
-        if(store.spaces.any{ws->ws.panes.any{it.locked}}){notice("Unlock all panes before changing the shared user agent");return}
-        confirm("Change desktop UA for all panes?",
-            "This changes all browser request identities and may reload pages. Do this before joining a queue. The per-pane Desktop site toggle continues to control viewport fitting; when shared desktop UA is off it also selects desktop UA for that pane."){
-            if(store.spaces.any{ws->ws.panes.any{it.locked}}){notice("A pane was locked; change cancelled");return@confirm}
-            store.desktopUserAgent=!store.desktopUserAgent
-            cards.values.forEach{it.applyGlobalUserAgent()}
-        }
     }
     fun paneMenu(card:PaneCard){
         val choices=arrayOf(if(card.state.desktop)"Desktop site: on" else "Desktop site: off",

@@ -9,17 +9,17 @@ android {
         applicationId = "com.sixpane.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.7-universal"
+        versionCode = 8
+        versionName = "0.8-compat"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }
     buildTypes {
         debug {
             // User-approved side-by-side install; existing One-Hand sessions remain in their original app.
-            applicationIdSuffix = ".preview.universal"
+            applicationIdSuffix = ".preview.compat"
             versionNameSuffix = "-preview"
-            manifestPlaceholders["appLabel"] = "SIXPANE Universal Preview"
+            manifestPlaceholders["appLabel"] = "SIXPANE Compatibility Preview"
         }
         release { isMinifyEnabled = false }
     }

@@ -223,3 +223,13 @@ After the reported conflict, the user explicitly selected **Install alongside**.
    - Correction/verification: commit \`bf028d5ec81444684e59aa6d6cc911f429d2f3de\` added URI-host-aware matching and regression tests. Run 41970855385 compiled successfully with 17 passing unit tests.
 
 No user app data or previously installed APKs were altered. Runtime behavior on the OnePlus Open remains unverified because the connected Termux device was offline.
+
+
+## November 5, 2026 — genuine native WebView User-Agent and combined icon/UI build
+
+- Base: the existing refactor/sixpane-ui-cleanup branch, containing the chosen six-pane mipmap launcher icon, compact universal URL/filter bar, batch actions, Right Stack layout, 2dp inter-pane gaps, six-color filters and per-profile bookmarks.
+- Both mobile and desktop now keep the WebView's own user agent. Desktop site changes width/viewport fitting only, not claimed operating system, browser or installed engine.
+- Removed the obsolete global Desktop-UA menu toggle and hardcoded Windows Chrome 130 identifier. The old persisted preference key is retained but ignored to avoid deleting user settings. Android WebView dynamically determines its actual UA.
+- Existing named WebView profiles, workspaces, cookie jars, bookmarks, viewport values and user data are not regenerated or migrated by this code change.
+- A separate 0.8 Compatibility Preview package identity protects existing v0.2–0.7 preview data, signing identities and sessions.
+- Compilation, pure JVM tests, static User-Agent regression check, Android instrumented UA test, and emulator user-journey test must be reported separately. Emulator and phone results are not interchangeable. Security checks on external websites are not bypassed or guaranteed to pass.

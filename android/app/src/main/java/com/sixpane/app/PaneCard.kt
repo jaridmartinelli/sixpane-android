@@ -32,7 +32,6 @@ class PaneCard(
     private val selectionLayer=FrameLayout(host)
     private val selectionMark=TextView(host)
     private val assetLoader=WebViewAssetLoader.Builder().addPathHandler("/assets/",WebViewAssetLoader.AssetsPathHandler(host)).build()
-    private var baseUserAgent=""
     private val recoveryHandler=Handler(Looper.getMainLooper())
     private var webViewAlive=false
     private var disposed=false
@@ -145,7 +144,6 @@ class PaneCard(
         try {
             // First operation on EVERY instance, including recovery. Never mint a profile ID here.
             WebViewCompat.setProfile(fresh,state.profile)
-            baseUserAgent=fresh.settings.userAgentString
             fresh.settings.apply {
                 javaScriptEnabled=true;domStorageEnabled=true;databaseEnabled=true
                 loadsImagesAutomatically=true;javaScriptCanOpenWindowsAutomatically=false
@@ -153,7 +151,6 @@ class PaneCard(
                 builtInZoomControls=true;displayZoomControls=false
                 useWideViewPort=true;loadWithOverviewMode=!state.desktop
                 mediaPlaybackRequiresUserGesture=true
-                userAgentString=if(host.store.desktopUserAgent||state.desktop)BrowserPolicy.DESKTOP_USER_AGENT else baseUserAgent
             }
             WebViewCompat.getProfile(fresh).cookieManager.setAcceptThirdPartyCookies(fresh,true)
             fresh.webViewClient=onPageChanged
@@ -268,11 +265,9 @@ class PaneCard(
     private fun updateZoomIndicator(){indicator.text=WorkspacePolicy.displayZoom(state.zoom);indicator.visibility=if(state.zoom==100)View.GONE else View.VISIBLE}
     private fun updateDesktopWithoutReload(){
         if(!webViewAlive)return
-        webView.settings.userAgentString=if(host.store.desktopUserAgent||state.desktop)BrowserPolicy.DESKTOP_USER_AGENT else baseUserAgent
         webView.settings.useWideViewPort=true
         webView.settings.loadWithOverviewMode=!state.desktop
     }
-    fun applyGlobalUserAgent(){updateDesktopWithoutReload()}
     fun setDesktopMode(value:Boolean){
         if(state.locked)return
         state.desktop=value;updateDesktopWithoutReload();host.persist()

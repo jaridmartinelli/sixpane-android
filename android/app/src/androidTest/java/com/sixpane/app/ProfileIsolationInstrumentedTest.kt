@@ -1,6 +1,7 @@
 package com.sixpane.app
 
 import android.webkit.WebView
+import android.webkit.WebSettings
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.WebViewCompat
@@ -14,6 +15,24 @@ import java.util.UUID
 /** RUN ON A CLEAN TEST INSTALL ONLY. Creates two isolated persistent test profiles. */
 @RunWith(AndroidJUnit4::class)
 class ProfileIsolationInstrumentedTest {
+
+    @Test fun bothDisplayModesKeepGenuineSystemWebViewUserAgent(){
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        val ctx=instrumentation.targetContext
+        lateinit var expected:String
+        instrumentation.runOnMainSync{
+            expected=WebSettings.getDefaultUserAgent(ctx)
+            val w=WebView(ctx)
+            try {
+                assertEquals(expected,w.settings.userAgentString)
+                for(desktop in listOf(false,true,false)){
+                    w.settings.useWideViewPort=true
+                    w.settings.loadWithOverviewMode=!desktop
+                    assertEquals("Desktop mode must only change viewport behavior",expected,w.settings.userAgentString)
+                }
+            } finally {w.destroy()}
+        }
+    }
     @Test fun cookieManagersNeverLeakBetweenNamedProfiles(){
         assumeTrue(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE))
         val instrumentation=InstrumentationRegistry.getInstrumentation()

@@ -48,6 +48,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Check genuine WebView UA is not overridden
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R --include='*.kt' -En 'DESKTOP_USER_AGENT|Windows NT 10\.0|userAgentString[[:space:]]*=' android/app/src/main/java; then
+            echo 'Unexpected Android WebView User-Agent override'; exit 1
+          fi
       - name: Compile tests and debug APK
         working-directory: android
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
