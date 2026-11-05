@@ -13,7 +13,18 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
         dialog.window?.setGravity(Gravity.BOTTOM)
     }
     fun open(){
-        val labels=arrayOf("Lock","Desktop mode","Enter URL","Edit cookies","Close window","Select multiple","Frame color")
+        val allLocked=targets.all{it.locked}
+        val anyLocked=targets.any{it.locked}
+        val labels=arrayOf(
+            if(allLocked)"Unlock" else "Lock",
+            if(anyLocked)"Desktop mode (unlock first)"
+                else if(targets.all{it.desktop})"Desktop mode: on" else "Desktop mode: off",
+            "Enter URL",
+            if(anyLocked)"Edit cookies (unlock first)" else "Edit cookies",
+            if(targets.size==1)"Close window" else "Close selected windows",
+            if(host.selectingWindows())"Exit selection" else "Select multiple",
+            "Frame color"
+        )
         bottom(AlertDialog.Builder(host,android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
             .setTitle(if(targets.size==1)"Window ${host.paneIndex(origin.state.id)}" else "${targets.size} selected windows")
             .setItems(labels){_,which->when(which){
@@ -29,7 +40,13 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
             }}.create())
     }
     private fun unlocked():Boolean{
-        if(targets.any{it.locked}){host.notice("Unlock the selected windows first");return false}
+        if(targets.any{it.locked}){
+            targets.filter{it.locked}.forEach{
+                host.windowCard(it.id)?.lock?.blockedFeedback()
+            }
+            host.notice("Unlock the selected windows first")
+            return false
+        }
         return true
     }
     private fun address(){
