@@ -2,7 +2,7 @@ name: SIXPANE Android debug APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/universal-search-bookmarks]
+    branches: [main]
     paths:
       - 'android/**'
       - '.github/workflows/sixpane-debug-apk.yml'
