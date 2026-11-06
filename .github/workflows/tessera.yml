@@ -93,9 +93,15 @@ jobs:
           set -euo pipefail
           [ -d tessera-evidence/shots ] || exit 0
           mkdir -p ci-evidence/tessera && rm -f ci-evidence/tessera/*.jpg
-          for f in tessera-evidence/shots/*.png; do
-            convert "$f" -resize 540x -quality 70 "ci-evidence/tessera/$(basename "${f%.png}").jpg"
-          done
+          python3 -m pip install --quiet pillow
+          python3 - <<'PYEOF'
+          import glob, os
+          from PIL import Image
+          for f in sorted(glob.glob("tessera-evidence/shots/*.png")):
+              im = Image.open(f).convert("RGB")
+              im.thumbnail((540, 2000))
+              im.save("ci-evidence/tessera/" + os.path.basename(f)[:-4] + ".jpg", quality=72)
+          PYEOF
           git config user.name "tessera-ci"; git config user.email "tessera-ci@users.noreply.github.com"
           git add ci-evidence/tessera
           git diff --cached --quiet && exit 0
