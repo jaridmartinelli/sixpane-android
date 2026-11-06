@@ -72,8 +72,10 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
                 }
             }
         }
-        field.setOnEditorActionListener { _,actionId,_ ->
-            if(actionId==android.view.inputmethod.EditorInfo.IME_ACTION_GO){
+        field.setOnEditorActionListener { _,actionId,event ->
+            val hardwareEnter=event?.keyCode==android.view.KeyEvent.KEYCODE_ENTER &&
+                event.action==android.view.KeyEvent.ACTION_DOWN
+            if(actionId==android.view.inputmethod.EditorInfo.IME_ACTION_GO||hardwareEnter){
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
                 true
             }else false

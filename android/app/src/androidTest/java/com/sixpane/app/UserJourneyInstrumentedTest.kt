@@ -254,8 +254,9 @@ class UserJourneyInstrumentedTest {
             }
             assertTrue(device.swipe(x,y,x,y,130))
             scenario.onActivity{a->assertEquals(!wasLocked,a.store.active().locked)}
-            // The second hold restores original state so no other journey is affected.
-            assertTrue(device.swipe(x,y,x,y,130))
+            // Current behavior: hold to lock, then tap the red lock to unlock.
+            // A second hold must not silently unlock a protected workspace.
+            tapControl(scenario,"Unlock workspace 1")
             scenario.onActivity{a->assertEquals(wasLocked,a.store.active().locked)}
         }finally{scenario.close()}
     }

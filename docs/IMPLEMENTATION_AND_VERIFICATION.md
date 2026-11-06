@@ -344,3 +344,11 @@ Verification and limits:
 - **CI:** Only build canonical install artifacts from `main`. The integration branch can be tested using offline/static checks until it is merged.
 - **Recurring incident:** `main` stayed behind the advanced feature branch while the download workflow kept publishing changing package suffixes. This delivered an older UI despite a newer commit. Prevention: merge advanced UI into canonical main, protect signing and suffix, assert expected features in CI, name artifacts unambiguously, refuse to distribute builds from side branches.
 - **Limitations:** Actual WebView viewport rounding and all 42 live CSS ratios, Copy on the physical OnePlus Open, and signing compatibility with an existing v0.13 install are not yet proven.
+
+## November 6, 2026 — Emulator failure triage after v0.13 consolidation
+
+Observed on canonical PR `#4` run `42182295761`: three of nine clean-emulator journey checks failed. The prior v0.13 run `42038873619` already had the same pinch-close and typed-address failures before consolidation.
+- **Corrected an address submission gap:** the top focused URL/Google Search bar and long-press Enter URL sheet now accept hardware Enter (ACTION_DOWN), in addition to IME_ACTION_GO. The test injects hardware Enter; formerly no navigation occurred. No other pane, profile, cookies or bookmarks are altered by this input handling change.
+- **Corrected a stale regression test:** current approved tab interaction is long-press to lock, tap the red lock icon to unlock. The older test demanded a second hold to unlock; no user-facing behavior was changed to satisfy that outdated test.
+- **Still unresolved:** emulator WebView pinch-close reported no reduction in `WebView.getScale()` after a large pinch-open, also reproducible on the earlier v0.13 candidate. Do not report native pinch-close as verified. Investigate real-device touch input, page zoom limits, and test gesture radius before changing live-session scaling.
+- **Verification:** Android compilation and JVM tests must pass on the new commit. Instrumented test results remain separate and must not be retroactively claimed as passed.
