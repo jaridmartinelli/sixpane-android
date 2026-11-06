@@ -11,3 +11,5 @@
 - Local Android WebView app, no VPS or external browser runtime.
 
 Detailed current features and evidence: `docs/IMPLEMENTATION_AND_VERIFICATION.md`.
+
+**Mandatory artifact delivery policy:** See [`AGENTS.md`](AGENTS.md). No APK or other file link may be issued without actual delivery registration and retrieval checks. A successful build or local file checksum is not proof that ChatGPT can serve the link.
