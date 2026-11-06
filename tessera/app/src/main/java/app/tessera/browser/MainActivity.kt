@@ -317,6 +317,8 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     override fun isSelecting() = selecting
 
     override fun onPaneTouched(id: String) {
+        // Touching any page ends address editing, like a regular browser.
+        if (cmd.editing) cmd.clearAddress()
         if (selecting || id == state.activePaneId) return
         val old = state.activePaneId
         state.activePaneId = id
@@ -431,6 +433,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
 
     /** Workspace screen: up to 7 workspaces, add new ones here. */
     fun openWorkspaces() {
+        cmd.clearAddress()
         if (selecting) { toast("Finish selecting first (tap \u2715)"); return }
         val vis = visibleWorkspaces()
         val s = Sheet(this, "Workspaces", "${state.workspaces.size} of ${AppState.MAX_WORKSPACES}" + if (filtering()) " \u00B7 filtered" else "")
@@ -499,6 +502,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     fun openMainMenu() = openPaneMenu(activePane(), global = true)
 
     fun openPaneMenu(p: Pane, global: Boolean = false) {
+        cmd.clearAddress()
         val subtitle = when {
             p.url.isBlank() -> "New session — nothing open yet"
             p.title.isNotBlank() -> p.title + "\n" + AddressPolicy.label(p.url)
@@ -671,6 +675,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     private fun selectedPanes(): List<Pane> = selection.mapNotNull { state.pane(it) }
 
     fun enterSelection(initial: String? = null) {
+        cmd.clearAddress()
         selecting = true
         selection.clear()
         initial?.let { selection += it }
