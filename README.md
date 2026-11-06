@@ -1,5 +1,13 @@
-# SIXPANE — Phone-only Android source
+# SIXPANE — one canonical Android app
 
-This folder contains **new Android source** for the locally executing SIXPANE browser model. The source is compiled by GitHub Actions and its JVM unit tests; physical-device behavior has not yet been verified. The **debug** APK uses a separate `com.sixpane.app.preview` package ID and the **SIXPANE Preview** label to avoid overwriting previous debug installations and cookies. It does not use a VPS, browser relay, WebRTC, or external server for browser execution.
+**Only `main` is the supported source/build.** It combines the v0.13 Filter View layout and all subsequent features.
 
-Start with `docs/IMPLEMENTATION_AND_VERIFICATION.md` for features, precise risks, build commands and test plan. Build requires a configured Android SDK/Gradle installation. The old remote-server package is superseded by this source for the agreed device-only architecture.
+- Debug install identity: `com.sixpane.app.preview.filterview` (unchanged from v0.13).
+- App label: **SIXPANE**.
+- Version: `0.13-consolidated-preview` / `versionCode 14`.
+- The one installable build is named **SIXPANE-CANONICAL-APK-main** in the **SIXPANE Canonical Android APK (main)** workflow.
+- Do not release APKs from feature branches, change the package suffix for convenience, or uninstall installed versions to work around signature errors.
+- App updates require the **same signing key**. Distinct package IDs keep separate cookies, sessions, WebView profiles and bookmarks; no automatic migration exists.
+- Local Android WebView app, no VPS or external browser runtime.
+
+Detailed current features and evidence: `docs/IMPLEMENTATION_AND_VERIFICATION.md`.

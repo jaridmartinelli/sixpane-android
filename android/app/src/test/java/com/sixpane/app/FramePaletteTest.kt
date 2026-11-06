@@ -16,10 +16,11 @@ class FramePaletteTest {
         assertTrue(FramePalette.matches("about:blank",FramePalette.colors[2],"blue, teal",emptySet()))
         assertFalse(FramePalette.matches("about:blank",FramePalette.colors[4],"blue, teal",emptySet()))
     }
-    @Test fun sixSelectedColorsAreORAndUrlCanFurtherNarrow(){
+    @Test fun allAvailableColorsAreORAndUrlCanFurtherNarrow(){
         val chosen=FramePalette.names.take(6).toSet()
         assertTrue(FramePalette.validSelection(chosen))
-        assertFalse(FramePalette.validSelection(FramePalette.names.take(7).toSet()))
+        assertTrue(FramePalette.validSelection(FramePalette.names.toSet()))
+        assertFalse(FramePalette.validSelection(setOf("Unknown color")))
         assertTrue(FramePalette.matches("https://example.com",FramePalette.colors[4],"",chosen))
         assertFalse(FramePalette.matches("https://example.com",FramePalette.colors[7],"",chosen))
         assertTrue(FramePalette.matches("https://google.com",FramePalette.colors[2],"google.com",chosen))

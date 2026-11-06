@@ -1,9 +1,9 @@
 package com.sixpane.app
 import java.util.Locale
 
-/** Per-pane frame-color palette, search matching and six-color filtering. */
+/** Per-pane frame-color palette, search matching and any available color filtering. */
 object FramePalette {
-    const val MAX_SELECTED_COLORS=6
+    val MAX_SELECTED_COLORS:Int get()=names.size
     val names=listOf("Graphite","Blue","Teal","Amber","Purple","Rose","Silver","Green")
     val colors=listOf(0xff51606e.toInt(),0xff82b6ff.toInt(),0xff72dbcf.toInt(),0xffe8bd76.toInt(),
         0xffb5a0ef.toInt(),0xffe89eae.toInt(),0xffc8d1da.toInt(),0xff9acb91.toInt())

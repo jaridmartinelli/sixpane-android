@@ -224,20 +224,123 @@ After the reported conflict, the user explicitly selected **Install alongside**.
 
 No user app data or previously installed APKs were altered. Runtime behavior on the OnePlus Open remains unverified because the connected Termux device was offline.
 
-## November 5, 2026 — Blank address hint and compact, lockable workspace tabs
 
-- Focused pane URLs remain `about:blank` internally. The universal address field shows the translucent `Google Search` hint with empty actual text only when that focused pane URL is `about:blank`; typing searches/URLs and navigating real pages are unchanged.
-- All seven workspace slots remain in one equal-width bottom row on narrow phones, without horizontal scrolling. Each has a contained outline and a narrow separation; inactive/empty slots remain visible.
-- Long-press an existing workspace tab to set its existing `WorkspaceState.locked` flag, protecting the workspace from closure. A red lock image appears on that tab; tap that image to remove the lock. Tap the numbered portion to switch workspaces (or swap the active grid layout). The workspace tools remain accessible through the global three-dot menu.
-- Workspace locks are independent of per-pane locks; no pane profile IDs, cookies, live WebViews or saved browsing data are changed by these UI actions.
-- Verification still needed: compile/JVM tests in GitHub Actions; on-device checks at standard mobile widths, all seven slots, lock accessibility, click/hold hit zones, keyboard resizing, switching without reloading and session continuity. No physical device test has been performed for this change.
+## November 5, 2026 — genuine native WebView User-Agent and combined icon/UI build
 
-## 2026-11-06 — Global 42-window viewport-ratio uniqueness
+- Base: the existing refactor/sixpane-ui-cleanup branch, containing the chosen six-pane mipmap launcher icon, compact universal URL/filter bar, batch actions, Right Stack layout, 2dp inter-pane gaps, six-color filters and per-profile bookmarks.
+- Both mobile and desktop now keep the WebView's own user agent. Desktop site changes width/viewport fitting only, not claimed operating system, browser or installed engine.
+- Removed the obsolete global Desktop-UA menu toggle and hardcoded Windows Chrome 130 identifier. The old persisted preference key is retained but ignored to avoid deleting user settings. Android WebView dynamically determines its actual UA.
+- Existing named WebView profiles, workspaces, cookie jars, bookmarks, viewport values and user data are not regenerated or migrated by this code change.
+- A separate 0.8 Compatibility Preview package identity protects existing v0.2–0.7 preview data, signing identities and sessions.
+- Compilation, pure JVM tests, static User-Agent regression check, Android instrumented UA test, and emulator user-journey test must be reported separately. Emulator and phone results are not interchangeable. Security checks on external websites are not bypassed or guaranteed to pass.
 
-- Previous `PaneState.distinctSix()` only distinguished the six panes of a newly created workspace. Across seven workspaces ratios could collide; `replacePanes()` also generated unchecked random percentages.
-- `ViewportRatioPolicy` now allocates by **reduced proportional ratio**, not raw percentage pair, across *all existing workspaces* (maximum 42). The 96%–104% width/height range provides 73 different proportional ratios, enough to allocate 42.
-- Loading an old manifest retains existing unique assignments and repairs only duplicates/out-of-range values, before WebViews are created. This modifies only `widthPercent` and `heightPercent`; pane IDs, profile IDs, cookies, URLs, bookmarks, locks, and ordering are untouched. Save still uses the existing manifest keys.
-- New workspaces and individually replaced windows reserve every surviving pane's ratio first; no surviving window is altered. Closing the final workspace allocates a new set of six ratios, not reused profiles.
-- The exterior six-pane grid, 2×3 / 3×2 switching, focus/right-stack positioning and WebView transform implementation are unchanged.
-- Source/JVM policy checks cover 42 windows, legacy migration, persistence stability and replacement. `save()` refuses to persist duplicate target proportions.
-- **Unverified on device:** Android rounds actual WebView dimensions to pixels. Distinct saved ratio factors do not prove 42 different measured CSS `innerWidth/innerHeight` ratios under every geometry, zoom, fold, or expanded layout. Measure on a real OnePlus Open before claiming effective device-level uniqueness. Existing sessions may see a small viewport change on first launch following a legacy-duplicate repair.
+
+## User-flow smoke test — dedicated emulator, clean new preview install
+
+Added \`UserJourneyInstrumentedTest\` to exercise:
+- startup of six independently profiled WebViews and their actual system User-Agent strings;
+- permanent top-right dots, select multiple, select all visible, lock/unlock selected;
+- expand / collapse (Right Stack) via actual corner touch targets;
+- focused address input, local controlled test page navigation and a per-browser bookmark;
+- URL/color grid filter while preserving six allocated WebViews;
+- workspace creation with six fresh profile IDs, preserving old workspace bookmarks;
+- emulator screenshot capture and debug logs in a separate run.
+
+This is an **emulator-only** fresh install. No stored user profiles, real website queues, external WAF challenge or actual OnePlus Open are accessed.
+The runtime test must visibly pass; adding the test is not itself proof of passage.
+
+
+## November 5, 2026 — consequential lock-protection defect corrected in combined preview
+
+- **Evidence before correction:** \`MainActivity.closeWorkspace()\` checked only \`WorkspaceState.locked\`. \`LocalStore.close()\` also checked only this field, even when one or more child pane locks were true.
+- **Impact:** A user could select Close Workspace and retire locked individual browser profiles despite their protected status. This is a meaningful potential data-loss/authorization failure.
+- **Root cause:** Workspace-level and individual-pane lock policy had separate gate paths, and the model-level close operation omitted child locks.
+- **Prevention:** Add a single \`WorkspacePolicy.canCloseWorkspace(tabLocked,paneLocks)\` predicate and enforce it before opening confirmation, once more inside the confirmation callback, and at the durable storage mutation boundary.
+- **Verification criterion:** New JVM test rejects any locked child and a locked tab; CI must compile. Emulator flow must verify the visible lock behavior where feasible; user-device verification remains pending.
+- No browser profiles or persisted user state were touched while correcting the code.
+
+
+## November 5, 2026 — emulator workflow cwd and evidence failure
+
+- Evidence: GitHub Actions emulator run 42009038451 exited in \`BuildLayoutValidator\`: Gradle was launched from repository root instead of its \`android/\` Gradle project.
+- Root cause: the reactivecircus emulator action invoked lines of \`script:\` separately; changing directories on one line did not persist on the next. Separate post-emulator \`adb\` calls previously caused evidence collection to hang after device teardown.
+- Corrective action: move the full test process to \`tests/run_emulator_smoke.sh\`, invoked as exactly one runner script command. Use explicit \`gradle --project-dir "$GITHUB_WORKSPACE/android"\` and capture screenshots/logcat inside the emulator's lifetime with bounded timeouts.
+- Verification: Android instrumented compilation passed before emulator launch; the corrected integrated run must be inspected before asserting live UI success.
+
+
+## November 5, 2026 — Restore website text selection while retaining numbered-pane long press
+
+Incident: WebView long-press listeners intercepted webpage text selection, links, and copy operations.
+Cause: \`PaneCard.createWebView()\` assigned a window-context menu long-click handler directly to the WebView. The full pane body and selection overlay also registered long-click handlers.
+Correction:
+- Remove app-owned long presses from the WebView, pane body, and selection overlay.
+- Keep the long-press menu on the numbered pane badge only; preserve tapping the badge to open the same menu for discoverability.
+- Use an invisible 44x36dp badge touch target while retaining the small visible 24x22dp numbered badge and conditional red lock indicator.
+- Preserve all named profiles, cookies, viewport dimensions, bookmarks, workspace locks, URLs, the global batch menu, and the native device user agent.
+Prevention:
+- The Android APK workflow fails if the WebView/body/selection overlay registers an app long-press handler.
+- A clean emulator gesture test holds the numbered badge and expects the window actions menu.
+Verification:
+- New CI compilation, unit tests and emulator gestures must complete; real text-selection behavior on the OnePlus Open requires manual verification.
+- The distinct v0.9 debug package suffix avoids overwriting any existing installed preview or its cookies.
+
+
+## November 5, 2026 — Compact one-hand Right Stack + workspace controls (v0.10)
+
+- Tap any Right Stack miniature to make it the expanded pane; thumbnail tap overlays are enabled only for miniature panes, protecting native text/link input inside the full-size webpage.
+- An empty \`about:blank\` pane has an additional full-surface tap/hold target; tapping expands it, holding opens its browser actions.
+- Right Stack width reduced from 23.5% to 18.5% (bounded for usability), without pausing, replacing, or renaming pane WebViews.
+- Number badge moved to the top right; its black backing is more translucent, and the invisible press target remains 44 × 36dp.
+- Chrome-style workspace tabs render only existing workspaces and one dimmed \`+ next\` affordance. Tapping the active tab never silently switches the grid layout; each existing tab can be locked or unlocked by long-press, and its lock icon remains accessible.
+- Universal top dots includes a one-action 2×3 ↔ 3×2 toggle and Settings. Workspace menu is limited to workspace tasks.
+- Settings contains theme (app chrome only), notification permission, battery exemption and a secondary Developer tools submenu. Permission prompts are no longer automatic on launch/resume.
+- Visible buttons and selection overlays have pressed ripple, active/disabled states where applicable. Red pane locks continue to glow; attempted protected actions jiggle the lock.
+- Distinct \`com.sixpane.app.preview.thumb\` debug identity avoids overwriting older preview installations.
+- Verification: Kotlin/Android build, unit tests, and the clean-emulator gesture tests. Treat device/website behavior as unverified until physically reproduced. Incidents from verification are tracked separately.
+
+
+## November 5, 2026 — Pinch zoom replaces zoom buttons
+
+- User refinement supersedes the provisional \`−/+ Zoom\` sheet. Removed the \`Zoom\` entry and the step/reset controls entirely from window actions.
+- WebView now explicitly enables \`setSupportZoom(true)\` plus built-in pinch gestures and disables the deprecated on-screen WebView zoom buttons. The existing viewport/focus modes do not recreate a WebView.
+- Empty-pane and thumbnail tap overlays remain in place for navigation. They are disabled over full-size loaded webpages so two-finger gestures remain the website/WebView's native input.
+- Each pane retains its profile, cookies, URL and previously saved zoom metadata. Native pinch doesn't manufacture or modify profile identifiers; no user data clearing.
+- A clean Android emulator instrumentation test performs real two-pointer pinch-open and pinch-close gestures against a controlled local page and asserts scale changes and WebView identity continuity.
+- Older v0.10 installation is protected by a distinct \`com.sixpane.app.preview.pinch\` debug package ID.
+
+
+## November 5, 2026 — Global filtered six-slot view
+
+Approved behavior:
+- A non-empty top filter (URL text, typed color, or up to six picker colors) searches **all** real workspaces, not only the active workspace.
+- Matching pane identities are grouped in stable original workspace/pane order into temporary pages of up to six. Example: **14 matches -> 6 + 6 + 2**; four slots on the third page are empty stage background. This arithmetic correction supersedes "three on the third page" in the user description.
+- Each temporary page uses **full six-cell** geometry in both 2 × 3 and 3 × 2 modes; partial pages never expand their matches to fill missing cells.
+- Only temporary filtered tabs are shown while filtering; no additional workspaces are created or deleted. The original workspace tabs and adjacent dimmed \`+\` return when the filter is cleared.
+- The original workspaces, per-pane profile names, cookies, storage, bookmark ownership, zoom, locks and per-pane viewport differences remain unchanged by filtering, paging and clearing.
+- Clicking a filtered tab changes only the displayed group; long-press/tap lock on that filtered tab locks the panes currently in that temporary group, **not** the source workspace tab.
+- Batch actions on a temporary page act on the selected real pane identities even when they originate from different workspaces. Cross-workspace closing rechecks live locks (including source workspace locks) and tombstones only explicitly selected profiles; replacements stay in the originals.
+- Source workspace management is disabled while the temporary filtered view is active to avoid destructive ambiguity.
+- New side-by-side debug package identity \`com.sixpane.app.preview.filterpages\` prevents accidental overwrites of earlier test APKs and their saved profiles.
+
+Verification and limits:
+- Four Android-independent \`FilteredPanePagesTest\` regression cases check 14 -> 6+6+2, unchanged full-size geometry, empty results and focused geometry.
+- \`FilteredTabsInstrumentedTest\` exercises actual taps on \`+2\`, \`+3\`, filter text entry, filtered tabs, grouped locks and clear, while checking 18 live pane identities and their WebView instances. Captures \`filtered-14.png\` with visual evidence of empty cells.
+- Emulator gesture test and physical OnePlus Open verification must each be reported as completed or unverified based on observed results; CI compilation alone does not prove touch behavior.
+
+### Incident — instrumented test API compilation failure
+- Evidence: Android emulator runs 42028441280 and 42028441144 failed compiling \`UserJourneyInstrumentedTest.kt\` line 236 because \`settings.supportZoom\` was used as a property rather than calling \`settings.supportZoom()\`.
+- Cause: Android WebSettings method API misused in instrumentation code, a regression from the native pinch-to-zoom test edit.
+- Repair: Commit \`dc1648650e35d4ade181671994d3b652c636e2fa\` fixes the call without changing Android browser implementation.
+- Prevention: Require \`:app:assembleDebugAndroidTest\` alongside \`:app:testDebugUnitTest :app:assembleDebug\` before calling an interaction change build-ready; a successful app APK alone does not compile instrumentation sources.
+- Verification: Emulator workflows after the fix reach their "Enable KVM" and "Tap actual filter and tabs on clean emulator" stages, confirming instrumentation compilation. Runtime gesture results are assessed separately.
+
+## November 6, 2026 — Canonical v0.13 + modern feature consolidation
+
+- **Single supported source:** `main`, with v0.13 Filter View as the UX baseline. Older branches are history, not distributable app versions.
+- **Preserved from v0.13:** filtered groups of six with blank slots, right-stack focus, universal search, bookmarks per pane, color tags, multi-select, secure per-profile WebView identities, native pinch and webpage text selection, preferences and session recovery.
+- **Ported from former main:** blank focused address shows translucent `Google Search` rather than `about:blank`, fixed seven non-scrolling workspace positions and red lock on held locked tabs, read-only per-pane Copy page report in both menus, unique configured viewport ratios across all 42 panes with startup migration and unique replacements (including multi-workspace filtered selection).
+- **Fixed extra mismatch:** color filtering may select every available palette color; previous v0.13 six-color cap no longer applies.
+- **Stable package:** Debug `com.sixpane.app.preview.filterview` from v0.13; versionCode 14, versionName `0.13-consolidated-preview`. Changing debug application ID makes a different installed app with different browser profiles. Updating an existing package still requires identical original signing certificate.
+- **CI:** Only build canonical install artifacts from `main`. The integration branch can be tested using offline/static checks until it is merged.
+- **Recurring incident:** `main` stayed behind the advanced feature branch while the download workflow kept publishing changing package suffixes. This delivered an older UI despite a newer commit. Prevention: merge advanced UI into canonical main, protect signing and suffix, assert expected features in CI, name artifacts unambiguously, refuse to distribute builds from side branches.
+- **Limitations:** Actual WebView viewport rounding and all 42 live CSS ratios, Copy on the physical OnePlus Open, and signing compatibility with an existing v0.13 install are not yet proven.
