@@ -681,7 +681,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     fun bulkColor() {
         val targets = selectedPanes()
         if (targets.isEmpty()) { toast("Select panes first"); return }
-        Sheet(this, "Colour ${targets.size} pane${if (targets.size == 1) "" else "s"}", "You can undo right after")
+        Sheet(this, "Colour ${targets.size} pane${if (targets.size == 1) "" else "s"}", "You can undo right after", page = false)
             .colors(null) { recolor(targets, it) }.show()
     }
 

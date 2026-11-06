@@ -145,7 +145,7 @@ class CookieEditor(private val a: MainActivity, private val pane: Pane) {
     }
 
     private fun edit(name: String?, value: String) {
-        val s = Sheet(a, if (name == null) "Add cookie" else "Edit cookie", AddressPolicy.label(url))
+        val s = Sheet(a, if (name == null) "Add cookie" else "Edit cookie", AddressPolicy.label(url), page = false)
         fun field(text: String, hint: String, mono: Boolean) = EditText(a).apply {
             setText(text); this.hint = hint; setHintTextColor(T.text3); setTextColor(T.text); textSize = 14f
             if (mono) typeface = Typeface.MONOSPACE

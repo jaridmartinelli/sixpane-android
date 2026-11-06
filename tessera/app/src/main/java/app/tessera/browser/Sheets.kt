@@ -17,36 +17,73 @@ import android.widget.Switch
 import android.widget.TextView
 
 /**
- * Bottom sheet anchored to the thumb zone. Disabled rows stay visible and say
- * WHY they are unavailable; tapping them repeats the reason.
+ * A menu surface in one of two styles:
+ *  - [page] = true (default): a full-screen page with a back arrow, scrolling content
+ *    and any action buttons docked at the bottom, in thumb reach.
+ *  - [page] = false: a compact centred card, for yes/no confirmations and quick
+ *    pickers where a whole screen would slow the user down.
+ * Disabled rows stay visible and say WHY they are unavailable; tapping repeats the reason.
  */
-class Sheet(private val a: MainActivity, title: String, subtitle: String? = null) {
-    val dialog = Dialog(a)
-    private val list = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
-    private val root = LinearLayout(a).apply {
-        orientation = LinearLayout.VERTICAL
-        background = roundedTop(T.surface, a.dpf(22f))
-        setPadding(0, a.dp(8), 0, a.dp(12))
+class Sheet(private val a: MainActivity, title: String, subtitle: String? = null, private val page: Boolean = true) {
+    val dialog = if (page) Dialog(a, android.R.style.Theme_DeviceDefault_NoActionBar) else Dialog(a)
+    private val list = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, a.dp(12)) }
+    private val bottom = LinearLayout(a).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        visibility = View.GONE
     }
+    private val root = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
 
     init {
-        root.addView(View(a).apply { background = rounded(T.text3, a.dpf(2f)) },
-            LinearLayout.LayoutParams(a.dp(36), a.dp(4)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = a.dp(10) })
-        root.addView(a.label(title, 17f, T.text, bold = true).apply { setPadding(a.dp(20), a.dp(2), a.dp(20), 0) })
-        if (subtitle != null) root.addView(a.label(subtitle, 12.5f, T.text2).apply {
-            setPadding(a.dp(20), a.dp(4), a.dp(20), 0); maxLines = 3; ellipsize = TextUtils.TruncateAt.END
-        })
-        root.addView(ScrollView(a).apply { addView(list); isVerticalScrollBarEnabled = false },
-            LinearLayout.LayoutParams(-1, -2).apply { topMargin = a.dp(8) })
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        dialog.setContentView(root)
-        dialog.window?.apply {
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setGravity(Gravity.BOTTOM)
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            setWindowAnimations(android.R.style.Animation_InputMethod)
-            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setDimAmount(0.45f)
+        if (page) {
+            root.setBackgroundColor(T.bg)
+            val bar = LinearLayout(a).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(a.dp(4), a.dp(6), a.dp(16), a.dp(2))
+            }
+            bar.addView(a.iconButton(Icon.BACK, "Back", 48) { dialog.dismiss() })
+            val titles = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
+            titles.addView(a.label(title, 21f, T.text, bold = true))
+            if (subtitle != null) titles.addView(a.label(subtitle, 13f, T.text2).apply {
+                setPadding(0, a.dp(4), 0, 0); maxLines = 3; ellipsize = TextUtils.TruncateAt.END
+            })
+            bar.addView(titles, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = a.dp(4) })
+            root.addView(bar)
+            root.addView(ScrollView(a).apply { addView(list); isVerticalScrollBarEnabled = false },
+                LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = a.dp(6) })
+            bottom.setPadding(a.dp(16), a.dp(10), a.dp(16), a.dp(14))
+            bottom.setBackgroundColor(T.bg)
+            root.addView(bottom, LinearLayout.LayoutParams(-1, -2))
+            // Edge-to-edge: keep the header and bottom buttons clear of the system bars.
+            root.setOnApplyWindowInsetsListener { v, ins ->
+                @Suppress("DEPRECATION") v.setPadding(0, ins.systemWindowInsetTop, 0, ins.systemWindowInsetBottom); ins
+            }
+            dialog.setContentView(root)
+            dialog.window?.apply {
+                setBackgroundDrawable(ColorDrawable(T.bg))
+                setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                setWindowAnimations(android.R.style.Animation_InputMethod)
+            }
+        } else {
+            root.background = rounded(T.surface, a.dpf(22f))
+            root.setPadding(0, a.dp(18), 0, a.dp(14))
+            root.addView(a.label(title, 18f, T.text, bold = true).apply { setPadding(a.dp(20), 0, a.dp(20), 0) })
+            if (subtitle != null) root.addView(a.label(subtitle, 13f, T.text2).apply {
+                setPadding(a.dp(20), a.dp(4), a.dp(20), 0); maxLines = 3; ellipsize = TextUtils.TruncateAt.END
+            })
+            root.addView(ScrollView(a).apply { addView(list); isVerticalScrollBarEnabled = false },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = a.dp(8) })
+            bottom.setPadding(a.dp(16), a.dp(4), a.dp(16), 0)
+            root.addView(bottom, LinearLayout.LayoutParams(-1, -2))
+            dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+            dialog.setContentView(root)
+            val w = (a.resources.displayMetrics.widthPixels * 0.92f).toInt().coerceAtMost(a.dp(440))
+            dialog.window?.apply {
+                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                setLayout(w, ViewGroup.LayoutParams.WRAP_CONTENT)
+                setGravity(Gravity.CENTER)
+                addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                setDimAmount(0.55f)
+            }
         }
     }
 
@@ -152,10 +189,10 @@ class Sheet(private val a: MainActivity, title: String, subtitle: String? = null
         return this
     }
 
+    /** Action buttons: docked at the bottom of a page (thumb reach), or at the foot of a card. */
     fun buttons(vararg b: TextView): Sheet {
-        val row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(a.dp(16), a.dp(12), a.dp(16), 0) }
-        b.forEach { row.addView(it, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = a.dp(10) }) }
-        list.addView(row)
+        bottom.visibility = View.VISIBLE
+        b.forEach { bottom.addView(it, LinearLayout.LayoutParams(if (page) 0 else -2, -2, if (page) 1f else 0f).apply { leftMargin = a.dp(10) }) }
         return this
     }
 
@@ -176,7 +213,7 @@ class Sheet(private val a: MainActivity, title: String, subtitle: String? = null
 }
 
 fun MainActivity.confirm(title: String, message: String, action: String, danger: Boolean = true, onConfirm: () -> Unit) {
-    val s = Sheet(this, title, null)
+    val s = Sheet(this, title, null, page = false)
     s.note(message)
     s.buttons(
         pillButton("Cancel", filled = false) { s.dismiss() },
