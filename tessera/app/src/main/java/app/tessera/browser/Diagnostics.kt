@@ -130,7 +130,7 @@ object Diagnostics {
         row(leaks.isEmpty(), "Cookie jars are separate", if (leaks.isEmpty()) "A secret written into each of the $n jars was seen only by its own pane" else leaks.joinToString("; "))
         row(uniqueNames, "Unique profiles", if (uniqueNames) "$n different profile names, none shared, none the default" else "Two panes share a profile")
         row(mismatched.isEmpty(), "Each browser uses its own profile", if (mismatched.isEmpty()) "$live running browsers checked" else "Mismatch in ${mismatched.size} panes")
-        row(awake >= live, "Sessions awake", "$awake of $live answered in the last 90 seconds · $visible report the page as visible")
+        row(awake >= live, "Sessions awake", "$awake of $live answered a live ping just now · $visible report themselves as visible")
         keepAliveLines(a).forEach { line ->
             val bad = line.contains("NOT") || line.contains("RESTRICTED")
             row(!bad, line.substringBefore(':'), line.substringAfter(": "))
@@ -139,7 +139,7 @@ object Diagnostics {
             "Isolation: ${if (isolated) "PASS" else "FAIL"} ($n sessions)",
             "Cookie leaks: ${if (leaks.isEmpty()) "none" else leaks.joinToString("; ")}",
             "Unique profiles: $uniqueNames · Binding mismatches: ${mismatched.size}",
-            "Awake: $awake/$live responded in 90s · visible: $visible",
+            "Awake: $awake/$live answered a live ping · visible: $visible",
         ) + keepAliveLines(a)).joinToString("\n")
         s.buttons(a.pillButton("Copy report", filled = false) { clip(a, "Tessera isolation report", report); a.toast("Report copied") },
             a.pillButton("Done", filled = true) { s.dismiss() })
