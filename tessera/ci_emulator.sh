@@ -8,4 +8,9 @@ gradle --project-dir "$GITHUB_WORKSPACE/tessera" --no-daemon --stacktrace :app:c
 status=$?
 timeout 20s adb logcat -d -t 6000 > "$OUT/logcat.txt" 2>&1
 timeout 60s adb pull /sdcard/Android/data/app.tessera.browser/files/shots "$OUT/shots" > "$OUT/pull.log" 2>&1
+echo "=== TESSERA SUMMARY ==="
+grep -h "TesseraTest" "$OUT/logcat.txt" | sed 's/.*TesseraTest/TesseraTest/'
+grep -m3 -i "Current WebView package\|versionName" "$OUT/webview.txt"
+ls "$OUT/shots" 2>/dev/null
+echo "=== END SUMMARY ==="
 exit "$status"

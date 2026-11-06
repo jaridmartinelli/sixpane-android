@@ -58,6 +58,8 @@ jobs:
   device:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -85,6 +87,20 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: bash tessera/ci_emulator.sh
+      - name: Commit downscaled screenshots to this branch for review
+        if: always() && github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          [ -d tessera-evidence/shots ] || exit 0
+          mkdir -p ci-evidence/tessera && rm -f ci-evidence/tessera/*.jpg
+          for f in tessera-evidence/shots/*.png; do
+            convert "$f" -resize 540x -quality 70 "ci-evidence/tessera/$(basename "${f%.png}").jpg"
+          done
+          git config user.name "tessera-ci"; git config user.email "tessera-ci@users.noreply.github.com"
+          git add ci-evidence/tessera
+          git diff --cached --quiet && exit 0
+          git commit -m "CI: Tessera emulator screenshots for ${GITHUB_SHA::7} [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
