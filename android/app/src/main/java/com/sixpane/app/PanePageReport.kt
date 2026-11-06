@@ -112,6 +112,21 @@ class PanePageReport(private val activity: MainActivity) {
             appendLine("Content truncated at 300000 characters: " + page.optBoolean("pageTextTruncated", false))
             appendLine(page.optString("pageText", "(No readable page text returned)"))
             appendLine()
+            appendLine("=== OPEN SHADOW-ROOT CONTENT (WHEN ACCESSIBLE) ===")
+            appendLine("Open shadow roots found: " + page.optInt("shadowRootCount", 0))
+            val shadows = page.optJSONArray("shadows")
+            if (shadows == null || shadows.length() == 0) {
+                appendLine("No open shadow-root content found.")
+            } else {
+                for (i in 0 until shadows.length()) {
+                    val shadow = shadows.optJSONObject(i) ?: continue
+                    appendLine("Shadow root " + (i + 1) + " on " + shadow.optString("host", "unknown"))
+                    appendLine("Characters detected: " + shadow.optLong("totalLength", 0))
+                    appendLine("Truncated: " + shadow.optBoolean("truncated", false))
+                    appendLine(shadow.optString("text", ""))
+                }
+            }
+            appendLine()
             appendLine("=== SAME-ORIGIN FRAME CONTENT (WHEN ACCESSIBLE) ===")
             appendLine("Frame count: " + page.optInt("iframeCount", 0))
             val frames = page.optJSONArray("frames")
@@ -130,7 +145,7 @@ class PanePageReport(private val activity: MainActivity) {
             appendLine()
             appendLine("=== LIMITATIONS ===")
             appendLine("This report copies text exposed in the page DOM plus browser/display diagnostics. It is not the site's internal fingerprint database or a network trace.")
-            appendLine("Images, canvas-only results, closed shadow DOM, and cross-origin iframe contents cannot be fully extracted. Very long page or frame text is capped.")
+            appendLine("Images, canvas-only results, closed shadow DOM, and cross-origin iframe contents cannot be fully extracted. Very long page, open shadow-root, or frame text is capped.")
             appendLine("No hidden HttpOnly cookies, private localStorage values, or real Queue-it tokens are read separately. Matching fingerprints alone do not establish shared sessions.")
         }
     }
@@ -175,6 +190,28 @@ class PanePageReport(private val activity: MainActivity) {
                   preferredColorSchemeDark: matchMedia('(prefers-color-scheme: dark)').matches,
                   plugins: Array.from(navigator.plugins || []).map(p => p.name)
                 };
+                // Open shadow DOM may contain fingerprint results absent from body.innerText.
+                const shadowHosts = Array.from(document.querySelectorAll('*'))
+                    .filter(element => !!element.shadowRoot);
+                const shadows = [];
+                for (const host of shadowHosts.slice(0, 16)) {
+                  try {
+                    const text = Array.from(host.shadowRoot.children)
+                        .filter(child => child.tagName !== 'STYLE' &&
+                            child.tagName !== 'SCRIPT')
+                        .map(child => child.innerText || child.textContent || '')
+                        .join('\n');
+                    shadows.push({
+                      host: host.tagName.toLowerCase(),
+                      text: text.slice(0, 40000),
+                      totalLength: text.length,
+                      truncated: text.length > 40000
+                    });
+                  } catch (e) {
+                    shadows.push({host: host.tagName.toLowerCase(),
+                        text:'', status: 'Unavailable: ' + e.name});
+                  }
+                }
                 const allFrames = Array.from(document.querySelectorAll('iframe'));
                 const frames = [];
                 for (const frame of allFrames.slice(0, 24)) {
@@ -206,7 +243,9 @@ class PanePageReport(private val activity: MainActivity) {
                   pageTextTotalLength: pageText.length,
                   pageTextTruncated: pageText.length > textCap,
                   frames: frames,
-                  iframeCount: allFrames.length
+                  iframeCount: allFrames.length,
+                  shadows: shadows,
+                  shadowRootCount: shadowHosts.length
                 });
               } catch(e) {
                 return JSON.stringify({error: e.name + ': ' + e.message});
