@@ -352,3 +352,20 @@ Observed on canonical PR `#4` run `42182295761`: three of nine clean-emulator jo
 - **Corrected a stale regression test:** current approved tab interaction is long-press to lock, tap the red lock icon to unlock. The older test demanded a second hold to unlock; no user-facing behavior was changed to satisfy that outdated test.
 - **Still unresolved:** emulator WebView pinch-close reported no reduction in `WebView.getScale()` after a large pinch-open, also reproducible on the earlier v0.13 candidate. Do not report native pinch-close as verified. Investigate real-device touch input, page zoom limits, and test gesture radius before changing live-session scaling.
 - **Verification:** Android compilation and JVM tests must pass on the new commit. Instrumented test results remain separate and must not be retroactively claimed as passed.
+
+## November 6, 2026 — Confirmed CI signing drift and protective publishing gate
+
+**Incident:** Consecutive successful GitHub Actions debug builds used different APK Signing Block v2 signer certificates, despite the same `com.sixpane.app.preview.filterview` package ID:
+- v0.13 Filter View build run `42038873558`: public signing certificate SHA-256 `ab890b075e90874a1f74f6c561f221ad0abcefc1e21cbc7e9ea1ef3402212fb3`
+- Canonical build run `42182723423`: `1848002c829383c1938c19d17836aeb684f8a4eb9bac7dc5800a5ede35a83419`
+- Canonical build run `42183680666`: `317af0ac989ffadf8f6837ba7b274f4a60a460a7236d2aa0345e332d620699c8`
+
+**Consequence:** These APKs cannot update one another in place because Android checks the app-signing certificate as well as package ID. Installing them as separate packages creates different profile data. Uninstalling the existing app to bypass signing validation threatens local sessions, cookies and bookmarks. No such deletion was performed.
+
+**Root cause:** GitHub-hosted runners use an ephemeral default Android debug signing keystore. Neither a persistent keystore nor an explicitly approved certificate was configured for these historical builds.
+
+**Prevention implemented:** The canonical `main` workflow now refuses to publish an APK if the public GitHub Actions repository variable `SIXPANE_CANONICAL_CERT_SHA256` is absent or the resulting APK signer differs. The upload step requires successful upstream checks; test-build compilation can still diagnose source issues. This guard deliberately blocks more accidentally incompatible APKs. It does **not** supply the missing private signing key or establish an approved signer.
+
+**Dependency/authorization:** Before another distributable APK, determine whether the original installed v0.13 signing keystore is available. If not, the user must explicitly authorize a new permanent signing key and a session-preserving migration or accept fresh sessions. Configure keystore material as protected GitHub Actions secrets, not in the repository or logs; configure Gradle to use it and verify the APK signer before artifact upload. Do not silently change the package name, delete existing app data, or bypass this gate.
+
+**Verification:** All three listed public signer fingerprints were extracted from APK Signing Block certificates. The workflow guard's behavior is not yet verified; subsequent CI should fail closed without the expected configuration and upload no APK.

@@ -101,8 +101,27 @@ jobs:
           BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
           echo "$BADGING" | grep -Fq "package: name='com.sixpane.app.preview.filterview' versionCode='14'"
           echo "$BADGING" | grep -Fq "application-label:'SIXPANE'"
+      # Default GitHub-hosted debug keys rotate on every runner. Never distribute
+      # an APK until its signer matches the explicitly approved stable identity.
+      - name: Block unapproved signing certificates from release
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          EXPECTED_SIGNER: ${{ vars.SIXPANE_CANONICAL_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$EXPECTED_SIGNER" ]]; then
+            echo "::error::SIXPANE canonical signing identity is not configured. No APK may be published until an authorized permanent keystore and certificate are established."
+            exit 1
+          fi
+          APK='android/app/build/outputs/apk/debug/app-debug.apk'
+          ACTUAL_SIGNER="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}')"
+          if [[ -z "$ACTUAL_SIGNER" || "${ACTUAL_SIGNER,,}" != "${EXPECTED_SIGNER,,}" ]]; then
+            echo "::error::APK signing certificate changed. Refusing to publish an unupdatable SIXPANE APK. Preserve installed sessions; configure the approved original signing key, do not rotate the package name."
+            exit 1
+          fi
       - name: Upload APK and build reports
-        if: always() && github.ref == 'refs/heads/main'
+        if: success() && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: SIXPANE-CANONICAL-APK-main
