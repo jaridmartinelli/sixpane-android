@@ -14,8 +14,8 @@ data class PaneState(
     var locked: Boolean = false,
     var desktop: Boolean = false,
     var zoom: Int = 100,
-    val widthPercent: Int = randomDimension(),
-    val heightPercent: Int = randomDimension(),
+    var widthPercent: Int = randomDimension(),
+    var heightPercent: Int = randomDimension(),
     val bookmarks:MutableList<String> = mutableListOf()
 ) {
     companion object {
@@ -116,11 +116,32 @@ class LocalStore(ctx:Context){
             throw IllegalStateException("Invalid workspace manifest; refusing to discard existing profiles.")
         }
         if(spaces.isEmpty()) spaces.add(WorkspaceState())
+        // Restore first, then repair only duplicate/invalid viewport percentages globally.
+        // Preserve every existing pane ID, WebKit profile ID, URL, bookmark and lock.
+        allocateViewportRatios(spaces.flatMap{it.panes})
         if(spaces.none { it.id==currentId }) currentId=spaces.first().id
         save()
     }
+    /** Repairs legacy duplicates without replacing panes, profiles, cookies, or bookmarks. */
+    private fun allocateViewportRatios(panes:List<PaneState>){
+        val ids=panes.map{it.id}.toSet()
+        require(ids.size==panes.size)
+        val reserved=spaces.flatMap{it.panes}.filterNot{it.id in ids}
+            .map{it.widthPercent to it.heightPercent}
+        val assignments=ViewportRatioPolicy.allocate(
+            reserved,panes.map{it.widthPercent to it.heightPercent}
+        )
+        panes.zip(assignments).forEach{(pane,dimensions)->
+            pane.widthPercent=dimensions.first
+            pane.heightPercent=dimensions.second
+        }
+    }
     fun active():WorkspaceState=spaces.first { it.id==currentId }
     fun save(){
+        check(ViewportRatioPolicy.allUnique(spaces.flatMap{it.panes}
+            .map{it.widthPercent to it.heightPercent})) {
+            "Duplicate viewport ratios across SIXPANE workspaces"
+        }
         val j=JSONObject().apply{
             put("spaces",JSONArray().apply{spaces.forEach{put(it.json())}})
             put("pending",JSONArray().apply{pendingDeletion.forEach{put(it)}})
@@ -157,11 +178,25 @@ class LocalStore(ctx:Context){
         val current=active()
         require(ids.isNotEmpty() && ids.all{id->current.panes.any{it.id==id}})
         require(current.panes.none{it.id in ids && it.locked}) {"Locked windows must be unlocked first"}
+        // Reserve all 42 existing ratios except those being retired. New windows
+        // receive unused ratios without changing any surviving session.
+        val outgoing=current.panes.filter{it.id in ids}
+        val fresh=outgoing.map{PaneState()}
+        val reserved=spaces.flatMap{it.panes}.filterNot{it.id in ids}
+            .map{it.widthPercent to it.heightPercent}
+        val assignments=ViewportRatioPolicy.allocate(
+            reserved,fresh.map{it.widthPercent to it.heightPercent}
+        )
+        fresh.zip(assignments).forEach{(pane,dimensions)->
+            pane.widthPercent=dimensions.first
+            pane.heightPercent=dimensions.second
+        }
+        val replacements=outgoing.mapIndexed{index,old->old.id to fresh[index]}.toMap()
         val result=mutableListOf<Pair<PaneState,PaneState>>()
         current.panes.forEachIndexed{index,old->
-            if(old.id in ids){
+            val replacement=replacements[old.id]
+            if(replacement!=null){
                 pendingDeletion.add(old.profile)
-                val replacement=PaneState()
                 current.panes[index]=replacement
                 result.add(old to replacement)
             }
@@ -172,14 +207,20 @@ class LocalStore(ctx:Context){
     }
     fun create():WorkspaceState {
         require(WorkspacePolicy.canCreate(spaces.size))
-        val w=WorkspaceState();spaces.add(w);currentId=w.id;focusId=null;save();return w
+        val w=WorkspaceState();spaces.add(w)
+        allocateViewportRatios(w.panes)
+        currentId=w.id;focusId=null;save();return w
     }
     /** Tombstone profile identifiers first, before any attempt at physical deletion. */
     fun close(id:String):WorkspaceState {
         val w=spaces.first{it.id==id};require(!w.locked)
         w.panes.forEach { pendingDeletion.add(it.profile) }
         spaces.remove(w)
-        if(spaces.isEmpty())spaces.add(WorkspaceState()) // new six, never reusing retired identities
+        if(spaces.isEmpty()){
+            val fresh=WorkspaceState()
+            spaces.add(fresh)
+            allocateViewportRatios(fresh.panes) // new six, never reusing retired identities
+        }
         currentId=spaces.last().id;focusId=null;save()
         return w
     }

@@ -231,3 +231,13 @@ No user app data or previously installed APKs were altered. Runtime behavior on 
 - Long-press an existing workspace tab to set its existing `WorkspaceState.locked` flag, protecting the workspace from closure. A red lock image appears on that tab; tap that image to remove the lock. Tap the numbered portion to switch workspaces (or swap the active grid layout). The workspace tools remain accessible through the global three-dot menu.
 - Workspace locks are independent of per-pane locks; no pane profile IDs, cookies, live WebViews or saved browsing data are changed by these UI actions.
 - Verification still needed: compile/JVM tests in GitHub Actions; on-device checks at standard mobile widths, all seven slots, lock accessibility, click/hold hit zones, keyboard resizing, switching without reloading and session continuity. No physical device test has been performed for this change.
+
+## 2026-11-06 — Global 42-window viewport-ratio uniqueness
+
+- Previous `PaneState.distinctSix()` only distinguished the six panes of a newly created workspace. Across seven workspaces ratios could collide; `replacePanes()` also generated unchecked random percentages.
+- `ViewportRatioPolicy` now allocates by **reduced proportional ratio**, not raw percentage pair, across *all existing workspaces* (maximum 42). The 96%–104% width/height range provides 73 different proportional ratios, enough to allocate 42.
+- Loading an old manifest retains existing unique assignments and repairs only duplicates/out-of-range values, before WebViews are created. This modifies only `widthPercent` and `heightPercent`; pane IDs, profile IDs, cookies, URLs, bookmarks, locks, and ordering are untouched. Save still uses the existing manifest keys.
+- New workspaces and individually replaced windows reserve every surviving pane's ratio first; no surviving window is altered. Closing the final workspace allocates a new set of six ratios, not reused profiles.
+- The exterior six-pane grid, 2×3 / 3×2 switching, focus/right-stack positioning and WebView transform implementation are unchanged.
+- Source/JVM policy checks cover 42 windows, legacy migration, persistence stability and replacement. `save()` refuses to persist duplicate target proportions.
+- **Unverified on device:** Android rounds actual WebView dimensions to pixels. Distinct saved ratio factors do not prove 42 different measured CSS `innerWidth/innerHeight` ratios under every geometry, zoom, fold, or expanded layout. Measure on a real OnePlus Open before claiming effective device-level uniqueness. Existing sessions may see a small viewport change on first launch following a legacy-duplicate repair.
