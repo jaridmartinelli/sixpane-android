@@ -27,7 +27,8 @@ object Diagnostics {
         return listOf(
             "Keep-alive service: " + if (KeepAliveService.running) "running" else "NOT running",
             "CPU wake lock: " + if (KeepAliveService.cpuHeld) "held" else if (st.keepCpuAwake) "NOT held" else "off in settings",
-            "Wi-Fi lock: " + if (KeepAliveService.wifiHeld) "held" else if (st.keepWifiAwake) "NOT held" else "off in settings",
+            "Wi-Fi lock: " + if (KeepAliveService.wifiHeld) (if (Build.VERSION.SDK_INT >= 34) "requested (Android 14+ may ignore it)" else "held")
+                else if (st.keepWifiAwake) "NOT held" else "off in settings",
             "Battery optimisation: " + if (pm.isIgnoringBatteryOptimizations(a.packageName)) "unrestricted" else "RESTRICTED",
         )
     }

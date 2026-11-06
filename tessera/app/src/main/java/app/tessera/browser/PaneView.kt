@@ -39,6 +39,8 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         fun isSelecting(): Boolean
     }
 
+    private var locked = false
+
     /** False while hidden by a filter or in another workspace: no touches at all. */
     var interactive = true
 
@@ -114,6 +116,25 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         refresher.setColorSchemeColors(T.bg)
         refresher.setProgressBackgroundColorSchemeColor(T.text)
         refresher.setOnRefreshListener { cb.onPullRefresh(paneId) }
+        refresher.setOnChildScrollUpCallback { _, child ->
+            val wv = child as? PaneWebView ?: return@setOnChildScrollUpCallback true
+            !PullRefreshPolicy.allow(locked, wv.scrollY, wv.msSinceTopOverscroll())
+        }
+        // Screen-reader actions for the gestures that live on the header strip.
+        accessibilityDelegate = object : AccessibilityDelegate() {
+            override fun onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(R_ACTIVATE, "Make active"))
+                info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(R_EXPAND, "Expand or shrink"))
+                info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(R_MENU, "Pane menu"))
+            }
+            override fun performAccessibilityAction(host: View, action: Int, args: android.os.Bundle?): Boolean = when (action) {
+                R_ACTIVATE -> { cb.onPaneTouched(paneId); true }
+                R_EXPAND -> { cb.onHeaderDoubleTap(paneId); true }
+                R_MENU -> { cb.onHeaderLongPress(paneId); true }
+                else -> super.performAccessibilityAction(host, action, args)
+            }
+        }
         host.addView(refresher, LayoutParams(-1, -1))
         content.addView(host, LayoutParams(-1, -1))
 
@@ -181,6 +202,7 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         chip.background = rounded(if (color != null) 0x2E000000 else T.surface3, dpf(5f))
         chip.setTextColor(ink)
         host.minWidthPx = minPageWidthPx
+        locked = pane.locked
         refresher.isEnabled = !selecting && !isMini
         if (!rt.loading && refresher.isRefreshing) refresher.isRefreshing = false
         lockIcon.visibility = if (pane.locked) VISIBLE else GONE
@@ -247,5 +269,11 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         ObjectAnimator.ofFloat(lockIcon, "translationX", 0f, -6f, 6f, -5f, 5f, -2f, 0f).setDuration(380).start()
         ObjectAnimator.ofFloat(lockIcon, "scaleX", 1f, 1.35f, 1f).setDuration(380).start()
         ObjectAnimator.ofFloat(lockIcon, "scaleY", 1f, 1.35f, 1f).setDuration(380).start()
+    }
+
+    private companion object {
+        const val R_ACTIVATE = 0x7e000001
+        const val R_EXPAND = 0x7e000002
+        const val R_MENU = 0x7e000003
     }
 }

@@ -161,7 +161,9 @@ class SelectionBar(private val a: MainActivity) : LinearLayout(a) {
         addView(a.iconButton(Icon.MORE, "More actions for selected panes") { a.openSelectionMenu() })
     }
 
-    fun bind(selected: List<Pane>, workspaces: Int) {
+    fun bind(selected: List<Pane>, workspaces: Int, allVisibleSelected: Boolean = false) {
+        all.text = if (allVisibleSelected) "None" else "All"
+        all.contentDescription = if (allVisibleSelected) "Deselect all panes in this workspace" else "Select all visible panes in this workspace"
         count.text = if (selected.isEmpty()) "Tap panes to select" else "${selected.size} selected"
         scope.text = when {
             selected.isEmpty() -> "Nothing will change until you select"

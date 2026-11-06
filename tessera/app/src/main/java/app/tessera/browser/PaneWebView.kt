@@ -14,6 +14,17 @@ import android.webkit.WebView
 @SuppressLint("ViewConstructor")
 class PaneWebView(context: Context, val paneId: String) : WebView(context) {
     var keepAwake = true
+    /** uptimeMillis when the page's own scroller was last pulled past its top. */
+    var lastTopOverscroll = -1L
+        private set
+
+    override fun onOverScrolled(scrollX: Int, scrollY: Int, clampedX: Boolean, clampedY: Boolean) {
+        super.onOverScrolled(scrollX, scrollY, clampedX, clampedY)
+        if (clampedY && scrollY <= 0) lastTopOverscroll = android.os.SystemClock.uptimeMillis()
+    }
+
+    fun msSinceTopOverscroll(): Long =
+        if (lastTopOverscroll < 0) -1 else android.os.SystemClock.uptimeMillis() - lastTopOverscroll
 
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(if (keepAwake) View.VISIBLE else visibility)

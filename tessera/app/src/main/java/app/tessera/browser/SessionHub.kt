@@ -15,7 +15,12 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.GeolocationPermissions
 import android.webkit.JsPromptResult
+import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
+import android.os.Message
+import android.net.Uri as AndroidUri
 import android.webkit.JsResult
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
@@ -113,7 +118,9 @@ class SessionHub(private val app: TesseraApp, private val store: Store) {
             useWideViewPort = true
             loadWithOverviewMode = pane.desktop
             userAgentString = if (pane.desktop) desktopUa else null
-            setSupportMultipleWindows(false)
+            // New-tab links and sign-in pop-ups open in a pop-up over the pane (same session),
+            // so the pane's own page is never replaced. Pop-ups without a tap stay blocked.
+            setSupportMultipleWindows(true)
             javaScriptCanOpenWindowsAutomatically = false
             mediaPlaybackRequiresUserGesture = true
             allowFileAccess = false
@@ -347,9 +354,54 @@ class SessionHub(private val app: TesseraApp, private val store: Store) {
         override fun onJsPrompt(view: WebView, url: String?, message: String?, defaultValue: String?, result: JsPromptResult): Boolean {
             if (activity == null) { result.cancel(); return true }; return false
         }
+        // A site's "Leave this page?" warning is shown to the user, never auto-answered.
         override fun onJsBeforeUnload(view: WebView, url: String?, message: String?, result: JsResult): Boolean {
-            result.confirm(); return true
+            if (activity == null) { result.cancel(); return true }; return false
         }
+        override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+            val a = activity as? MainActivity ?: return false
+            val p = pane(id) ?: return false
+            if (!isUserGesture) return false
+            val popup = createPopup(p)
+            (resultMsg.obj as WebView.WebViewTransport).webView = popup
+            resultMsg.sendToTarget()
+            a.showPopup(p, popup)
+            return true
+        }
+        override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<AndroidUri>>, params: FileChooserParams): Boolean =
+            (activity as? MainActivity)?.pickFiles(callback, params) ?: false
+        override fun onPermissionRequest(request: PermissionRequest) {
+            request.deny()
+            (activity as? MainActivity)?.toast("${AddressPolicy.label(request.origin.toString())} asked for camera or microphone \u2014 not available in Tessera")
+        }
+        override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback) {
+            callback.invoke(origin, false, false)
+            (activity as? MainActivity)?.toast("${AddressPolicy.label(origin.orEmpty())} asked for your location \u2014 not shared")
+        }
+    }
+
+    /** Pop-up window bound to the SAME profile as its pane, so logins carry over. */
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createPopup(p: Pane): WebView {
+        val wv = WebView(MutableContextWrapper(activity ?: app))
+        WebViewCompat.setProfile(wv, p.profile)
+        with(wv.settings) {
+            javaScriptEnabled = true; domStorageEnabled = true; databaseEnabled = true
+            setSupportZoom(true); builtInZoomControls = true; displayZoomControls = false
+            useWideViewPort = true; setSupportMultipleWindows(false)
+            allowFileAccess = false; allowContentAccess = false
+        }
+        WebViewCompat.getProfile(wv).cookieManager.setAcceptThirdPartyCookies(wv, true)
+        wv.setBackgroundColor(T.bg)
+        wv.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String?) { (activity as? MainActivity)?.onPopupPage(url.orEmpty()) }
+        }
+        wv.webChromeClient = object : WebChromeClient() {
+            override fun onCloseWindow(window: WebView) { (activity as? MainActivity)?.closePopup() }
+            override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<AndroidUri>>, params: FileChooserParams): Boolean =
+                (activity as? MainActivity)?.pickFiles(callback, params) ?: false
+        }
+        return wv
     }
 
     private fun download(pane: Pane, url: String, ua: String, disposition: String?, mime: String?) {

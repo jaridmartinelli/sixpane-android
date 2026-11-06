@@ -288,7 +288,9 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         cmd.bind(p, hub.runtime(p.id), state.slotOf(p.id) + 1, state.expandedPaneId == p.id,
             state.bookmarks.any { it.url == p.url }, state.workspaces.indexOf(state.current()) + 1, state.workspaces.size)
         val chosen = selectedPanes()
-        sel.bind(chosen, chosen.mapNotNull { state.workspaceOf(it.id)?.id }.distinct().size)
+        val vis = state.current().panes.filter { shown(it) }
+        sel.bind(chosen, chosen.mapNotNull { state.workspaceOf(it.id)?.id }.distinct().size,
+            vis.isNotEmpty() && vis.all { it.id in selection })
     }
 
     private fun bindCard(id: String) {
@@ -418,15 +420,16 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     fun onAddressFocus(focused: Boolean) {
         suggest.removeAllViews()
         if (!focused) { suggest.visibility = View.GONE; return }
-        val clip = (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
-            ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()?.trim()?.takeIf { it.isNotBlank() }
-        if (clip != null) {
-            val shortClip = if (clip.length > 34) clip.take(32) + "\u2026" else clip
-            suggest.addView(HorizontalScrollView(this).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(LinearLayout(this@MainActivity).apply {
-                    setPadding(dp(12), 0, dp(12), dp(4))
-                    addView(chipButton(Icon.PASTE, "Paste & go: $shortClip") { submitAddress(clip) })
+        // Only check THAT something is copied; the text is read when "Paste & go" is tapped,
+        // so Android doesn't show a "pasted from clipboard" notice every time the bar is tapped.
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        val hasText = cm.primaryClipDescription?.let { it.hasMimeType("text/*") } == true
+        if (hasText) {
+            suggest.addView(LinearLayout(this).apply {
+                setPadding(dp(12), 0, dp(12), dp(4))
+                addView(chipButton(Icon.PASTE, "Paste & go") {
+                    cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this@MainActivity)
+                        ?.toString()?.trim()?.takeIf { it.isNotBlank() }?.let { submitAddress(it) } ?: toast("Nothing to paste")
                 })
             })
         }
@@ -441,7 +444,6 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     /** Full-screen workspace overview: switch, close, or add (up to 7). */
     fun openWorkspaces() {
         cmd.clearAddress()
-        if (selecting) { toast("Finish selecting first (tap \u2715)"); return }
         overview.show()
     }
 
@@ -664,7 +666,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
 
     fun selectAllVisible() {
         val vis = state.current().panes.filter { shown(it) }
-        if (vis.all { it.id in selection }) { selection.removeAll(vis.map { it.id }.toSet()); toast("Cleared selection in this workspace") }
+        if (vis.all { it.id in selection }) selection.removeAll(vis.map { it.id }.toSet())
         else selection.addAll(vis.map { it.id })
         refreshAll()
     }
@@ -719,8 +721,11 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
                 AddressPolicy.Result.Empty -> { field.error = "Type an address or search"; return }
             }
             s.dismiss()
-            targets.forEach { p -> hub.runtime(p.id).error = null; hub.navigate(p, url) }
-            refreshAll(); toast("Opening in ${targets.size} panes")
+            val open = targets.filter { !it.locked }
+            val skipped = targets.size - open.size
+            open.forEach { p -> hub.runtime(p.id).error = null; hub.navigate(p, url) }
+            targets.filter { it.locked }.forEach { grid.card(it.id)?.shakeLock() }
+            refreshAll(); toast("Opening in ${open.size} pane${if (open.size == 1) "" else "s"}" + if (skipped > 0) " \u00B7 $skipped locked skipped" else "")
         }
         field.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_GO) { go(); true } else false }
         s.custom(field)
@@ -884,7 +889,8 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         s.toggle(Icon.PULSE, "Keep CPU awake", state.keepCpuAwake, detail = "Pages keep running with the screen off. Uses more battery.") {
             state.keepCpuAwake = it; app.store.saveNow(); KeepAliveService.sync(this)
         }
-        s.toggle(Icon.PULSE, "Keep Wi-Fi awake", state.keepWifiAwake, detail = "Stops Wi-Fi from dozing so connections don't drop.") {
+        s.toggle(Icon.PULSE, "Keep Wi-Fi awake", state.keepWifiAwake,
+            detail = if (Build.VERSION.SDK_INT >= 34) "Asks Wi-Fi not to doze. Android 14+ may ignore this request." else "Stops Wi-Fi from dozing so connections don't drop.") {
             state.keepWifiAwake = it; app.store.saveNow(); KeepAliveService.sync(this)
         }
         val bat = batteryUnrestricted()
@@ -936,6 +942,97 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         s.show()
     }
 
+    // ------------------------------------------------- pop-ups & uploads
+
+    private var popupDialog: android.app.Dialog? = null
+    private var popupView: android.webkit.WebView? = null
+    private var popupTitle: android.widget.TextView? = null
+    private var popupPane: Pane? = null
+    internal val popupShowing get() = popupDialog?.isShowing == true
+
+    /** New-tab links and sign-in pop-ups open here, over the pane, in the pane's own session. */
+    fun showPopup(p: Pane, wv: android.webkit.WebView) {
+        closePopup()
+        popupPane = p; popupView = wv
+        val d = android.app.Dialog(this, android.R.style.Theme_DeviceDefault_NoActionBar)
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(T.bg) }
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(4), dp(8), dp(4)); setBackgroundColor(T.surface)
+        }
+        bar.addView(iconButton(Icon.CLOSE, "Close pop-up") { closePopup() })
+        val title = label("Pane ${slotNumber(p)} \u00B7 pop-up", 14f, T.text).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        popupTitle = title
+        bar.addView(title, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(4) })
+        bar.addView(label("Open in pane", 13.5f, T.text, bold = true).apply {
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = ripple(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT), dpf(10f))
+            contentDescription = "Replace the pane's page with this one"
+            setOnClickListener {
+                val url = popupView?.url
+                if (url != null && AddressPolicy.isWeb(url)) { closePopup(); navigate(p, url) } else toast("Nothing to open yet")
+            }
+        })
+        root.addView(bar)
+        root.addView(wv, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.setOnApplyWindowInsetsListener { v, ins ->
+            @Suppress("DEPRECATION") v.setPadding(0, ins.systemWindowInsetTop, 0, ins.systemWindowInsetBottom); ins
+        }
+        d.setContentView(root)
+        d.window?.apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(T.bg))
+            setLayout(-1, -1)
+            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        }
+        d.setOnKeyListener { _, code, ev ->
+            if (code == KeyEvent.KEYCODE_BACK && ev.action == KeyEvent.ACTION_UP) {
+                val v = popupView
+                if (v != null && v.canGoBack()) v.goBack() else closePopup(); true
+            } else false
+        }
+        d.setOnDismissListener { if (popupDialog === d) releasePopup() }
+        popupDialog = d
+        d.show()
+    }
+
+    fun onPopupPage(url: String) {
+        popupTitle?.text = "Pane ${popupPane?.let { slotNumber(it) } ?: ""} \u00B7 " + (AddressPolicy.label(url).ifBlank { "pop-up" })
+    }
+
+    fun closePopup() {
+        val d = popupDialog ?: return
+        popupDialog = null
+        d.dismiss()
+        releasePopup()
+    }
+
+    private fun releasePopup() {
+        popupView?.let { (it.parent as? android.view.ViewGroup)?.removeView(it); it.destroy() }
+        popupView = null; popupPane = null; popupTitle = null
+    }
+
+    private var fileCallback: android.webkit.ValueCallback<Array<Uri>>? = null
+
+    /** Website file-upload buttons open Android's file picker. */
+    fun pickFiles(cb: android.webkit.ValueCallback<Array<Uri>>, params: android.webkit.WebChromeClient.FileChooserParams): Boolean {
+        fileCallback?.onReceiveValue(null)
+        fileCallback = cb
+        return try {
+            @Suppress("DEPRECATION") startActivityForResult(params.createIntent(), REQ_FILES); true
+        } catch (e: Exception) {
+            fileCallback = null; toast("No app available to pick files"); false
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_FILES) {
+            fileCallback?.onReceiveValue(android.webkit.WebChromeClient.FileChooserParams.parseResult(resultCode, data))
+            fileCallback = null
+        }
+    }
+
     // ---------------------------------------------------------------- misc
 
     fun toast(msg: String, action: String? = null, onAction: (() -> Unit)? = null) {
@@ -947,9 +1044,11 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     internal fun slotNumber(p: Pane) = state.slotOf(p.id) + 1
     internal fun hubRef() = hub
     internal fun stateRef() = state
+    internal fun cardRef(id: String): View? = grid.card(id)
 
     companion object {
         /** Width (dp) websites see in small panes when "Full-size pages" is on. */
         const val MIN_PAGE_WIDTH_DP = 320
+        private const val REQ_FILES = 41
     }
 }

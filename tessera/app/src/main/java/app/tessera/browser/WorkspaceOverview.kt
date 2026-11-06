@@ -127,6 +127,11 @@ class WorkspaceOverview(private val a: MainActivity) : FrameLayout(a) {
         if (w.lockedCount > 0) top.addView(ImageView(a).apply { setImageDrawable(IconDrawable(Icon.LOCK, T.lock)) },
             LinearLayout.LayoutParams(a.dp(14), a.dp(14)).apply { rightMargin = a.dp(6) })
         top.addView(a.label("$open open", 12.5f, T.text3), LinearLayout.LayoutParams(0, -2, 1f))
+        top.addView(a.iconButton(if (w.allLocked) Icon.UNLOCK else Icon.LOCK,
+            if (w.allLocked) "Unlock all panes in workspace $idx" else "Lock all panes in workspace $idx", 40,
+            if (w.allLocked) T.lock else T.text2) {
+            a.setLocked(if (w.allLocked) w.panes.toList() else w.panes.filter { !it.locked }, !w.allLocked)
+        })
         top.addView(a.iconButton(Icon.CLOSE, "Close workspace $idx", 40, T.text2) { a.requestCloseWorkspace(w) })
         card.addView(top)
 
