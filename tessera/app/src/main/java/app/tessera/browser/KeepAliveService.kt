@@ -91,8 +91,19 @@ class KeepAliveService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // Keep running: the user swiping the task away should not end sessions.
+        // Keep running: swiping the task away must not end sessions. Without the
+        // holding-window permission Android treats the pages as hidden and slows them,
+        // so say so and offer a one-tap way back to full speed.
         super.onTaskRemoved(rootIntent)
+        if (!android.provider.Settings.canDrawOverlays(this)) {
+            val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            getSystemService(NotificationManager::class.java).notify(44, Notification.Builder(this, CHANNEL)
+                .setSmallIcon(R.drawable.ic_stat)
+                .setContentTitle("Sessions slowed down")
+                .setContentText("Tessera was closed from Recents. Tap to resume full speed.")
+                .setContentIntent(open).setAutoCancel(true).build())
+        }
     }
 
     override fun onDestroy() {

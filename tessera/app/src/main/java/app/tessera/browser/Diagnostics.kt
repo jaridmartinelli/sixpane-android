@@ -30,6 +30,7 @@ object Diagnostics {
             "Wi-Fi lock: " + if (KeepAliveService.wifiHeld) (if (Build.VERSION.SDK_INT >= 34) "requested (Android 14+ may ignore it)" else "held")
                 else if (st.keepWifiAwake) "NOT held" else "off in settings",
             "Battery optimisation: " + if (pm.isIgnoringBatteryOptimizations(a.packageName)) "unrestricted" else "RESTRICTED",
+            "Closing from Recents: " + if (a.hubRef().canPark) "full speed (holding window allowed)" else "SLOWED (allow Display over other apps)",
         )
     }
 

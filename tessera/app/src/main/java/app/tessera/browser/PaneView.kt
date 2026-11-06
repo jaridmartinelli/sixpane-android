@@ -18,7 +18,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
 /**
  * One pane: a thin header strip (the ONLY place SIXPANE-style app gestures
@@ -54,7 +53,10 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
     private val progress = View(context)
     private val content = FrameLayout(context)
     private val host = ScaledHost(context)
-    private val refresher = SwipeRefreshLayout(context)
+    private var webRef: PaneWebView? = null
+    private val refresher = PullHost(context,
+        canStart = { webRef?.let { PullRefreshPolicy.allow(locked, it.scrollY, it.inner) } ?: false },
+        onRefresh = { cb.onPullRefresh(paneId) })
     private val blank = LinearLayout(context)
     private val error = LinearLayout(context)
     private val errorTitle = context.label("", 14f, T.text, bold = true)
@@ -113,13 +115,6 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         header.contentDescription = "Pane controls. Double-tap to expand, long-press for menu"
 
         // Content ----------------------------------------------------------
-        refresher.setColorSchemeColors(T.bg)
-        refresher.setProgressBackgroundColorSchemeColor(T.text)
-        refresher.setOnRefreshListener { cb.onPullRefresh(paneId) }
-        refresher.setOnChildScrollUpCallback { _, child ->
-            val wv = child as? PaneWebView ?: return@setOnChildScrollUpCallback true
-            !PullRefreshPolicy.allow(locked, wv.scrollY, wv.inner)
-        }
         // Screen-reader actions for the gestures that live on the header strip.
         accessibilityDelegate = object : AccessibilityDelegate() {
             override fun onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo) {
@@ -185,8 +180,9 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
     fun attachWeb(wv: WebView) {
         if (wv.parent === refresher) return
         (wv.parent as? ViewGroup)?.removeView(wv)
-        refresher.removeAllViews()
-        refresher.addView(wv, ViewGroup.LayoutParams(-1, -1))
+        webRef?.let { if (it.parent === refresher) refresher.removeView(it) }
+        webRef = wv as? PaneWebView
+        refresher.addView(wv, 0, ViewGroup.LayoutParams(-1, -1))
     }
 
     fun hasWeb(wv: WebView?) = wv != null && wv.parent === refresher
@@ -204,7 +200,7 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         host.minWidthPx = minPageWidthPx
         locked = pane.locked
         refresher.isEnabled = !selecting && !isMini
-        if (!rt.loading && refresher.isRefreshing) refresher.isRefreshing = false
+        if (!rt.loading && refresher.refreshing) refresher.done()
         lockIcon.visibility = if (pane.locked) VISIBLE else GONE
         site.text = when {
             rt.crashed -> "Restoring…"

@@ -395,6 +395,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         val p = state.pane(id) ?: return
         hub.runtime(id).error = null
         if (p.url.isBlank()) { bindCard(id); return }
+        hub.runtime(id).loading = true
         hub.view(id)?.reload()
     }
 
@@ -879,6 +880,12 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7)
     }
 
+    /** "Display over other apps" lets Tessera hold pages in an invisible window when its screen closes. */
+    private fun requestOverlay() {
+        runCatching { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) }
+            .onFailure { openAppDetails() }
+    }
+
     private fun openAppDetails() {
         runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
     }
@@ -899,6 +906,10 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         val notif = notificationsAllowed()
         s.item(Icon.SETTINGS, "Keep-alive notification", detail = if (notif) "Allowed" else "Hidden — tap to allow (recommended)",
             trailing = if (notif) "✓" else "Allow") { if (!notif) requestNotifications() else openAppDetails() }
+        val park = hub.canPark
+        s.item(Icon.SHIELD, "Full speed after closing from Recents",
+            detail = if (park) "Allowed \u2014 pages keep running if you swipe Tessera away" else "Off \u2014 tap and allow \u201CDisplay over other apps\u201D",
+            trailing = if (park) "\u2713" else "Allow") { requestOverlay() }
         s.item(Icon.SETTINGS, "App info (OnePlus background settings)", detail = "Set Battery to “Unrestricted” / allow background activity") { openAppDetails() }
         s.section("Layout")
         s.toggle(Icon.GRID, "Full-size pages in small panes", state.fitSmallPanes,
@@ -937,6 +948,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         s.section("So sessions never drop")
         if (!notificationsAllowed()) s.item(Icon.SETTINGS, "Allow the keep-alive notification", keepOpen = false) { requestNotifications() }
         if (!batteryUnrestricted()) s.item(Icon.SHIELD, "Allow running in the background", detail = "Turns off battery optimisation for Tessera") { requestBatteryExemption() }
+        if (!hub.canPark) s.item(Icon.SHIELD, "Keep full speed after closing from Recents", detail = "Allow \u201CDisplay over other apps\u201D") { requestOverlay() }
         s.buttons(pillButton("Got it", filled = true) { s.dismiss() })
         s.onDismiss { state.onboarded = true; app.store.save() }
         s.show()

@@ -85,21 +85,60 @@ class SessionHub(private val app: TesseraApp, private val store: Store) {
         activity = a
         views.values.forEach { (it.context as MutableContextWrapper).baseContext = a }
         startHeartbeat()
+        // The Activity re-parents every browser right after this; then drop the holding window.
+        handler.post { unpark() }
     }
 
     fun detachActivity(a: Activity) {
         if (activity !== a) return
         activity = null
+        val sizes = views.mapValues { (_, v) -> v.width to v.height }
         views.values.forEach {
             (it.parent as? ViewGroup)?.removeView(it)
             (it.context as MutableContextWrapper).baseContext = app
         }
+        park(sizes)
+    }
+
+    // ---- holding window: keeps pages attached (= running at full speed) when the
+    // app's screen is closed, e.g. swiped away from Recents. Needs "Display over other apps".
+
+    private var parkWin: android.widget.FrameLayout? = null
+    val canPark: Boolean get() = android.provider.Settings.canDrawOverlays(app)
+    val parked: Boolean get() = parkWin != null
+
+    private fun park(sizes: Map<String, Pair<Int, Int>>) {
+        if (!canPark || views.isEmpty() || parkWin != null) return
+        runCatching {
+            val wm = app.getSystemService(android.view.WindowManager::class.java)
+            val holder = android.widget.FrameLayout(app)
+            views.forEach { (id, v) ->
+                val (w, h) = sizes[id] ?: (0 to 0)
+                holder.addView(v, android.widget.FrameLayout.LayoutParams(w.coerceAtLeast(320), h.coerceAtLeast(480)))
+                v.translationX = -100_000f // laid out and attached, never drawn on screen
+            }
+            val lp = android.view.WindowManager.LayoutParams(
+                android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                android.graphics.PixelFormat.TRANSLUCENT).apply { alpha = 0f; title = "Tessera sessions" }
+            wm.addView(holder, lp)
+            parkWin = holder
+        }.onFailure { parkWin = null }
+    }
+
+    private fun unpark() {
+        val holder = parkWin ?: return
+        parkWin = null
+        views.values.forEach { if (it.parent === holder) { holder.removeView(it) }; it.translationX = 0f }
+        runCatching { app.getSystemService(android.view.WindowManager::class.java).removeView(holder) }
     }
 
     /** Returns the pane's WebView, creating and binding it to its profile on first use. */
     @SuppressLint("SetJavaScriptEnabled")
     fun obtain(pane: Pane): PaneWebView {
-        views[pane.id]?.let { return it }
+        views[pane.id]?.let { it.translationX = 0f; return it }
         ProfileStore.getInstance().getOrCreateProfile(pane.profile)
         val wv = PaneWebView(MutableContextWrapper(activity ?: app), pane.id)
         // The profile must be bound before any settings, cookies or navigation.

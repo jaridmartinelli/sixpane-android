@@ -53,8 +53,9 @@ class JourneyTest {
     private fun swipeDown(x: Float, y: Float, dist: Float) {
         val t = SystemClock.uptimeMillis()
         inst.sendPointerSync(MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0))
-        for (i in 1..20) inst.sendPointerSync(MotionEvent.obtain(t, t + i * 16L, MotionEvent.ACTION_MOVE, x, y + dist * i / 20, 0))
-        inst.sendPointerSync(MotionEvent.obtain(t, t + 340, MotionEvent.ACTION_UP, x, y + dist, 0))
+        // A deliberate human pull (~0.9s), giving the page time to answer the touch-down probe.
+        for (i in 1..45) { inst.sendPointerSync(MotionEvent.obtain(t, t + i * 20L, MotionEvent.ACTION_MOVE, x, y + dist * i / 45, 0)); Thread.sleep(20) }
+        inst.sendPointerSync(MotionEvent.obtain(t, t + 920, MotionEvent.ACTION_UP, x, y + dist, 0))
     }
 
     private fun launch(block: (ActivityScenario<MainActivity>, MainActivity) -> Unit) {
@@ -115,8 +116,10 @@ class JourneyTest {
         main { lockedP.locked = false; act.refreshAll() }
     }
 
-    /** Evidence only: what happens to page timers when the task is swiped away from Recents. */
-    @Test fun recentsSwipeEvidence() {
+    /** With "Display over other apps" allowed, pages keep full speed after the task is swiped away. */
+    @Test fun recentsSwipeKeepsFullSpeed() {
+        inst.uiAutomation.executeShellCommand("appops set ${inst.targetContext.packageName} SYSTEM_ALERT_WINDOW allow").close()
+        Thread.sleep(500)
         main { (inst.targetContext.applicationContext as TesseraApp).store.state.onboarded = true }
         val sc = ActivityScenario.launch(MainActivity::class.java)
         lateinit var act: MainActivity; sc.onActivity { act = it }
@@ -130,7 +133,10 @@ class JourneyTest {
         val latch = CountDownLatch(1); val out = AtomicReference("?")
         inst.runOnMainSync { hub.view(p.id)?.evaluateJavascript("String(window.__t)+'/'+document.visibilityState") { out.set(it); latch.countDown() } ?: latch.countDown() }
         latch.await(15, TimeUnit.SECONDS)
-        Log.i("TesseraTest", "JOURNEY recents: after20s ticks/visibility=${out.get()} (200 = full speed) service=${KeepAliveService.running}")
+        Log.i("TesseraTest", "JOURNEY recents: after20s ticks/visibility=${out.get()} (200 = full speed) parked=${main { hub.parked }} service=${KeepAliveService.running}")
         runCatching { sc.close() }
+        val parts = out.get().trim('"').split('/')
+        assertEquals("page visibility after closing from Recents", "visible", parts.getOrNull(1))
+        assertTrue("timers slowed after closing from Recents: ${parts[0]}", (parts[0].toDoubleOrNull() ?: 0.0) >= 120)
     }
 }
