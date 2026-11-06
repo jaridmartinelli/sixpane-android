@@ -1,7 +1,7 @@
 # SIXPANE — Queue-it compatibility / session-integrity verification
 
 Last reviewed: 2026-11-06. Scope: diagnostic and testing changes only.
-Canonical source: `main` (integration of this branch pending CI). No change to
+Canonical source: `main` (PR #5 merged in commit `48a3317d`). No change to
 package ID, signing key, existing profile names, stored bookmarks or live navigation.
 
 ## Source versus externally verified facts
@@ -73,6 +73,14 @@ No test writes to the user's current app profiles or operates a live Queue-it
 event. No profile names are reused during testing. CI creates synthetic profiles
 only in its disposable emulator installation.
 
+**Verified emulator result (2026-11-06):** GitHub Actions run
+[42187351141](https://github.com/jaridmartinelli/sixpane-android/actions/runs/42187351141)
+completed an Android instrumentation test with **1 test, 0 failures,
+0 errors, 0 skipped**. XML reports 83.332 seconds for the test case.
+The test code exercises 42 unique QA profiles, with first-load and
+reconstruction checks. Neither the test nor this result proves 42 simultaneous
+renderers or Queue-it server-issued identities.
+
 ## On-device acceptance still needed
 
 1. Confirm all 42 existing pane WebViews can allocate on the target OnePlus Open,
@@ -112,6 +120,8 @@ Cause: the emulator-runner treated each line of the multi-line `script:` as a
 separate command. A standalone `cd` did not carry into the subsequent Gradle
 command. Prevention: launch Gradle with an explicit `-p android` project
 directory on the same command line; verify that a subsequent CI job reaches
-actual Android test execution and publishes test-result artifacts. This is
-a workflow defect, not evidence for or against cookie isolation.
+actual Android test execution and publishes test-result artifacts. **Verified:**
+run 42187351141 reached the Android test runner and passed the 42-profile test;
+artifact `sixpane-42-profile-integrity-ci` (ID 13487734214) contains the XML.
+This was a CI workflow defect, not evidence for or against cookie isolation.
 
