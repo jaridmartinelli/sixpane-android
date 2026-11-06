@@ -23,5 +23,7 @@ for f in glob.glob(sys.argv[1] + "/**/*.xml", recursive=True):
         if fail is None: print("PASS", name)
         else: print("FAIL", name, "::", (fail.get("message") or fail.text or "").strip().splitlines()[0][:300])
 PYEOF
+echo "--- journey evidence ---"
+grep -h "JOURNEY\|TesseraTest: pane" "$OUT/logcat.txt" | sed 's/.*TesseraTest/TesseraTest/' | tail -12
 echo "=== END SUMMARY ==="
 exit "$status"

@@ -74,15 +74,16 @@ class JourneyTest {
         load(act, p, "<a id=ready href='https://example.org/' target='_blank' style='display:block;height:3000px;font-size:40px'>open new tab</a>")
         val (x, y) = center(act, p); tap(x, y)
         waitFor(15_000, "pop-up shown") { main { act.popupShowing } }
-        assertEquals("pane page must stay", base, main { act.hubRef().view(p.id)!!.url })
-        Log.i("TesseraTest", "JOURNEY popup: shown=true paneUrl=${main { act.hubRef().view(p.id)!!.url }}")
+        // getUrl() reports about:blank for loadDataWithBaseURL pages, so check the page content itself.
         main { act.closePopup() }
+        assertEquals("pane page must stay", "y", js(act, p, "document.getElementById('ready')?'y':'n'"))
+        Log.i("TesseraTest", "JOURNEY popup: shown=true panePageKept=true")
     }
 
     @Test fun fileUploadOpensPicker() = launch { _, act ->
         val p = main { act.stateRef().current().panes[1] }
         load(act, p, "<input id=ready type=file style='display:block;width:100%;height:3000px'>")
-        val monitor = Instrumentation.ActivityMonitor(IntentFilter(Intent.ACTION_GET_CONTENT).apply { addCategory(Intent.CATEGORY_OPENABLE) },
+        val monitor = Instrumentation.ActivityMonitor(IntentFilter(Intent.ACTION_GET_CONTENT).apply { addCategory(Intent.CATEGORY_OPENABLE); addDataType("*/*") },
             Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null), true)
         val monitorAny = Instrumentation.ActivityMonitor(IntentFilter(Intent.ACTION_CHOOSER), Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null), true)
         inst.addMonitor(monitor); inst.addMonitor(monitorAny)
@@ -100,6 +101,8 @@ class JourneyTest {
             "<div id=ready style='height:100%;overflow-y:auto'><div style='height:3000px'>inner scroller</div></div>"
         load(act, normal, longPage); load(act, inner, innerPage); load(act, lockedP, longPage)
         main { lockedP.locked = true; act.refreshAll() }
+        // The inner box is scrolled down: a pull must scroll it back, not reload the page.
+        js(act, inner, "document.getElementById('ready').scrollTop=800;1")
         listOf(normal, inner, lockedP).forEach { js(act, it, "window.__mark=1;1") }
         listOf(normal, inner, lockedP).forEach { p ->
             val (x, y) = center(act, p); swipeDown(x, y - 150f, 600f); Thread.sleep(2500)
@@ -107,7 +110,7 @@ class JourneyTest {
         val reloaded = listOf(normal, inner, lockedP).map { js(act, it, "String(window.__mark)") != "1" }
         Log.i("TesseraTest", "JOURNEY pull: normalReloaded=${reloaded[0]} innerReloaded=${reloaded[1]} lockedReloaded=${reloaded[2]}")
         assertTrue("normal page should reload on pull", reloaded[0])
-        assertTrue("inner scroller must NOT reload", !reloaded[1])
+        assertTrue("scrolled inner box must NOT reload", !reloaded[1])
         assertTrue("locked pane must NOT reload", !reloaded[2])
         main { lockedP.locked = false; act.refreshAll() }
     }

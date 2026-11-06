@@ -14,17 +14,22 @@ import android.webkit.WebView
 @SuppressLint("ViewConstructor")
 class PaneWebView(context: Context, val paneId: String) : WebView(context) {
     var keepAwake = true
-    /** uptimeMillis when the page's own scroller was last pulled past its top. */
-    var lastTopOverscroll = -1L
+    /** Whether the content under the last touch can still scroll up (see PullRefreshPolicy). */
+    @Volatile var inner = PullRefreshPolicy.Inner.UNKNOWN
         private set
 
-    override fun onOverScrolled(scrollX: Int, scrollY: Int, clampedX: Boolean, clampedY: Boolean) {
-        super.onOverScrolled(scrollX, scrollY, clampedX, clampedY)
-        if (clampedY && scrollY <= 0) lastTopOverscroll = android.os.SystemClock.uptimeMillis()
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+            inner = PullRefreshPolicy.Inner.UNKNOWN
+            @Suppress("DEPRECATION") val s = scale.takeIf { it > 0f } ?: 1f
+            runCatching {
+                evaluateJavascript(PullRefreshPolicy.probeScript(ev.x / s, ev.y / s)) { r ->
+                    inner = if (r?.trim() == "0") PullRefreshPolicy.Inner.AT_TOP else PullRefreshPolicy.Inner.SCROLLED
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev)
     }
-
-    fun msSinceTopOverscroll(): Long =
-        if (lastTopOverscroll < 0) -1 else android.os.SystemClock.uptimeMillis() - lastTopOverscroll
 
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(if (keepAwake) View.VISIBLE else visibility)

@@ -118,7 +118,7 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         refresher.setOnRefreshListener { cb.onPullRefresh(paneId) }
         refresher.setOnChildScrollUpCallback { _, child ->
             val wv = child as? PaneWebView ?: return@setOnChildScrollUpCallback true
-            !PullRefreshPolicy.allow(locked, wv.scrollY, wv.msSinceTopOverscroll())
+            !PullRefreshPolicy.allow(locked, wv.scrollY, wv.inner)
         }
         // Screen-reader actions for the gestures that live on the header strip.
         accessibilityDelegate = object : AccessibilityDelegate() {
