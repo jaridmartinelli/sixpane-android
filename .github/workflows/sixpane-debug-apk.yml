@@ -89,8 +89,27 @@ jobs:
           grep -Fq 'Copy page report' android/app/src/main/java/com/sixpane/app/WindowActions.kt
           grep -Fq 'if (focusedUrl == "about:blank") "" else focusedUrl' android/app/src/main/java/com/sixpane/app/UniversalBar.kt
           grep -Fq 'repeat(WorkspacePolicy.MAX_WORKSPACES)' android/app/src/main/java/com/sixpane/app/MainActivity.kt
+      - name: Load permanent canonical signing key (main only)
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          SIXPANE_KEYSTORE_BASE64: ${{ secrets.SIXPANE_CANONICAL_KEYSTORE_BASE64 }}
+          SIXPANE_CANONICAL_KEYSTORE_PASSWORD: ${{ secrets.SIXPANE_CANONICAL_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SIXPANE_KEYSTORE_BASE64:-}" || -z "${SIXPANE_CANONICAL_KEYSTORE_PASSWORD:-}" ]]; then
+            echo "::error::Permanent SIXPANE signing credentials are missing. Configure repository Actions secrets SIXPANE_CANONICAL_KEYSTORE_BASE64 and SIXPANE_CANONICAL_KEYSTORE_PASSWORD. No APK published."
+            exit 1
+          fi
+          KEYSTORE="$RUNNER_TEMP/sixpane-canonical.p12"
+          printf '%s' "$SIXPANE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          keytool -list -keystore "$KEYSTORE" -storepass:env SIXPANE_CANONICAL_KEYSTORE_PASSWORD -alias sixpane-canonical >/dev/null
+          echo "SIXPANE_CANONICAL_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
       - name: Compile tests and debug APK
         working-directory: android
+        env:
+          SIXPANE_CANONICAL_KEYSTORE_PASSWORD: ${{ secrets.SIXPANE_CANONICAL_KEYSTORE_PASSWORD }}
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
       - name: Verify compiled APK package/version/label
         shell: bash
@@ -101,26 +120,13 @@ jobs:
           BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
           echo "$BADGING" | grep -Fq "package: name='com.sixpane.app.preview.filterview' versionCode='15'"
           echo "$BADGING" | grep -Fq "application-label:'SIXPANE'"
-      # Explicit v14 clean-install test build: CI's temporary debug signer is NOT
-      # update-compatible with earlier installations. Publication of an upgrade
-      # from main still requires the separately approved canonical certificate.
-      - name: Upload v14 clean-install APK for the requested feature branch
-        if: success() && github.event_name == 'pull_request' && github.head_ref == 'release/v14-clean-install'
-        uses: actions/upload-artifact@v4
-        with:
-          name: SIXPANE-v14-CLEAN-INSTALL-only
-          if-no-files-found: error
-          path: |
-            android/app/build/outputs/apk/debug/*.apk
-            android/app/build/reports/**
-            android/app/build/test-results/**
-      # Default GitHub-hosted debug keys rotate on every runner. Never distribute
-      # an APK until its signer matches the explicitly approved stable identity.
+      # A main-branch APK is distributable only if signed by the permanent key,
+      # whose certificate is pinned here (public SHA-256, NOT a private secret).
       - name: Block unapproved signing certificates from release
         if: github.ref == 'refs/heads/main'
         shell: bash
         env:
-          EXPECTED_SIGNER: ${{ vars.SIXPANE_CANONICAL_CERT_SHA256 }}
+          EXPECTED_SIGNER: cced8806d97502e5a7cf950e57c2a82ece12da9c0a0b68cdaca1c03dc0238853
         run: |
           set -euo pipefail
           if [[ -z "$EXPECTED_SIGNER" ]]; then
@@ -130,7 +136,7 @@ jobs:
           APK='android/app/build/outputs/apk/debug/app-debug.apk'
           ACTUAL_SIGNER="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}')"
           if [[ -z "$ACTUAL_SIGNER" || "${ACTUAL_SIGNER,,}" != "${EXPECTED_SIGNER,,}" ]]; then
-            echo "::error::APK signing certificate changed. Refusing to publish an unupdatable SIXPANE APK. Preserve installed sessions; configure the approved original signing key, do not rotate the package name."
+            echo "::error::Permanent SIXPANE signing certificate mismatch. Refusing to publish. Do not rotate the permanent key or package ID."
             exit 1
           fi
       - name: Upload APK and build reports
