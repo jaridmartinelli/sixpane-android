@@ -48,6 +48,8 @@ class PaneGrid(context: Context) : ViewGroup(context) {
 
     /** Recompute layout; animate slot geometry changes (expand/collapse, grid swap). */
     fun update(expanded: Int, animate: Boolean) {
+        // A plain refresh must not cut short a running expand/collapse animation.
+        if (!animate && expanded == expandedSlot && anim?.isRunning == true) { requestLayout(); return }
         val currentBoxes = (0 until GridGeometry.SLOTS).associateWith { slot -> boxFor(slot) }
         expandedSlot = expanded
         anim?.cancel()
