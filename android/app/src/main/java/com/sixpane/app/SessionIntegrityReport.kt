@@ -123,7 +123,7 @@ internal class SessionIntegrityReport(private val host: MainActivity) {
             appendLine("No full URLs, cookie values or Queue-it tokens included.")
             appendLine()
             appendLine("PER-PANE INVENTORY")
-            details.forEach(::appendLine)
+            details.forEach { appendLine(it) }
         }
     }
 }
