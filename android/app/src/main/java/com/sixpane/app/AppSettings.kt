@@ -34,16 +34,17 @@ internal class AppSettings(private val host:MainActivity){
     }
 
     private fun developerTools(){
-        val items=arrayOf("Session audit","Pending profile cleanup","Controlled test page")
+        val items=arrayOf("Session audit","Session integrity report (read-only)","Pending profile cleanup","Controlled test page")
         AlertDialog.Builder(host)
             .setTitle("Developer tools")
             .setItems(items){_,position->when(position){
                 0->SessionAudit(host).open()
-                1->host.notice(
+                1->SessionIntegrityReport(host).open()
+                2->host.notice(
                     host.store.pendingDeletion.size.toString()+
                     " retired profiles pending a clean app restart. No profile ID will be reused."
                 )
-                2->host.openControlledTestPage()
+                3->host.openControlledTestPage()
             }}.show()
     }
 }

@@ -1,0 +1,58 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>SIXPANE QA-only storage probe</title></head>
+<body><div id="result">QA test initializing</div>
+<script>
+'use strict';
+/* Synthetic marker only. This page does not contact Queue-it or any external host. */
+(async function() {
+  const marker = new URLSearchParams(location.search).get('marker');
+  if (!marker || !/^[a-f0-9-]{36}$/.test(marker)) throw Error('Invalid QA marker');
+  const cookieName = 'sixpane_integrity_probe';
+  const localName = 'sixpane.integrity.probe';
+  const cookie = () => {
+    const row = document.cookie.split(';').map(x => x.trim())
+      .find(x => x.startsWith(cookieName + '='));
+    return row ? row.substring(cookieName.length + 1) : null;
+  };
+  const cookieBefore = cookie();
+  const localBefore = localStorage.getItem(localName);
+  if (cookieBefore === null)
+    document.cookie = cookieName + '=' + marker + '; Path=/; Secure; SameSite=Lax; Max-Age=600';
+  if (localBefore === null) localStorage.setItem(localName, marker);
+  const db = await new Promise((resolve, reject) => {
+    const request = indexedDB.open('sixpane-integrity-qa', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('markers');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || Error('IndexedDB open failed'));
+    request.onblocked = () => reject(Error('IndexedDB blocked'));
+  });
+  let idbBefore;
+  try {
+    idbBefore = await new Promise((resolve, reject) => {
+      const tx = db.transaction('markers', 'readwrite');
+      const store = tx.objectStore('markers');
+      const request = store.get('only');
+      request.onsuccess = () => {
+        idbBefore = request.result || null;
+        if (idbBefore === null) store.put(marker, 'only');
+      };
+      tx.oncomplete = () => resolve(idbBefore);
+      tx.onerror = () => reject(tx.error || Error('IndexedDB read failed'));
+      tx.onabort = () => reject(tx.error || Error('IndexedDB aborted'));
+    });
+  } finally { db.close(); }
+  window.sixpaneIntegrityProbe = {
+    marker: marker,
+    cookieBefore: cookieBefore,
+    localBefore: localBefore,
+    idbBefore: idbBefore,
+    cookieAfter: cookie(),
+    localAfter: localStorage.getItem(localName),
+    idbAfter: idbBefore === null ? marker : idbBefore
+  };
+  document.getElementById('result').textContent = 'QA probe complete';
+})().catch(error => {
+  window.sixpaneIntegrityProbe = {error: String(error)};
+  document.getElementById('result').textContent = 'QA probe error';
+});
+</script></body></html>
