@@ -40,8 +40,8 @@ jobs:
           grep -q "package: name='app.tessera.browser'" apk-badging.txt
           "$BT/apksigner" verify --print-certs "$APK" | tee apk-signer.txt
           grep -qi "SHA-256 digest: 46f564b80db697eb298d9a62762ce9b108daf7c9fd27787053267d9807b15b02" apk-signer.txt
-          mkdir -p dist && cp "$APK" dist/Tessera-1.0-debug.apk
-          sha256sum dist/Tessera-1.0-debug.apk | tee dist/SHA256SUMS.txt
+          mkdir -p dist && cp "$APK" dist/Tessera-debug.apk
+          sha256sum dist/Tessera-debug.apk | tee dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: Tessera-APK
@@ -91,7 +91,7 @@ jobs:
         if: always() && github.event_name == 'push'
         run: |
           set -euo pipefail
-          mkdir -p ci-evidence/tessera && rm -f ci-evidence/tessera/*.jpg
+          mkdir -p ci-evidence/tessera && rm -f ci-evidence/tessera/*.jpg ci-evidence/tessera/*.apk ci-evidence/tessera/*.sha256
           python3 -m pip install --quiet pillow
           python3 - <<'PYEOF'
           import glob, os
@@ -103,8 +103,8 @@ jobs:
           PYEOF
           git config user.name "tessera-ci"; git config user.email "tessera-ci@users.noreply.github.com"
           APK=tessera/app/build/outputs/apk/debug/app-debug.apk
-          cp "$APK" ci-evidence/tessera/Tessera-1.0-debug.apk
-          (cd ci-evidence/tessera && sha256sum Tessera-1.0-debug.apk > Tessera-1.0-debug.apk.sha256 && cat Tessera-1.0-debug.apk.sha256)
+          cp "$APK" ci-evidence/tessera/Tessera-debug.apk
+          (cd ci-evidence/tessera && sha256sum Tessera-debug.apk > Tessera-debug.apk.sha256 && cat Tessera-debug.apk.sha256)
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | grep -i "SHA-256" | tee ci-evidence/tessera/signer.txt || true
           git add ci-evidence/tessera
           git diff --cached --quiet && exit 0

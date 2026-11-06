@@ -48,6 +48,8 @@ class AppState {
     var keepCpuAwake = true
     var keepWifiAwake = true
     var onboarded = false
+    /** Small panes render a normal phone-width page, scaled down to fit. */
+    var fitSmallPanes = true
 
     fun current(): Workspace = workspaces.firstOrNull { it.id == currentId } ?: workspaces.first()
     fun allPanes(): List<Pane> = workspaces.flatMap { it.panes }
@@ -94,6 +96,7 @@ object StateCodec {
         put("cpu", s.keepCpuAwake)
         put("wifi", s.keepWifiAwake)
         put("onboarded", s.onboarded)
+        put("fitSmall", s.fitSmallPanes)
         put("issued", JSONArray(s.issuedProfiles.toList()))
         put("pendingDeletes", JSONArray(s.pendingDeletes.toList()))
         put("bookmarks", JSONArray().apply {
@@ -124,6 +127,7 @@ object StateCodec {
         s.keepCpuAwake = o.optBoolean("cpu", true)
         s.keepWifiAwake = o.optBoolean("wifi", true)
         s.onboarded = o.optBoolean("onboarded", false)
+        s.fitSmallPanes = o.optBoolean("fitSmall", true)
         o.optJSONArray("issued")?.let { a -> for (i in 0 until a.length()) s.issuedProfiles += a.getString(i) }
         o.optJSONArray("pendingDeletes")?.let { a -> for (i in 0 until a.length()) s.pendingDeletes += a.getString(i) }
         o.optJSONArray("bookmarks")?.let { a ->

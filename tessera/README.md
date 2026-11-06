@@ -10,8 +10,7 @@ one-handed use on the OnePlus Open (folded and unfolded).
 |---|---|
 | **Pane grid** | 2×3 when folded (tall), 3×2 when unfolded (wide) — automatic, or fixed in Settings. |
 | **Filter chips** | Only while a filter is on. Each chip has its own ✕; "Clear all" at the end. |
-| **Command bar** | Acts on the *active* pane: **[pane chip]** · **[address pill]** · Forward · Reload/Stop · ⋮ |
-| **Workspace tabs** | Numbers 1–7 with six dots each (lit = page open, red = locked) · `+` |
+| **Command bar** | Acts on the *active* pane: **[pane chip]** · **[address field with ☆]** · Forward · **[workspace button]** · ⋮ |
 
 Everything you touch often is in the bottom third, within thumb reach.
 
@@ -22,15 +21,16 @@ Everything you touch often is in the bottom third, within thumb reach.
 | Web page | Website + makes pane active | Website | **Website** (links, text) | Website |
 | Pane header strip (26dp) | Make active (in selection: select) | Expand / collapse | Pane menu | — |
 | Pane chip (command bar) | Expand / collapse | — | Pane menu | — |
-| Workspace tab | Switch | — | Workspace menu | Tab strip: next / previous workspace |
+| Web page (at top) | — | — | — | Pull down: reload |
+| Workspace button | Workspace screen (switch / add, up to 7) | — | Current workspace menu | — |
 | Small pane (expanded view) | Make it the large pane | — | — | — |
 | Android back | Exit selection → page back → collapse → move app to background (never closes sessions) |
 
 ## Visibility tiers
 
 **Tier 1 — always visible:** active pane chip (number + colour, expand glyph), address pill
-(lock/zoom shown inline), Forward (dimmed when there's nothing to go forward to),
-Reload ↔ Stop, ⋮, workspace tabs, `+`. Back is the Android gesture.
+(type directly; ☆ bookmark inside, becomes Stop while loading), Forward (dimmed when there's
+nothing to go forward to), workspace button, ⋮. Back is the Android gesture; reload is pull-down.
 
 **Tier 2 — contextual:**
 - *Pane menu* (hold header or chip; ⋮ for the active pane): colour, lock/unlock, desktop
@@ -50,9 +50,10 @@ OnePlus app info, layout, "How sessions work", finish erasing ended sessions.
 
 | State | Look |
 |---|---|
-| Active | Blue 2dp frame, brighter header |
-| Locked | Red lock in header, red-tinted header, thin red frame; lock shakes + haptic when something is refused |
-| Selected | Green 2dp frame, green tint, filled check |
+| Colour tag | The whole header strip takes the tag colour |
+| Active | White 1.5dp frame (never a tag colour) |
+| Locked | Red lock on a dark badge in the header; shakes + haptic when something is refused |
+| Selected | White 3dp frame, light tint, white check |
 | Filtered out | Slot left empty (other panes never grow); workspace tab hidden if nothing matches |
 | Loading | Thin blue progress line in the header and on the command bar; Reload becomes Stop |
 | Error | In-pane card with the reason and **Retry** |

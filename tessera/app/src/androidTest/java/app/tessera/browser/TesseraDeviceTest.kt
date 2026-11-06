@@ -178,6 +178,7 @@ class TesseraDeviceTest {
             main { Diagnostics.isolationCheck(act) }; Thread.sleep(3000); shot("11-isolation-check")
             main { Sheet.dismissAll() }; Thread.sleep(500)
             main { act.openSettings() }; shot("12-settings")
+            main { Sheet.dismissAll(); act.openWorkspaces() }; shot("13-workspaces")
         }
     }
 }

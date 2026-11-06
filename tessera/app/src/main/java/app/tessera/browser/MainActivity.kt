@@ -32,7 +32,7 @@ import android.widget.LinearLayout
 
 /**
  * Controller. Layout, top to bottom: pane grid · filter chips (when filtering)
- * · command bar (or selection bar) · workspace tabs. Everything the thumb needs
+ * · command bar (or selection bar). Everything the thumb needs
  * is in the bottom third.
  */
 class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
@@ -46,7 +46,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     private lateinit var chips: FilterChips
     private lateinit var cmd: CommandBar
     private lateinit var sel: SelectionBar
-    private lateinit var tabs: TabStrip
+    private lateinit var suggest: LinearLayout
     private lateinit var snack: Snack
     private lateinit var dock: LinearLayout
     private lateinit var emptyState: LinearLayout
@@ -118,10 +118,15 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         barHolder.addView(cmd, FrameLayout.LayoutParams(-1, -2))
         barHolder.addView(sel, FrameLayout.LayoutParams(-1, -2))
         dock.addView(barHolder, LinearLayout.LayoutParams(-1, -2))
-        tabs = TabStrip(this)
-        dock.addView(tabs, LinearLayout.LayoutParams(-1, -2))
         column.addView(dock, LinearLayout.LayoutParams(-1, -2))
         root.addView(column, FrameLayout.LayoutParams(-1, -1))
+
+        suggest = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedTop(T.surface, dpf(18f)); elevation = dpf(6f)
+            setPadding(0, dp(8), 0, dp(4)); visibility = View.GONE
+        }
+        root.addView(suggest, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
 
         snack = Snack(this)
         root.addView(snack, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { setMargins(dp(12), 0, dp(12), dp(140)) })
@@ -129,6 +134,10 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
             (snack.layoutParams as FrameLayout.LayoutParams).let { lp ->
                 val m = bottom - top + dp(10)
                 if (lp.bottomMargin != m) { lp.bottomMargin = m; snack.layoutParams = lp }
+            }
+            (suggest.layoutParams as FrameLayout.LayoutParams).let { lp ->
+                val m = bottom - top
+                if (lp.bottomMargin != m) { lp.bottomMargin = m; suggest.layoutParams = lp }
             }
         }
 
@@ -142,6 +151,9 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
             }
             grid.setPadding(l + dp(4), t + dp(4), r + dp(4), dp(4))
             dock.setPadding(l, 0, r, b)
+            // Keyboard: lift the dock (and what sits on it) above the IME without resizing the panes.
+            val lift = if (Build.VERSION.SDK_INT >= 30) (ins.getInsets(WindowInsets.Type.ime()).bottom - b).coerceAtLeast(0) else 0
+            listOf<View>(dock, suggest, snack).forEach { it.translationY = -lift.toFloat() }
             ins
         }
         setContentView(root)
@@ -208,6 +220,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         val p = activePane()
         val wv = hub.view(p.id)
         when {
+            cmd.editing -> cmd.clearAddress()
             selecting -> exitSelection()
             wv != null && wv.canGoBack() -> wv.goBack()
             state.expandedPaneId != null -> { state.expandedPaneId = null; refreshAll(animate = true) }
@@ -260,13 +273,13 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         bindBars()
         chips.visibility = if (filtering()) View.VISIBLE else View.GONE
         if (filtering()) chips.bind(state.filter, state.allPanes().count { shown(it) })
-        tabs.bind(state, visibleWorkspaces(), filtering()) { it.url.isNotBlank() }
         app.store.save()
     }
 
     private fun bindBars() {
         val p = activePane()
-        cmd.bind(p, hub.runtime(p.id), state.slotOf(p.id) + 1, state.expandedPaneId == p.id)
+        cmd.bind(p, hub.runtime(p.id), state.slotOf(p.id) + 1, state.expandedPaneId == p.id,
+            state.bookmarks.any { it.url == p.url }, state.workspaces.indexOf(state.current()) + 1, state.workspaces.size)
         val chosen = selectedPanes()
         sel.bind(chosen, chosen.mapNotNull { state.workspaceOf(it.id)?.id }.distinct().size)
     }
@@ -278,7 +291,8 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         val slot = ws.panes.indexOf(p)
         val expSlot = state.expandedPaneId?.let { state.slotOf(it) } ?: -1
         val isMini = ws.id == state.currentId && expSlot >= 0 && slot != expSlot
-        card.bind(p, hub.runtime(id), slot + 1, id == state.activePaneId, selecting, id in selection, isMini)
+        card.bind(p, hub.runtime(id), slot + 1, id == state.activePaneId, selecting, id in selection, isMini,
+            if (state.fitSmallPanes) dp(MIN_PAGE_WIDTH_DP) else 0)
     }
 
     // ------------------------------------------------------- hub callbacks
@@ -355,15 +369,124 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         if (wv != null && wv.canGoForward()) wv.goForward() else toast("Nothing to go forward to")
     }
 
-    fun reloadOrStop() {
+    /** ☆ inside the address field; while a page loads it becomes Stop. */
+    fun starOrStop() {
         val p = activePane()
         val rt = hub.runtime(p.id)
-        val wv = hub.view(p.id) ?: return
         when {
-            p.url.isBlank() -> openAddress(p)
-            rt.loading -> { wv.stopLoading(); rt.loading = false; bindCard(p.id); bindBars() }
-            else -> { rt.error = null; wv.reload() }
+            rt.loading -> { hub.view(p.id)?.stopLoading(); rt.loading = false; bindCard(p.id); bindBars() }
+            AddressPolicy.isWeb(p.url) -> { toggleBookmark(p); bindBars() }
+            else -> toast("Open a page first, then bookmark it")
         }
+    }
+
+    override fun onPullRefresh(id: String) {
+        val p = state.pane(id) ?: return
+        hub.runtime(id).error = null
+        if (p.url.isBlank()) { bindCard(id); return }
+        hub.view(id)?.reload()
+    }
+
+    /** Puts the cursor in the bottom address field for [p] (no separate address screen). */
+    fun openAddress(p: Pane) {
+        if (selecting) return
+        if (state.activePaneId != p.id) { state.activePaneId = p.id; refreshAll() }
+        cmd.focusAddress()
+    }
+
+    fun submitAddress(text: String) {
+        val url = when (val r = AddressPolicy.resolve(text)) {
+            is AddressPolicy.Result.Open -> r.url
+            is AddressPolicy.Result.Search -> r.url
+            AddressPolicy.Result.Empty -> { toast("Type an address or search words"); return }
+        }
+        val p = activePane()
+        cmd.clearAddress()
+        navigate(p, url)
+    }
+
+    /** While typing: paste & go and bookmarks appear just above the bar. */
+    fun onAddressFocus(focused: Boolean) {
+        suggest.removeAllViews()
+        if (!focused) { suggest.visibility = View.GONE; return }
+        val clip = (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
+            ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()?.trim()?.takeIf { it.isNotBlank() }
+        if (clip != null) {
+            val shortClip = if (clip.length > 34) clip.take(32) + "\u2026" else clip
+            suggest.addView(HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(LinearLayout(this@MainActivity).apply {
+                    setPadding(dp(12), 0, dp(12), dp(4))
+                    addView(chipButton(Icon.PASTE, "Paste & go: $shortClip") { submitAddress(clip) })
+                })
+            })
+        }
+        state.bookmarks.take(8).forEach { b ->
+            suggest.addView(bookmarkRow(b, onOpen = { submitAddress(b.url) }, onRemove = { removeBookmark(b); onAddressFocus(true) }))
+        }
+        suggest.visibility = if (suggest.childCount > 0) View.VISIBLE else View.GONE
+    }
+
+    fun currentWorkspace(): Workspace = state.current()
+
+    /** Workspace screen: up to 7 workspaces, add new ones here. */
+    fun openWorkspaces() {
+        if (selecting) { toast("Finish selecting first (tap \u2715)"); return }
+        val vis = visibleWorkspaces()
+        val s = Sheet(this, "Workspaces", "${state.workspaces.size} of ${AppState.MAX_WORKSPACES}" + if (filtering()) " \u00B7 filtered" else "")
+        val gridView = android.widget.GridLayout(this).apply { columnCount = 4; useDefaultMargins = false }
+        val cell = { v: View ->
+            gridView.addView(v, android.widget.GridLayout.LayoutParams().apply {
+                width = 0; height = dp(96)
+                columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                setMargins(dp(5), dp(5), dp(5), dp(5))
+            })
+        }
+        vis.forEach { w ->
+            val idx = state.workspaces.indexOf(w) + 1
+            val current = w.id == state.currentId
+            val open = w.panes.count { it.url.isNotBlank() }
+            val card = FrameLayout(this).apply {
+                background = ripple(rounded(if (current) T.surface3 else T.surface2, dpf(14f),
+                    if (current) Color.WHITE else T.stroke, if (current) dp(2) else 1), dpf(14f))
+                addView(label(idx.toString(), 22f, T.text, bold = true).apply { gravity = Gravity.CENTER },
+                    FrameLayout.LayoutParams(-1, -1).apply { bottomMargin = dp(16) })
+                val dots = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER }
+                w.panes.forEach { p ->
+                    dots.addView(View(this@MainActivity).apply {
+                        background = rounded(T.color(p.color) ?: if (p.url.isNotBlank()) T.text2 else T.text3, dpf(3f))
+                        alpha = if (p.url.isNotBlank()) 1f else 0.4f
+                    }, LinearLayout.LayoutParams(dp(6), dp(6)).apply { leftMargin = dp(2); rightMargin = dp(2) })
+                }
+                addView(dots, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { bottomMargin = dp(14) })
+                if (w.lockedCount > 0) addView(ImageView(this@MainActivity).apply {
+                    setImageDrawable(IconDrawable(Icon.LOCK, T.lock))
+                    alpha = if (w.allLocked) 1f else 0.6f
+                }, FrameLayout.LayoutParams(dp(14), dp(14), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(8), dp(8), 0) })
+                contentDescription = "Workspace $idx, $open of 6 open" + (if (current) ", current" else "") +
+                    (if (w.lockedCount > 0) ", ${w.lockedCount} locked" else "") + ". Hold for options"
+                setOnClickListener { s.dismiss(); switchWorkspace(w.id) }
+                setOnLongClickListener { s.dismiss(); openWorkspaceMenu(w); true }
+            }
+            cell(card)
+        }
+        val full = state.workspaces.size >= AppState.MAX_WORKSPACES
+        cell(FrameLayout(this).apply {
+            background = ripple(rounded(T.bg, dpf(14f), T.stroke, 1), dpf(14f))
+            alpha = if (full || filtering()) 0.4f else 1f
+            addView(ImageView(this@MainActivity).apply { setImageDrawable(IconDrawable(Icon.ADD, T.text2)) },
+                FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
+            contentDescription = "New workspace"
+            setOnClickListener {
+                when {
+                    full -> toast("7 is the maximum. Close a workspace to add one.")
+                    filtering() -> toast("Clear filters to add a workspace", "Clear") { clearFilters() }
+                    else -> { s.dismiss(); addWorkspace() }
+                }
+            }
+        })
+        s.custom(gridView, padH = 12)
+        s.show()
     }
 
     private fun paneTitle(p: Pane): String {
@@ -393,7 +516,6 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
             blockedReason = lockedReason(p, "change desktop mode"), onBlocked = { blocked(p) }) { on ->
             hub.setDesktop(p, on); bindCard(p.id); bindBars()
         }
-        s.custom(zoomRow(p), padH = 0)
         s.item(Icon.KEY, "Cookies & site data",
             detail = if (p.locked) "View only while locked" else "See and edit this session's cookies") {
             CookieEditor(this, p).show()
@@ -416,102 +538,6 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
             s.item(Icon.SETTINGS, "Settings") { openSettings() }
         }
         s.show()
-    }
-
-    private val zoomSteps = intArrayOf(50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300)
-
-    private fun zoomRow(p: Pane): View {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(2), dp(12), dp(2)); minimumHeight = dp(52)
-        }
-        row.addView(ImageView(this).apply { setImageDrawable(IconDrawable(Icon.ZOOM, T.text2)) }, LinearLayout.LayoutParams(dp(22), dp(22)))
-        row.addView(label("Zoom", 15f), LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(16) })
-        val value = label("", 14f, T.text, bold = true).apply { gravity = Gravity.CENTER; minWidth = dp(54) }
-        val reset = label("Reset", 13f, T.accent, bold = true).apply {
-            setPadding(dp(10), dp(12), dp(6), dp(12))
-            background = ripple(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT), dpf(10f))
-        }
-        fun render() {
-            value.text = "${p.zoom}%"
-            reset.visibility = if (p.zoom != 100) View.VISIBLE else View.INVISIBLE
-        }
-        fun set(z: Int) { p.zoom = z; hub.applyZoom(p); render(); bindCard(p.id); bindBars(); app.store.save() }
-        row.addView(iconButton(Icon.REMOVE, "Zoom out") { zoomSteps.lastOrNull { it < p.zoom }?.let { set(it) } })
-        row.addView(value)
-        row.addView(iconButton(Icon.ADD, "Zoom in") { zoomSteps.firstOrNull { it > p.zoom }?.let { set(it) } })
-        reset.setOnClickListener { set(100) }
-        row.addView(reset)
-        render()
-        return row
-    }
-
-    // ------------------------------------------------------------ address
-
-    @SuppressLint("SetTextI18n")
-    fun openAddress(p: Pane) {
-        val s = Sheet(this, paneTitle(p), "Opens in this pane's own session")
-        val field = EditText(this).apply {
-            setText(p.url); selectAll()
-            hint = "Search Google or type a URL"
-            setHintTextColor(T.text3); setTextColor(T.text); textSize = 16f
-            setSingleLine(); imeOptions = EditorInfo.IME_ACTION_GO
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            background = rounded(T.surface2, dpf(14f), T.accent, dp(1))
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-        }
-        val preview = label("", 12.5f, T.text3).apply { setPadding(dp(4), 0, dp(4), 0) }
-        fun describe() {
-            preview.text = when (val r = AddressPolicy.resolve(field.text.toString())) {
-                is AddressPolicy.Result.Open -> "Opens " + (AddressPolicy.label(r.url).ifBlank { r.url })
-                is AddressPolicy.Result.Search -> "Searches Google for “${r.query}”"
-                AddressPolicy.Result.Empty -> "Type a web address, or words to search"
-            }
-            preview.setTextColor(T.text3)
-        }
-        fun go(text: String) {
-            when (val r = AddressPolicy.resolve(text)) {
-                is AddressPolicy.Result.Open -> { s.dismiss(); navigate(p, r.url) }
-                is AddressPolicy.Result.Search -> { s.dismiss(); navigate(p, r.url) }
-                AddressPolicy.Result.Empty -> { preview.text = "Nothing to open — type an address or search words"; preview.setTextColor(T.danger) }
-            }
-        }
-        field.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-            override fun afterTextChanged(e: Editable?) = describe()
-        })
-        field.setOnEditorActionListener { _, id, ev ->
-            if (id == EditorInfo.IME_ACTION_GO || (ev?.keyCode == KeyEvent.KEYCODE_ENTER && ev.action == KeyEvent.ACTION_DOWN)) { go(field.text.toString()); true } else false
-        }
-        s.custom(field)
-        s.custom(preview)
-
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val clip = (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
-            ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()?.trim()?.takeIf { it.isNotBlank() }
-        if (clip != null) {
-            val shortClip = if (clip.length > 28) clip.take(26) + "…" else clip
-            actions.addView(chipButton(Icon.PASTE, "Paste & go: $shortClip") { go(clip) })
-        }
-        val isWeb = AddressPolicy.isWeb(p.url)
-        val marked = state.bookmarks.any { it.url == p.url }
-        actions.addView(chipButton(if (marked) Icon.STAR else Icon.STAR_OUTLINE, if (marked) "Bookmarked" else "Bookmark page",
-            enabled = isWeb, tint = if (marked) T.accent else T.text2) {
-            if (!isWeb) { toast("Open a page first, then bookmark it"); return@chipButton }
-            s.dismiss(); toggleBookmark(p)
-        })
-        s.custom(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(actions) })
-
-        s.section("Bookmarks")
-        if (state.bookmarks.isEmpty()) s.note("No bookmarks yet. Bookmarks are just addresses — opening one uses the session of the pane you open it in.")
-        state.bookmarks.toList().forEach { b ->
-            s.custom(bookmarkRow(b, onOpen = { s.dismiss(); navigate(p, b.url) }, onRemove = { s.dismiss(); removeBookmark(b) }), padH = 0)
-        }
-        s.show()
-        s.dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        field.requestFocus()
-        describe()
     }
 
     private fun chipButton(icon: Icon, text: String, enabled: Boolean = true, tint: Int = T.text2, onClick: () -> Unit): View =
@@ -616,7 +642,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     private fun closeWorkspace(w: Workspace) {
         val idx = state.workspaces.indexOf(w) + 1
         confirm("Close workspace $idx?",
-            "All 6 sessions in this workspace end. Their cookies, logins and site data are erased for good. This can't be undone.",
+            "Signs out of everything in its 6 panes and erases their data. Can't be undone.",
             "Close workspace") {
             if (w.lockedCount > 0) { toast("A pane was locked meanwhile — nothing was closed"); return@confirm }
             val pos = state.workspaces.indexOf(w)
@@ -735,22 +761,29 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         toast("Desktop site ${if (on) "on" else "off"} for ${ok.size}" + if (skipped > 0) " · $skipped locked skipped" else "")
     }
 
-    private fun describe(panes: List<Pane>): String = panes.joinToString(", ") { p ->
-        "W${state.workspaces.indexOfFirst { it.id == state.workspaceOf(p.id)?.id } + 1}·P${state.slotOf(p.id) + 1}"
+    /** Plain words: "Pane 3", or "Workspace 1: panes 2, 5 · Workspace 3: pane 1". */
+    private fun describe(panes: List<Pane>): String {
+        val byWs = panes.groupBy { state.workspaces.indexOfFirst { w -> w.id == state.workspaceOf(it.id)?.id } + 1 }.toSortedMap()
+        val single = byWs.size == 1 && byWs.keys.first() == state.workspaces.indexOf(state.current()) + 1
+        return byWs.entries.joinToString(" \u00B7 ") { (w, ps) ->
+            val nums = ps.map { state.slotOf(it.id) + 1 }.sorted()
+            val list = (if (nums.size == 1) "pane " else "panes ") + nums.joinToString(", ")
+            if (single) list.replaceFirstChar { it.uppercase() } else "Workspace $w: $list"
+        }
     }
 
     private fun endSessions(panes: List<Pane>) {
         val targets = panes.filter { !it.locked }
         val skipped = panes.filter { it.locked }
         if (targets.isEmpty()) { skipped.forEach { blocked(it) }; return }
-        val msg = buildString {
-            append("These sessions end and their cookies, logins and site data are erased: ")
-            append(describe(targets)).append('.')
-            if (skipped.isNotEmpty()) append("\n\nLocked, will stay open: ").append(describe(skipped)).append('.')
-            append("\n\nThis can't be undone.")
-        }
         val n = targets.size
-        confirm(if (n == 1) "End this session?" else "End $n sessions?", msg, if (n == 1) "End session" else "End $n sessions") {
+        val msg = buildString {
+            if (n > 1) append(describe(targets)).append(".\n")
+            append("Signs out of everything and erases ${if (n == 1) "its" else "their"} data. Can't be undone.")
+            if (skipped.isNotEmpty()) append("\nLocked, staying open: ").append(describe(skipped)).append('.')
+        }
+        val title = if (n == 1) "End ${describe(targets)}?" else "End $n sessions?"
+        confirm(title, msg, if (n == 1) "End session" else "End $n") {
             var ended = 0
             targets.forEach { old ->
                 if (old.locked) return@forEach
@@ -884,6 +917,10 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
             trailing = if (notif) "✓" else "Allow") { if (!notif) requestNotifications() else openAppDetails() }
         s.item(Icon.SETTINGS, "App info (OnePlus background settings)", detail = "Set Battery to “Unrestricted” / allow background activity") { openAppDetails() }
         s.section("Layout")
+        s.toggle(Icon.GRID, "Full-size pages in small panes", state.fitSmallPanes,
+            detail = "Shows sites at normal phone width, scaled down, instead of their narrowest layout") {
+            state.fitSmallPanes = it; refreshAll()
+        }
         LayoutMode.values().forEach { m ->
             val label = when (m) { LayoutMode.AUTO -> "Automatic (3×2 unfolded, 2×3 folded)"; LayoutMode.TWO_BY_THREE -> "Always 2 columns × 3 rows"; LayoutMode.THREE_BY_TWO -> "Always 3 columns × 2 rows" }
             s.item(Icon.GRID, label, trailing = if (state.layout == m) "✓" else null) { state.layout = m; refreshAll(animate = true) }
@@ -932,4 +969,9 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     internal fun slotNumber(p: Pane) = state.slotOf(p.id) + 1
     internal fun hubRef() = hub
     internal fun stateRef() = state
+
+    companion object {
+        /** Width (dp) websites see in small panes when "Full-size pages" is on. */
+        const val MIN_PAGE_WIDTH_DP = 320
+    }
 }

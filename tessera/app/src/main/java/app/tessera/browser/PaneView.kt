@@ -18,6 +18,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
 /**
  * One pane: a thin header strip (the ONLY place SIXPANE-style app gestures
@@ -34,6 +35,7 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         fun onMiniTap(id: String)
         fun onOpenAddress(id: String)
         fun onRetry(id: String)
+        fun onPullRefresh(id: String)
         fun isSelecting(): Boolean
     }
 
@@ -45,11 +47,12 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
     private val headerRow = LinearLayout(context)
     private val chip = context.label("", 11f, T.text, bold = true)
     private val lockIcon = ImageView(context)
-    private val host = context.label("", 11.5f, T.text2)
+    private val site = context.label("", 11.5f, T.text2)
     private val badge = context.label("", 10f, T.text2, bold = true)
     private val progress = View(context)
     private val content = FrameLayout(context)
-    private val webSlot = FrameLayout(context)
+    private val host = ScaledHost(context)
+    private val refresher = SwipeRefreshLayout(context)
     private val blank = LinearLayout(context)
     private val error = LinearLayout(context)
     private val errorTitle = context.label("", 14f, T.text, bold = true)
@@ -76,15 +79,17 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         chip.minWidth = dp(20)
         chip.setPadding(dp(5), dp(2), dp(5), dp(2))
         headerRow.addView(chip, LinearLayout.LayoutParams(-2, dp(18)))
+        // Lock sits on a dark badge so it reads on any colour tag.
         lockIcon.setImageDrawable(IconDrawable(Icon.LOCK, T.lock))
-        headerRow.addView(lockIcon, LinearLayout.LayoutParams(dp(14), dp(14)).apply { leftMargin = dp(5) })
-        host.setSingleLine(); host.ellipsize = TextUtils.TruncateAt.END
-        headerRow.addView(host, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(6) })
-        badge.background = rounded(T.surface3, dpf(6f))
+        lockIcon.background = rounded(0xE60B0E13.toInt(), dpf(5f))
+        lockIcon.setPadding(dp(2), dp(2), dp(2), dp(2))
+        headerRow.addView(lockIcon, LinearLayout.LayoutParams(dp(18), dp(18)).apply { leftMargin = dp(5) })
+        site.setSingleLine(); site.ellipsize = TextUtils.TruncateAt.END
+        headerRow.addView(site, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(6) })
         badge.setPadding(dp(5), dp(2), dp(5), dp(2))
         headerRow.addView(badge, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(4) })
         header.addView(headerRow, LayoutParams(-1, -1))
-        progress.setBackgroundColor(T.accent)
+        progress.setBackgroundColor(0xD9FFFFFF.toInt())
         header.addView(progress, LayoutParams(0, dp(2), Gravity.BOTTOM))
         addView(header, LayoutParams(-1, headerH))
 
@@ -106,7 +111,11 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         header.contentDescription = "Pane controls. Double-tap to expand, long-press for menu"
 
         // Content ----------------------------------------------------------
-        content.addView(webSlot, LayoutParams(-1, -1))
+        refresher.setColorSchemeColors(T.bg)
+        refresher.setProgressBackgroundColorSchemeColor(T.text)
+        refresher.setOnRefreshListener { cb.onPullRefresh(paneId) }
+        host.addView(refresher, LayoutParams(-1, -1))
+        content.addView(host, LayoutParams(-1, -1))
 
         blank.orientation = LinearLayout.VERTICAL
         blank.gravity = Gravity.CENTER
@@ -153,42 +162,44 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
     }
 
     fun attachWeb(wv: WebView) {
-        if (wv.parent === webSlot) return
+        if (wv.parent === refresher) return
         (wv.parent as? ViewGroup)?.removeView(wv)
-        webSlot.removeAllViews()
-        webSlot.addView(wv, LayoutParams(-1, -1))
+        refresher.removeAllViews()
+        refresher.addView(wv, ViewGroup.LayoutParams(-1, -1))
     }
 
-    fun hasWeb(wv: WebView?) = wv != null && wv.parent === webSlot
+    fun hasWeb(wv: WebView?) = wv != null && wv.parent === refresher
 
     fun bind(
         pane: Pane, rt: PaneRuntime, number: Int,
         active: Boolean, selecting: Boolean, selected: Boolean, isMini: Boolean,
+        minPageWidthPx: Int = 0,
     ) {
         val color = T.color(pane.color)
+        val ink = if (color != null) 0xFF0B0E13.toInt() else T.text
         chip.text = number.toString()
-        chip.background = rounded(color ?: T.surface3, dpf(5f))
-        chip.setTextColor(if (color != null) 0xFF0B0E13.toInt() else T.text)
+        chip.background = rounded(if (color != null) 0x2E000000 else T.surface3, dpf(5f))
+        chip.setTextColor(ink)
+        host.minWidthPx = minPageWidthPx
+        refresher.isEnabled = !selecting && !isMini
+        if (!rt.loading && refresher.isRefreshing) refresher.isRefreshing = false
         lockIcon.visibility = if (pane.locked) VISIBLE else GONE
-        host.text = when {
+        site.text = when {
             rt.crashed -> "Restoring…"
             pane.url.isBlank() -> "New session"
             else -> AddressPolicy.label(pane.url)
         }
-        host.setTextColor(if (active) T.text else T.text2)
+        site.setTextColor(if (color != null) 0xD90B0E13.toInt() else if (active) T.text else T.text2)
+        badge.setTextColor(if (color != null) ink else T.text2)
+        badge.background = rounded(if (color != null) 0x2E000000 else T.surface3, dpf(6f))
         val extras = buildList {
             if (pane.zoom != 100) add("${pane.zoom}%")
             if (pane.desktop) add("Desktop")
         }
         badge.text = extras.joinToString(" · ")
         badge.visibility = if (extras.isEmpty() || isMini) GONE else VISIBLE
-        header.setBackgroundColor(
-            when {
-                pane.locked -> 0xFF2A161B.toInt()
-                active -> T.surface3
-                else -> T.surface2
-            }
-        )
+        // The header carries the pane's colour tag; untagged panes stay neutral.
+        header.setBackgroundColor(color ?: if (active) T.surface3 else T.surface2)
         val showProgress = rt.loading && rt.progress in 1..99
         progress.visibility = if (showProgress) VISIBLE else GONE
         if (showProgress) post {
@@ -214,16 +225,16 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         mini.visibility = if (isMini && !selecting) VISIBLE else GONE
 
         select.visibility = if (selecting) VISIBLE else GONE
-        select.setBackgroundColor(if (selected) T.selectSoft else 0x33000000)
+        // Selection and the active outline use white, never a tag colour.
+        select.setBackgroundColor(if (selected) 0x29FFFFFF else 0x40000000)
         check.setImageDrawable(IconDrawable(Icon.CHECK, if (selected) 0xFF0B0E13.toInt() else Color.TRANSPARENT))
-        check.background = if (selected) rounded(T.select, dpf(13f))
+        check.background = if (selected) rounded(Color.WHITE, dpf(13f))
             else rounded(0x55000000, dpf(13f), T.text2, dp(2))
         check.setPadding(dp(4), dp(4), dp(4), dp(4))
 
         when {
-            selected -> frame.setStroke(dp(2), T.select)
-            active && !selecting -> frame.setStroke(dp(2), T.accent)
-            pane.locked -> frame.setStroke(dp(1), 0x99FF4D57.toInt())
+            selected -> frame.setStroke(dp(3), Color.WHITE)
+            active && !selecting -> frame.setStroke(kotlin.math.max(1, Math.round(dpf(1.5f))), Color.WHITE)
             else -> frame.setStroke(dp(1), T.stroke)
         }
         contentDescription = "Pane $number" + (if (pane.locked) ", locked" else "") +

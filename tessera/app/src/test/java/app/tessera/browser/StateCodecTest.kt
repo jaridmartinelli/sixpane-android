@@ -35,7 +35,7 @@ class StateCodecTest {
         p.url = "https://example.com"; p.title = "Ex"; p.color = 3; p.locked = true; p.desktop = true; p.zoom = 125
         s.currentId = s.workspaces[1].id; s.activePaneId = p.id; s.expandedPaneId = p.id
         s.filter = PaneFilter(setOf(1, 3), "exa"); s.layout = LayoutMode.THREE_BY_TWO
-        s.bookmarks += Bookmark("https://a.com", "A"); s.pendingDeletes += "tp_old"; s.keepWifiAwake = false
+        s.bookmarks += Bookmark("https://a.com", "A"); s.pendingDeletes += "tp_old"; s.keepWifiAwake = false; s.fitSmallPanes = false
         val d = StateCodec.decode(StateCodec.encode(s))
         assertEquals(2, d.workspaces.size)
         val q = d.workspaces[1].panes[4]
@@ -44,7 +44,7 @@ class StateCodecTest {
         assertEquals(p.id, d.activePaneId); assertEquals(p.id, d.expandedPaneId)
         assertEquals(PaneFilter(setOf(1, 3), "exa"), d.filter); assertEquals(LayoutMode.THREE_BY_TWO, d.layout)
         assertEquals(listOf(Bookmark("https://a.com", "A")), d.bookmarks)
-        assertTrue("tp_old" in d.pendingDeletes); assertEquals(false, d.keepWifiAwake)
+        assertTrue("tp_old" in d.pendingDeletes); assertEquals(false, d.keepWifiAwake); assertEquals(false, d.fitSmallPanes)
         assertTrue(d.allPanes().all { it.profile in d.issuedProfiles })
     }
 
