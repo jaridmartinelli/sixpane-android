@@ -473,7 +473,7 @@ class MainActivity:Activity(){
             card.updateSelection(selecting && store.active().panes.any{it.id==id},selectedPanes.contains(id))
         }
     }
-    /** Exactly seven pane actions. Workspace tools remain in the universal menu. */
+    /** Per-pane controls; report copy is user-triggered and does not change sessions. */
     fun windowContextMenu(card:PaneCard){
         if(selecting&&!selectedPanes.contains(card.state.id)){selectedPanes.add(card.state.id);updateSelection()}
         val targets=if(selecting&&selectedPanes.isNotEmpty())store.active().panes.filter{it.id in selectedPanes} else listOf(card.state)
@@ -621,7 +621,7 @@ class MainActivity:Activity(){
     }
     fun paneMenu(card:PaneCard){
         val choices=arrayOf(if(card.state.desktop)"Desktop site: on" else "Desktop site: off",
-            "Back", "Forward", "Refresh", "Bookmark page", "Share page", "Advanced…")
+            "Back", "Forward", "Refresh", "Bookmark page", "Share page", "Advanced…", "Copy page report")
         AlertDialog.Builder(this).setItems(choices){_,idx->when(idx){
             0->card.toggleDesktop()
             1->card.back()
@@ -630,9 +630,11 @@ class MainActivity:Activity(){
             4->{store.bookmarkForPane(card.state.id,card.state.url);notice("Page bookmarked in this browser");updateUniversalBar()}
             5->shareUrls(listOf(card.state.url))
             6->AlertDialog.Builder(this).setItems(arrayOf("Reset page (keeps cookies)")){_,_->card.reset()}.show()
+            7->copyPanePageReport(card)
         }}.show()
     }
     fun cookieEditor(card:PaneCard){CookieEditor(this,card).open()}
+    fun copyPanePageReport(card:PaneCard){PanePageReport(this).copy(card)}
     fun focus(card:PaneCard){
         store.focusId=if(store.focusId==card.state.id)null else card.state.id
         store.save();updateUniversalBar();positionCards(true)

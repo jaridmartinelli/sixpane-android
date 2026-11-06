@@ -13,10 +13,12 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
         dialog.window?.setGravity(Gravity.BOTTOM)
     }
     fun open(){
-        val labels=arrayOf("Lock","Desktop mode","Enter URL","Edit cookies","Close window","Select multiple","Frame color")
+        val labels=mutableListOf("Lock","Desktop mode","Enter URL","Edit cookies","Close window","Select multiple","Frame color")
+        // Per-pane only. Never capture or combine data from selected browsers.
+        if(targets.size==1)labels.add("Copy page report")
         bottom(AlertDialog.Builder(host,android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
             .setTitle(if(targets.size==1)"Window ${host.paneIndex(origin.state.id)}" else "${targets.size} selected windows")
-            .setItems(labels){_,which->when(which){
+            .setItems(labels.toTypedArray()){_,which->when(which){
                 0->{val locked=!targets.all{it.locked};targets.forEach{it.locked=locked};host.updateWindowLocks()}
                 1->if(unlocked())host.confirm("Change display mode?","This reloads the selected pages. Cookies stay in their own browsers."){
                     val next=!targets.all{it.desktop};targets.forEach{host.windowCard(it.id)?.setDesktopMode(next)}
@@ -26,6 +28,7 @@ class WindowActions(private val host:MainActivity,private val origin:PaneCard,pr
                 4->host.closeWindows(ids)
                 5->host.toggleSelectionFromMenu(origin)
                 6->colors()
+                7->if(targets.size==1)host.copyPanePageReport(origin)
             }}.create())
     }
     private fun unlocked():Boolean{
