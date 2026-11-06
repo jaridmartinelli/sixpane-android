@@ -131,8 +131,11 @@ class WorkspaceOverview(private val a: MainActivity) : FrameLayout(a) {
         card.addView(top)
 
         // 2 x 3 live previews in the same order as the grid.
-        val minis = GridLayout(a).apply { columnCount = 2; useDefaultMargins = false }
-        w.panes.forEach { p ->
+        // Plain rows of two (a nested weighted GridLayout collapses to one column).
+        val minis = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
+        var row: LinearLayout? = null
+        w.panes.forEachIndexed { i, p ->
+            if (i % 2 == 0) row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL }.also { minis.addView(it) }
             val tile = FrameLayout(a).apply {
                 background = rounded(T.surface2, a.dpf(6f))
                 clipToOutline = true
@@ -150,9 +153,7 @@ class WorkspaceOverview(private val a: MainActivity) : FrameLayout(a) {
                 setImageDrawable(IconDrawable(Icon.LOCK, T.lock)); background = rounded(0xE60B0E13.toInt(), a.dpf(4f))
                 setPadding(a.dp(2), a.dp(2), a.dp(2), a.dp(2))
             }, LayoutParams(a.dp(14), a.dp(14), Gravity.TOP or Gravity.END).apply { setMargins(0, a.dp(6), a.dp(4), 0) })
-            minis.addView(tile, GridLayout.LayoutParams().apply {
-                width = 0; height = a.dp(if (cols() == 3) 64 else 72)
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+            row!!.addView(tile, LinearLayout.LayoutParams(0, a.dp(if (cols() == 3) 64 else 72), 1f).apply {
                 setMargins(a.dp(2), a.dp(2), a.dp(2), a.dp(2))
             })
         }
