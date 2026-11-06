@@ -102,3 +102,16 @@ current code and build checks with dated documentation before modifying UA.
 
 CI completion and device verification must be recorded as actual observed
 results; do not replace NOT VERIFIED with PASS based on simulated data.
+
+## CI incident 1 — emulator runner working directory (2026-11-06)
+
+Evidence: pull request run 42186716111 built the Android APK and instrumentation
+sources successfully, booted the disposable emulator, then failed before tests
+began with "Directory .../sixpane-android does not contain a Gradle build."
+Cause: the emulator-runner treated each line of the multi-line `script:` as a
+separate command. A standalone `cd` did not carry into the subsequent Gradle
+command. Prevention: launch Gradle with an explicit `-p android` project
+directory on the same command line; verify that a subsequent CI job reaches
+actual Android test execution and publishes test-result artifacts. This is
+a workflow defect, not evidence for or against cookie isolation.
+
