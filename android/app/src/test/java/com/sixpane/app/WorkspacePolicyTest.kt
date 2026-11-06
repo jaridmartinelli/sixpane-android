@@ -8,6 +8,12 @@ class WorkspacePolicyTest {
         assertFalse(WorkspacePolicy.canChangeDesktop(true)); assertFalse(WorkspacePolicy.canModifyCookies(true))
         assertTrue(WorkspacePolicy.canClose(false))
     }
+    @Test fun closingWorkspaceProtectsLockedChildSessions(){
+        assertTrue(WorkspacePolicy.canCloseWorkspace(false,List(6){false}))
+        assertFalse(WorkspacePolicy.canCloseWorkspace(true,List(6){false}))
+        assertFalse(WorkspacePolicy.canCloseWorkspace(false,listOf(false,false,true,false,false,false)))
+        assertFalse(WorkspacePolicy.canCloseWorkspace(true,List(6){true}))
+    }
     @Test fun zoomIndependentOfLocks() {
         assertEquals(110,WorkspacePolicy.zoom(100,1))
         assertEquals(50,WorkspacePolicy.zoom(50,-1))

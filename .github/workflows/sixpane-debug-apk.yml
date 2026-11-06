@@ -1,10 +1,16 @@
-name: SIXPANE Android debug APK
+name: SIXPANE Canonical Android APK (main)
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'results/harness_regression.cjs'
+      - '.github/workflows/sixpane-debug-apk.yml'
   push:
     branches: [main]
     paths:
       - 'android/**'
+      - 'results/harness_regression.cjs'
       - '.github/workflows/sixpane-debug-apk.yml'
 
 permissions:
@@ -12,11 +18,14 @@ permissions:
 
 jobs:
   build:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Harness logic regression (simulated storage and time)
         shell: bash
         run: |
@@ -40,14 +49,63 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Verify WebView native pinch and no zoom controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          PANE='android/app/src/main/java/com/sixpane/app/PaneCard.kt'
+          MENU='android/app/src/main/java/com/sixpane/app/WindowActions.kt'
+          grep -Fq 'setSupportZoom(true)' "$PANE"
+          grep -Fq 'builtInZoomControls=true;displayZoomControls=false' "$PANE"
+          if grep -En 'zoomControls\(|Zoom in 10 percent|Zoom out 10 percent|val labels=.*"Zoom"' "$MENU"; then
+            echo 'Manual zoom controls unexpectedly present'; exit 1
+          fi
+      - name: Check native text selection is not hijacked by pane long presses
+        shell: bash
+        run: |
+          set -euo pipefail
+          PANE='android/app/src/main/java/com/sixpane/app/PaneCard.kt'
+          if grep -En '(fresh|body|webView|selectionLayer)\.setOnLongClickListener' "$PANE"; then
+            echo 'Web content or full-pane overlay is intercepting long presses'; exit 1
+          fi
+          grep -Fq 'setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}' "$PANE"
+          grep -Fq 'contentDescription="Window controls: long press number"' "$PANE"
+      - name: Check genuine WebView UA is not overridden
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R --include='*.kt' -En 'DESKTOP_USER_AGENT|Windows NT 10\.0|userAgentString[[:space:]]*=' android/app/src/main/java; then
+            echo 'Unexpected Android WebView User-Agent override'; exit 1
+          fi
+      - name: Confirm canonical identity and restored features
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'applicationIdSuffix = ".preview.filterview"' android/app/build.gradle.kts
+          grep -Fq 'versionCode = 14' android/app/build.gradle.kts
+          grep -Fq 'newUniquePanes(ids)' android/app/src/main/java/com/sixpane/app/LocalStore.kt
+          grep -Fq 'replacePanesAcrossWorkspaces' android/app/src/main/java/com/sixpane/app/LocalStore.kt
+          grep -Fq 'fun copyPanePageReport(card:PaneCard)' android/app/src/main/java/com/sixpane/app/MainActivity.kt
+          grep -Fq 'Copy page report' android/app/src/main/java/com/sixpane/app/WindowActions.kt
+          grep -Fq 'if (focusedUrl == "about:blank") "" else focusedUrl' android/app/src/main/java/com/sixpane/app/UniversalBar.kt
+          grep -Fq 'repeat(WorkspacePolicy.MAX_WORKSPACES)' android/app/src/main/java/com/sixpane/app/MainActivity.kt
       - name: Compile tests and debug APK
         working-directory: android
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
+      - name: Verify compiled APK package/version/label
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='android/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
+          echo "$BADGING" | grep -Fq "package: name='com.sixpane.app.preview.filterview' versionCode='14'"
+          echo "$BADGING" | grep -Fq "application-label:'SIXPANE'"
       - name: Upload APK and build reports
-        if: always()
+        if: always() && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: sixpane-android-build-results
+          name: SIXPANE-CANONICAL-APK-main
           if-no-files-found: warn
           path: |
             android/app/build/outputs/apk/debug/*.apk

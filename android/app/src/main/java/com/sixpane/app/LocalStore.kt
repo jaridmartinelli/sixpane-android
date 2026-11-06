@@ -77,6 +77,10 @@ class LocalStore(ctx:Context){
     var focusId:String?=null
     var filterQuery:String=""
     val selectedFrameColors:MutableSet<String> = linkedSetOf()
+    // Only app chrome, never a webpage or browser profile.
+    var lightMode:Boolean
+        get()=prefs.getBoolean("light-chrome",false)
+        set(value){check(prefs.edit().putBoolean("light-chrome",value).commit())}
     // Separate preference: the established workspace manifest format stays unchanged.
     var desktopUserAgent:Boolean
         get()=prefs.getBoolean("desktop-user-agent",true)
@@ -116,31 +120,42 @@ class LocalStore(ctx:Context){
             throw IllegalStateException("Invalid workspace manifest; refusing to discard existing profiles.")
         }
         if(spaces.isEmpty()) spaces.add(WorkspaceState())
-        // Restore first, then repair only duplicate/invalid viewport percentages globally.
-        // Preserve every existing pane ID, WebKit profile ID, URL, bookmark and lock.
+        // Repair legacy viewport ratio duplicates without changing session/profile IDs.
         allocateViewportRatios(spaces.flatMap{it.panes})
         if(spaces.none { it.id==currentId }) currentId=spaces.first().id
         save()
     }
-    /** Repairs legacy duplicates without replacing panes, profiles, cookies, or bookmarks. */
+    /** Allocates proportional viewport ratios across every existing workspace. */
     private fun allocateViewportRatios(panes:List<PaneState>){
         val ids=panes.map{it.id}.toSet()
         require(ids.size==panes.size)
         val reserved=spaces.flatMap{it.panes}.filterNot{it.id in ids}
             .map{it.widthPercent to it.heightPercent}
-        val assignments=ViewportRatioPolicy.allocate(
-            reserved,panes.map{it.widthPercent to it.heightPercent}
-        )
-        panes.zip(assignments).forEach{(pane,dimensions)->
-            pane.widthPercent=dimensions.first
-            pane.heightPercent=dimensions.second
+        val assigned=ViewportRatioPolicy.allocate(reserved,
+            panes.map{it.widthPercent to it.heightPercent})
+        panes.zip(assigned).forEach{(pane,size)->
+            pane.widthPercent=size.first;pane.heightPercent=size.second
         }
+    }
+    /** Prepare replacements before retiring their sessions; preserve surviving panes. */
+    private fun newUniquePanes(retiring:Set<String>):Iterator<PaneState>{
+        val live=spaces.flatMap{it.panes}
+        require(live.count{it.id in retiring}==retiring.size)
+        val fresh=List(retiring.size){PaneState()}
+        val reserved=live.filterNot{it.id in retiring}
+            .map{it.widthPercent to it.heightPercent}
+        val assigned=ViewportRatioPolicy.allocate(reserved,
+            fresh.map{it.widthPercent to it.heightPercent})
+        fresh.zip(assigned).forEach{(pane,size)->
+            pane.widthPercent=size.first;pane.heightPercent=size.second
+        }
+        return fresh.iterator()
     }
     fun active():WorkspaceState=spaces.first { it.id==currentId }
     fun save(){
         check(ViewportRatioPolicy.allUnique(spaces.flatMap{it.panes}
-            .map{it.widthPercent to it.heightPercent})) {
-            "Duplicate viewport ratios across SIXPANE workspaces"
+            .map{it.widthPercent to it.heightPercent})){
+            "Duplicate viewport aspect ratios across SIXPANE workspaces"
         }
         val j=JSONObject().apply{
             put("spaces",JSONArray().apply{spaces.forEach{put(it.json())}})
@@ -178,24 +193,11 @@ class LocalStore(ctx:Context){
         val current=active()
         require(ids.isNotEmpty() && ids.all{id->current.panes.any{it.id==id}})
         require(current.panes.none{it.id in ids && it.locked}) {"Locked windows must be unlocked first"}
-        // Reserve all 42 existing ratios except those being retired. New windows
-        // receive unused ratios without changing any surviving session.
-        val outgoing=current.panes.filter{it.id in ids}
-        val fresh=outgoing.map{PaneState()}
-        val reserved=spaces.flatMap{it.panes}.filterNot{it.id in ids}
-            .map{it.widthPercent to it.heightPercent}
-        val assignments=ViewportRatioPolicy.allocate(
-            reserved,fresh.map{it.widthPercent to it.heightPercent}
-        )
-        fresh.zip(assignments).forEach{(pane,dimensions)->
-            pane.widthPercent=dimensions.first
-            pane.heightPercent=dimensions.second
-        }
-        val replacements=outgoing.mapIndexed{index,old->old.id to fresh[index]}.toMap()
+        val fresh=newUniquePanes(ids)
         val result=mutableListOf<Pair<PaneState,PaneState>>()
         current.panes.forEachIndexed{index,old->
-            val replacement=replacements[old.id]
-            if(replacement!=null){
+            if(old.id in ids){
+                val replacement=fresh.next()
                 pendingDeletion.add(old.profile)
                 current.panes[index]=replacement
                 result.add(old to replacement)
@@ -205,6 +207,37 @@ class LocalStore(ctx:Context){
         save()
         return result
     }
+    /**
+     * Close panes selected from a temporary filter page, even when they belong
+     * to different original workspaces. Preserve all other profile identities.
+     * Never mutate workspace membership merely to display a filtered page.
+     */
+    fun replacePanesAcrossWorkspaces(ids:Set<String>):List<Pair<PaneState,PaneState>>{
+        val all=spaces.flatMap{it.panes}
+        require(ids.isNotEmpty()&&all.count{it.id in ids}==ids.size) {
+            "Every selected pane must still exist"
+        }
+        require(all.none{it.id in ids&&it.locked}){"Locked browsers must be unlocked first"}
+        require(spaces.none{it.locked&&it.panes.any{p->p.id in ids}}) {
+            "Unlock the original workspace tab before replacing a browser"
+        }
+        val fresh=newUniquePanes(ids)
+        val replacements=mutableListOf<Pair<PaneState,PaneState>>()
+        spaces.forEach{space->
+            space.panes.forEachIndexed{index,old->
+                if(old.id in ids){
+                    val replacement=fresh.next()
+                    pendingDeletion.add(old.profile)
+                    space.panes[index]=replacement
+                    replacements.add(old to replacement)
+                }
+            }
+        }
+        if(focusId in ids)focusId=null
+        save()
+        return replacements
+    }
+
     fun create():WorkspaceState {
         require(WorkspacePolicy.canCreate(spaces.size))
         val w=WorkspaceState();spaces.add(w)
@@ -213,13 +246,15 @@ class LocalStore(ctx:Context){
     }
     /** Tombstone profile identifiers first, before any attempt at physical deletion. */
     fun close(id:String):WorkspaceState {
-        val w=spaces.first{it.id==id};require(!w.locked)
+        val w=spaces.first{it.id==id}
+        require(WorkspacePolicy.canCloseWorkspace(w.locked,w.panes.map{it.locked})) {
+            "Unlock workspace tab and all its browsers before closing"
+        }
         w.panes.forEach { pendingDeletion.add(it.profile) }
         spaces.remove(w)
         if(spaces.isEmpty()){
-            val fresh=WorkspaceState()
-            spaces.add(fresh)
-            allocateViewportRatios(fresh.panes) // new six, never reusing retired identities
+            val fresh=WorkspaceState();spaces.add(fresh)
+            allocateViewportRatios(fresh.panes) // never reuse retired identities
         }
         currentId=spaces.last().id;focusId=null;save()
         return w

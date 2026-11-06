@@ -9,11 +9,6 @@ class BrowserPolicyTest {
             (1..10).map{BrowserPolicy.recoveryDelayMs(it)})
         assertThrows(IllegalArgumentException::class.java){BrowserPolicy.recoveryDelayMs(11)}
     }
-    @Test fun sharedUaHasNoMobileWebViewTokens(){
-        val ua=BrowserPolicy.DESKTOP_USER_AGENT
-        assertTrue(ua.contains("Chrome/"))
-        listOf("wv","Mobile","Version/4.0").forEach{assertFalse(ua.contains(it))}
-    }
     @Test fun explicitPortalInputIsValidatedWithoutRewritingItsQuery(){
         assertEquals("https://portal.example/start?a=1&b=2",BrowserPolicy.normalizeAddress("portal.example/start?a=1&b=2"))
         assertNull(BrowserPolicy.normalizeAddress("javascript://alert(1)"))

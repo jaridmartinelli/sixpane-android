@@ -13,11 +13,6 @@ import android.provider.Settings
 import android.view.*
 import android.widget.*
 import android.text.InputType
-import android.text.Editable
-import android.text.TextWatcher
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
-import android.content.Context
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewFeature
 import java.util.Locale
@@ -30,17 +25,13 @@ class MainActivity:Activity(){
     private val handler=Handler(Looper.getMainLooper())
     private lateinit var screen:LinearLayout
     private lateinit var tabStrip:LinearLayout
-    private lateinit var topBar:LinearLayout
-    private lateinit var topFilter:EditText
-    private lateinit var topAddress:EditText
-    private lateinit var topStar:TextView
-    private lateinit var topClear:TextView
-    private lateinit var topDots:TextView
+    private val tabLockIcons=mutableMapOf<String,CornerIcon>()
+    private lateinit var universalBar: UniversalBar
     private lateinit var filterEmpty:TextView
-    private var updatingTop=false
     private val saveFilter=Runnable{if(::store.isInitialized)store.save()}
     private var selecting=false
     private val selectedPanes=linkedSetOf<String>()
+    private var filteredPageIndex=0
     private lateinit var stage:FrameLayout
     private val cards=linkedMapOf<String,PaneCard>()
     private var started=false
@@ -116,9 +107,19 @@ class MainActivity:Activity(){
                 if(r-l!=lastLayoutWidth||b-t!=lastLayoutHeight){lastLayoutWidth=r-l;lastLayoutHeight=b-t;positionCards(false)}
             }
         }
-        setupUniversalBar()
-        screen.addView(topBar,LinearLayout.LayoutParams(-1,dp(48)))
+        universalBar = UniversalBar(
+            activity = this,
+            initialFilter = store.filterQuery,
+            onFilterChanged = ::onFilterChanged,
+            onAddressSubmitted = ::submitFocusedAddress,
+            onBookmarkClick = ::toggleFocusedBookmark,
+            onBookmarkLongClick = ::showFocusedBookmarks,
+            onClearFilters = ::clearAllFilters,
+            onMenuClick = ::universalMenu,
+        )
+        screen.addView(universalBar.view,LinearLayout.LayoutParams(-1,dp(48)))
         screen.addView(stage,LinearLayout.LayoutParams(-1,0,1f))
+        // Every workspace slot remains accessible without horizontal scrolling.
         screen.addView(tabStrip,LinearLayout.LayoutParams(-1,dp(48)))
         filterEmpty=TextView(this).apply{
             text="No windows match";gravity=Gravity.CENTER
@@ -126,154 +127,128 @@ class MainActivity:Activity(){
         }
         stage.addView(filterEmpty,FrameLayout.LayoutParams(-1,-1))
         setContentView(screen)
+        applyChromeTheme()
         renderTabs()
         updateUniversalBar()
         if(pendingFailures>0)notice("${pendingFailures} retired profiles await deletion on a later clean start; no IDs will be reused")
     }
 
-    /**
-     * Universal control occupies a single compact row, never a second permanent toolbar.
-     * Filtering changes only pane geometry; it never destroys or reloads WebViews.
-     */
-    private fun setupUniversalBar(){
-        topBar=LinearLayout(this).apply{
-            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
-            setPadding(dp(5),dp(3),dp(5),dp(3))
-            setBackgroundColor(Color.rgb(19,26,37))
-        }
-        fun field(hintText:String):EditText=EditText(this).apply{
-            hint=hintText;textSize=13f;setSingleLine(true)
-            setTextColor(Color.WHITE);setHintTextColor(Color.rgb(146,159,179))
-            setPadding(dp(10),0,dp(7),0)
-            inputType=InputType.TYPE_CLASS_TEXT
-            background=GradientDrawable().apply{
-                setColor(Color.rgb(39,49,64));cornerRadius=dp(8).toFloat()
-            }
-        }
-        topFilter=field("Filter URL or color")
-        topFilter.imeOptions=EditorInfo.IME_ACTION_SEARCH
-        topFilter.addTextChangedListener(object:TextWatcher{
-            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
-            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){}
-            override fun afterTextChanged(s:Editable?){
-                if(updatingTop||!::store.isInitialized)return
-                store.filterQuery=s?.toString().orEmpty()
-                handler.removeCallbacks(saveFilter);handler.postDelayed(saveFilter,250L)
-                if(selecting){
-                    val allowed=currentFilteredPanes().map{it.id}.toSet()
-                    selectedPanes.retainAll(allowed);updateSelection()
-                }
-                updateUniversalBar();positionCards(false)
-            }
-        })
-        topAddress=field("Google Search")
-        topAddress.setHintTextColor(Color.argb(130,255,255,255))
-        topAddress.inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-        topAddress.imeOptions=EditorInfo.IME_ACTION_GO
-        topAddress.setOnEditorActionListener{_,actionId,_->
-            if(actionId==EditorInfo.IME_ACTION_GO){submitFocusedAddress();true}else false
-        }
-        topStar=smallButton("☆",40){
-            val id=store.focusId?:return@smallButton
-            val pane=store.active().panes.firstOrNull{it.id==id}?:return@smallButton
-            val added=store.toggleBookmarkForPane(id,pane.url)
-            when(added){
-                true->notice("Saved to this browser's bookmarks")
-                false->notice("Removed from this browser's bookmarks")
-                null->notice("Open a webpage before bookmarking")
-            }
-            updateUniversalBar()
-        }
-        topStar.setOnLongClickListener{
-            store.focusId?.let{showBookmarksForPane(it)};true
-        }
-        topClear=smallButton("×",34){clearAllFilters()}
-        topDots=smallButton("⋮",42){universalMenu()}
-        topDots.contentDescription="Window selection and batch actions"
-        topBar.addView(topFilter,LinearLayout.LayoutParams(0,-1,1f))
-        topBar.addView(topAddress,LinearLayout.LayoutParams(0,-1,1f))
-        topBar.addView(topStar,LinearLayout.LayoutParams(dp(40),-1))
-        topBar.addView(topClear,LinearLayout.LayoutParams(dp(34),-1))
-        topBar.addView(topDots,LinearLayout.LayoutParams(dp(42),-1))
-        updatingTop=true;topFilter.setText(store.filterQuery);updatingTop=false
+    private fun onFilterChanged(query: String) {
+        store.filterQuery = query
+        filteredPageIndex=0
+        if(store.focusId!=null)store.focusId=null
+        handler.removeCallbacks(saveFilter)
+        handler.postDelayed(saveFilter, 250L)
+        if(selecting){selectedPanes.clear();updateSelection()}
+        renderTabs()
+        updateUniversalBar()
+        positionCards(false)
     }
-    private fun updateUniversalBar(){
-        if(!::topBar.isInitialized||!::store.isInitialized)return
-        val focused=store.active().panes.firstOrNull{it.id==store.focusId}
-        val inFocus=focused!=null
-        topFilter.visibility=if(inFocus)View.GONE else View.VISIBLE
-        topAddress.visibility=if(inFocus)View.VISIBLE else View.GONE
-        topStar.visibility=if(inFocus)View.VISIBLE else View.GONE
-        topClear.visibility=if(!inFocus &&
-            (store.filterQuery.isNotBlank()||store.selectedFrameColors.isNotEmpty()))View.VISIBLE else View.GONE
-        if(!inFocus){
-            if(!topFilter.hasFocus()&&topFilter.text.toString()!=store.filterQuery){
-                updatingTop=true;topFilter.setText(store.filterQuery);updatingTop=false
-            }
-            val chosen=store.selectedFrameColors
-            topFilter.hint=if(chosen.isEmpty())"Filter URL or color"
-                else "Colors: "+FramePalette.names.filter{it in chosen}.joinToString(", ")
-        }else{
-            val displayAddress=if(focused.url=="about:blank")"" else focused.url
-            if(!topAddress.hasFocus()&&topAddress.text.toString()!=displayAddress)
-                topAddress.setText(displayAddress)
-            val saved=store.bookmarkedInPane(focused.id,focused.url)
-            topStar.text=if(saved)"★" else "☆"
-            topStar.contentDescription=if(saved)"Remove bookmark from this browser" else "Bookmark this page in this browser"
-        }
-        topDots.contentDescription=if(selecting)
-            "Window batch actions: "+selectedPanes.size+" selected" else "Window selection and batch actions"
+
+    private fun updateUniversalBar() {
+        if (!::universalBar.isInitialized) return
+        val focused = allPanes().firstOrNull { it.id == store.focusId }
+        universalBar.render(
+            filterQuery = store.filterQuery,
+            selectedColors = store.selectedFrameColors,
+            focusedUrl = focused?.url,
+            bookmarked = focused?.let { store.bookmarkedInPane(it.id, it.url) } == true,
+            selectionCount = selectedPanes.size.takeIf { selecting },
+        )
     }
-    private fun submitFocusedAddress(){
-        val id=store.focusId?:return
-        val raw=topAddress.text.toString()
-        val card=cards[id]
-        val success=if(card!=null)card.submitAddress(raw) else{
-            val url=BrowserPolicy.resolveAddressOrSearch(raw)
-            if(url==null)false else {
-                store.active().panes.firstOrNull{it.id==id}?.url=url;store.save();true
-            }
+
+    private fun toggleFocusedBookmark() {
+        val id = store.focusId ?: return
+        val pane = allPanes().firstOrNull { it.id == id } ?: return
+        when (store.toggleBookmarkForPane(id, pane.url)) {
+            true -> notice("Saved to this browser's bookmarks")
+            false -> notice("Removed from this browser's bookmarks")
+            null -> notice("Open a webpage before bookmarking")
         }
-        if(!success){topAddress.error="Enter a URL or search";return}
-        topAddress.clearFocus()
-        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-            .hideSoftInputFromWindow(topAddress.windowToken,0)
         updateUniversalBar()
     }
+
+    private fun showFocusedBookmarks() {
+        store.focusId?.let { showBookmarksForPane(it) }
+    }
+
+    private fun submitFocusedAddress(raw: String) {
+        val id = store.focusId ?: return
+        val card = cards[id]
+        val success = if (card != null) card.submitAddress(raw) else {
+            val url = BrowserPolicy.resolveAddressOrSearch(raw)
+            if (url == null) false else {
+                allPanes().firstOrNull { it.id == id }?.url = url
+                store.save()
+                true
+            }
+        }
+        universalBar.finishAddressSubmission(success)
+        if (success) updateUniversalBar()
+    }
+
+    private fun allPanes():List<PaneState> = store.spaces.flatMap{it.panes}
+
+    private fun filtering():Boolean =
+        store.filterQuery.isNotBlank()||store.selectedFrameColors.isNotEmpty()
+
+    /** Stable source order; matching never moves a pane between real workspaces. */
+    private fun filteredMatches():List<PaneState> =
+        allPanes().filter{pane->
+            FramePalette.matches(pane.url,store.frameColor(pane.id),
+                store.filterQuery,store.selectedFrameColors)
+        }
+
+    private fun clampFilteredPage(){
+        if(filtering()){
+            filteredPageIndex=filteredPageIndex.coerceIn(
+                0,FilteredPanePages.maxPageIndex(filteredMatches().size)
+            )
+        }else filteredPageIndex=0
+    }
+
+    private fun currentFilteredPanes():List<PaneState>{
+        if(!filtering())return store.active().panes.toList()
+        clampFilteredPage()
+        return FilteredPanePages.page(filteredMatches(),filteredPageIndex)
+    }
+
     fun onPaneUrlChanged(id:String){
-        if(!::topBar.isInitialized)return
-        if(store.focusId==id)updateUniversalBar()
-        if(store.filterQuery.isNotBlank())positionCards(false)
+        if(!::universalBar.isInitialized)return
+        if(filtering()){
+            clampFilteredPage()
+            if(store.focusId!=null && currentFilteredPanes().none{it.id==store.focusId}){
+                store.focusId=null;store.save()
+            }
+            if(selecting){
+                selectedPanes.retainAll(currentFilteredPanes().map{it.id}.toSet())
+                updateSelection()
+            }
+            renderTabs()
+            positionCards(false)
+        }
+        if(store.focusId==id || !filtering())updateUniversalBar()
     }
     private fun clearAllFilters(){
         store.filterQuery=""
-        store.selectedFrameColors.clear();store.save()
-        updatingTop=true;topFilter.setText("");updatingTop=false
+        store.selectedFrameColors.clear()
+        filteredPageIndex=0
+        store.focusId=null
+        store.save()
+        universalBar.setFilterText("")
         if(selecting){selectedPanes.clear();updateSelection()}
+        renderTabs()
         updateUniversalBar();positionCards(true)
-    }
-    private fun currentFilteredPanes():List<PaneState>{
-        val matches=store.active().panes.filter{p->
-            FramePalette.matches(p.url,store.frameColor(p.id),
-                store.filterQuery,store.selectedFrameColors)
-        }
-        val focusId=store.focusId
-        // Keep an actively focused pane visible even if its URL changes mid-edit.
-        return if(focusId!=null)store.active().panes.filter{it.id==focusId||it in matches}
-            else matches
     }
     private fun pickFilterColors(){
         val names=FramePalette.names.toTypedArray()
         val chosen=store.selectedFrameColors.toMutableSet()
         val checked=BooleanArray(names.size){names[it] in chosen}
         val dialog=AlertDialog.Builder(this)
-            .setTitle("Filter colors · up to 6")
-            .setMultiChoiceItems(names,checked){dialogInterface,index,selected->
+            .setTitle("Filter colors")
+            .setMultiChoiceItems(names,checked){_,index,selected->
                 val name=names[index]
-                if(selected&&chosen.size>=FramePalette.MAX_SELECTED_COLORS){
-                    (dialogInterface as AlertDialog).listView.setItemChecked(index,false)
-                    notice("Choose up to six colors")
-                }else if(selected)chosen.add(name) else chosen.remove(name)
+                if(selected)chosen.add(name) else chosen.remove(name)
             }
             .setNegativeButton("Cancel",null)
             .setNeutralButton("Clear"){_,_->clearAllFilters()}
@@ -281,9 +256,13 @@ class MainActivity:Activity(){
                 if(!FramePalette.validSelection(chosen))return@setPositiveButton
                 store.selectedFrameColors.clear();store.selectedFrameColors.addAll(chosen)
                 // Selecting picker chips explicitly replaces the prior typed filter.
-                store.filterQuery="";store.save()
-                updatingTop=true;topFilter.setText("");updatingTop=false
+                store.filterQuery=""
+                filteredPageIndex=0
+                store.focusId=null
+                store.save()
+                universalBar.setFilterText("")
                 if(selecting){selectedPanes.clear();updateSelection()}
+                renderTabs()
                 updateUniversalBar();positionCards(true)
             }.create()
         dialog.show()
@@ -294,49 +273,53 @@ class MainActivity:Activity(){
         selectedPanes.addAll(currentFilteredPanes().map{it.id})
         updateSelection()
     }
-    /** Permanent top-right menu in both grid and focus modes. */
-    private fun universalMenu(){
-        val popup=PopupMenu(this,topDots)
-        val count=selectedPanes.size
-        val panes=store.active().panes.filter{it.id in selectedPanes}
-        val anyLocked=panes.any{it.locked}
-        val anyUnlocked=panes.any{!it.locked}
-        popup.menu.add(if(selecting)"Exit selection" else "Select multiple")
-        popup.menu.add("Select all visible")
-        popup.menu.add("Deselect all").isEnabled=count>0
-        popup.menu.add("Lock selected").isEnabled=anyUnlocked
-        popup.menu.add("Unlock selected").isEnabled=anyLocked
-        popup.menu.add("Close selected").isEnabled=count>0&&!anyLocked
-        popup.menu.add("Bookmark selected").isEnabled=count>0
-        popup.menu.add("Share selected").isEnabled=count>0
-        popup.menu.add("Set selected frame color").isEnabled=count>0
-        popup.menu.add("Filter colors ("+store.selectedFrameColors.size+"/6)")
-        popup.menu.add("Clear filters").isEnabled=store.filterQuery.isNotBlank()||
-            store.selectedFrameColors.isNotEmpty()
-        if(store.focusId!=null)popup.menu.add("Bookmarks for this browser")
-        popup.menu.add("Workspace tools")
-        popup.setOnMenuItemClickListener{item->
-            when(item.title.toString()){
-                "Select multiple"->enterSelection()
-                "Exit selection"->exitSelection()
-                "Select all visible"->selectVisiblePanes()
-                "Deselect all"->{selectedPanes.clear();updateSelection()}
-                "Lock selected"->{panes.forEach{it.locked=true;cards[it.id]?.updateLockStatus()}
-                    store.save();updateSelection()}
-                "Unlock selected"->{panes.forEach{it.locked=false;cards[it.id]?.updateLockStatus()}
-                    store.save();updateSelection()}
-                "Close selected"->confirmCloseSelected()
-                "Bookmark selected"->{panes.forEach{store.bookmarkForPane(it.id,it.url)}
-                    notice("Saved bookmarks in "+panes.size+" browsers");updateUniversalBar()}
-                "Share selected"->shareUrls(panes.map{it.url})
-                "Set selected frame color"->chooseColorForSelected()
-                "Clear filters"->clearAllFilters()
-                "Bookmarks for this browser"->store.focusId?.let{showBookmarksForPane(it)}
-                "Workspace tools"->workspaceMenu()
-                else->if(item.title.toString().startsWith("Filter colors"))pickFilterColors()
-            };true
+    private fun universalMenu() {
+        val panes = allPanes().filter { it.id in selectedPanes }
+        universalBar.showMenu(
+            selecting = selecting,
+            selectionCount = selectedPanes.size,
+            anyLocked = panes.any { it.locked },
+            anyUnlocked = panes.any { !it.locked },
+            colorCount = store.selectedFrameColors.size,
+            hasFilters = store.filterQuery.isNotBlank() || store.selectedFrameColors.isNotEmpty(),
+            hasFocusedPane = store.focusId != null,
+            workspaceToolsEnabled = !filtering(),
+            columns = store.columns,
+        ) { action ->
+            when (action) {
+                UniversalMenuAction.SELECT_MULTIPLE -> enterSelection()
+                UniversalMenuAction.EXIT_SELECTION -> exitSelection()
+                UniversalMenuAction.SELECT_VISIBLE -> selectVisiblePanes()
+                UniversalMenuAction.DESELECT_ALL -> {
+                    selectedPanes.clear()
+                    updateSelection()
+                }
+                UniversalMenuAction.LOCK_SELECTED, UniversalMenuAction.UNLOCK_SELECTED -> {
+                    val lock = action == UniversalMenuAction.LOCK_SELECTED
+                    panes.forEach {
+                        it.locked = lock
+                        cards[it.id]?.updateLockStatus()
+                    }
+                    store.save()
+                    updateSelection()
+                }
+                UniversalMenuAction.CLOSE_SELECTED -> confirmCloseSelected()
+                UniversalMenuAction.BOOKMARK_SELECTED -> {
+                    panes.forEach { store.bookmarkForPane(it.id, it.url) }
+                    notice("Saved bookmarks in ${panes.size} browsers")
+                    updateUniversalBar()
+                }
+                UniversalMenuAction.SHARE_SELECTED -> shareUrls(panes.map { it.url })
+                UniversalMenuAction.COLOR_SELECTED -> chooseColorForSelected()
+                UniversalMenuAction.FILTER_COLORS -> pickFilterColors()
+                UniversalMenuAction.CLEAR_FILTERS -> clearAllFilters()
+                UniversalMenuAction.PANE_BOOKMARKS -> showFocusedBookmarks()
+                UniversalMenuAction.WORKSPACE_TOOLS -> workspaceMenu()
+                UniversalMenuAction.TOGGLE_GRID ->
+                    changeGridColumns(if(store.columns==2)3 else 2)
+                UniversalMenuAction.SETTINGS -> AppSettings(this).open()
+            }
         }
-        popup.show()
     }
     private fun chooseColorForSelected(){
         val ids=selectedPanes.toSet()
@@ -346,10 +329,6 @@ class MainActivity:Activity(){
                 recolorWindows(ids,FramePalette.colors[which])
             }.show()
     }
-    private fun smallButton(label:String,width:Int=32,action:()->Unit):TextView=TextView(this).apply{
-        text=label;textSize=17f;setTextColor(Color.argb(208,255,255,255));gravity=Gravity.CENTER
-        setBackgroundColor(Color.TRANSPARENT);setOnClickListener{action()};minWidth=dp(width)
-    }
     fun persist(){store.save()}
     fun notice(message:String){textNotice?.cancel();textNotice=Toast.makeText(this,message,Toast.LENGTH_LONG);textNotice?.show()}
     fun confirm(title:String,message:String,yes:String="Continue",action:()->Unit){
@@ -357,68 +336,176 @@ class MainActivity:Activity(){
             .setNegativeButton("Cancel",null).setPositiveButton(yes){_,_->action()}.show()
     }
     fun confirm(title:String,message:String,action:()->Unit)=confirm(title,message,"Continue",action)
+    /** Temporary result tabs (6 matches per tab) don't alter source workspaces. */
+    private fun renderFilteredTabs(){
+        val pages=FilteredPanePages.pages(filteredMatches())
+        val light=store.lightMode
+        pages.forEachIndexed{index,page->
+            val active=index==filteredPageIndex
+            val base=GradientDrawable().apply{
+                setColor(if(active){
+                    if(light)Color.rgb(197,215,237) else Color.rgb(45,64,85)
+                }else Color.TRANSPARENT)
+                cornerRadius=dp(9).toFloat()
+            }
+            val tab=LinearLayout(this).apply{
+                orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
+                background=android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(Color.argb(85,130,165,205)),base,null)
+                contentDescription="Filtered tab "+(index+1)+", "+page.size+" windows"
+                isSelected=active
+                setOnClickListener{
+                    if(index!=filteredPageIndex){
+                        filteredPageIndex=index
+                        store.focusId=null;store.save()
+                        if(selecting){selectedPanes.clear();updateSelection()}
+                        renderTabs();updateUniversalBar();positionCards(true)
+                    }
+                }
+                setOnLongClickListener{
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    toggleFilteredGroupLocks(index);true
+                }
+            }
+            tab.addView(TextView(this).apply{
+                text=(index+1).toString();textSize=15f;gravity=Gravity.CENTER
+                setTextColor(if(light)Color.rgb(26,43,63) else Color.rgb(231,239,250))
+            },LinearLayout.LayoutParams(0,-1,1f))
+            val groupLock=CornerIcon(this,CornerIcon.Kind.LOCK).apply{
+                locked=page.isNotEmpty()&&page.all{it.locked}
+                contentDescription=(if(locked)"Unlock" else "Lock")+" filtered group "+(index+1)
+                setOnClickListener{pressedFeedback();toggleFilteredGroupLocks(index)}
+                setOnLongClickListener{
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    toggleFilteredGroupLocks(index);true
+                }
+            }
+            tab.addView(groupLock,LinearLayout.LayoutParams(dp(24),dp(36)))
+            tabStrip.addView(tab,LinearLayout.LayoutParams(0,dp(44),1f).apply{
+                leftMargin=dp(1);rightMargin=dp(1)
+            })
+        }
+        // Keep unoccupied filter tab positions blank, not new source workspaces.
+        repeat((WorkspacePolicy.MAX_WORKSPACES-pages.size).coerceAtLeast(0)){
+            tabStrip.addView(View(this),LinearLayout.LayoutParams(0,dp(44),1f))
+        }
+    }
+    /** A filtered tab lock protects only the shown panes, not their source workspaces. */
+    private fun toggleFilteredGroupLocks(index:Int){
+        val page=FilteredPanePages.pages(filteredMatches()).getOrNull(index)?:return
+        if(page.isEmpty())return
+        val locked=!page.all{it.locked}
+        page.forEach{
+            it.locked=locked
+            cards[it.id]?.updateLockStatus()
+        }
+        store.save()
+        renderTabs()
+    }
+
+    /** Seven visible non-scrolling workspace slots; no version-specific tab strip. */
     private fun renderTabs(){
         tabStrip.removeAllViews()
-        // Seven equal-width slots at every screen width: never use a scrolling tab strip.
+        tabLockIcons.clear()
+        val light=store.lightMode
+        tabStrip.setBackgroundColor(if(light)Color.rgb(225,233,242) else Color.rgb(17,23,29))
         tabStrip.setPadding(dp(2),dp(2),dp(2),dp(2))
+        if(filtering()){
+            clampFilteredPage();renderFilteredTabs();return
+        }
         repeat(WorkspacePolicy.MAX_WORKSPACES){index->
             val ws=store.spaces.getOrNull(index)
             val active=ws?.id==store.currentId
             val next=index==store.spaces.size
-            val locked=ws?.locked==true
-            val label=if(locked)"${index+1}" else if(active)"${index+1}\n${store.columns}×${6/store.columns}" else if(next)"${index+1}\n+" else "${index+1}"
-            val tab=smallButton(label,0){
-                if(ws==null){if(next)createWorkspace();return@smallButton}
-                if(active){
-                    store.columns=if(store.columns==2)3 else 2;store.focusId=null;store.save();renderTabs();positionCards(true)
-                }else{
-                    store.currentId=ws.id;store.focusId=null;store.save();renderTabs();positionCards(true)
-                }
-            }.apply{
-                textSize=if(active||next||locked)12f else 14f
-                isEnabled=(!selecting||active)&&(ws!=null||next)
-                alpha=if(ws==null).45f else 1f
-                setTextColor(if(active)Color.rgb(184,210,237) else Color.rgb(232,237,244))
-                background=GradientDrawable().apply{
-                    setColor(if(active)Color.rgb(45,64,85) else Color.rgb(23,31,42))
-                    setStroke(dp(1),Color.rgb(76,89,104))
-                    cornerRadius=dp(6).toFloat()
-                }
-                if(locked){gravity=Gravity.TOP or Gravity.CENTER_HORIZONTAL;setPadding(0,dp(2),0,0)}
-                contentDescription=if(ws==null)"Create workspace ${index+1}" else
-                    "Workspace ${index+1}${if(locked)"; locked; tap red lock to unlock" else if(active)"; tap to swap layout" else ""}"
-                if(ws!=null)setOnLongClickListener{
-                    if(!ws.locked){
-                        ws.locked=true;store.save();renderTabs();notice("Workspace ${index+1} locked")
-                    }else notice("Tap the red lock on workspace ${index+1} to unlock")
-                    true
-                }
+            val frame=GradientDrawable().apply{
+                setColor(if(active){
+                    if(light)Color.rgb(197,215,237) else Color.rgb(45,64,85)
+                }else if(light)Color.rgb(233,239,245) else Color.rgb(23,31,42))
+                setStroke(dp(1).coerceAtLeast(1),
+                    if(light)Color.rgb(167,183,200) else Color.rgb(76,89,104))
+                cornerRadius=dp(6).toFloat()
             }
-            val slot=FrameLayout(this)
-            slot.addView(tab,FrameLayout.LayoutParams(-1,-1))
-            if(locked){
-                val unlock=android.widget.ImageView(this).apply{
-                    setImageResource(android.R.drawable.ic_lock_lock)
-                    setColorFilter(Color.rgb(255,76,86))
-                    scaleType=android.widget.ImageView.ScaleType.CENTER_INSIDE
-                    setPadding(dp(5),dp(2),dp(5),dp(2))
-                    contentDescription="Unlock workspace ${index+1}"
-                    isClickable=true
-                    setOnClickListener{ws!!.locked=false;store.save();renderTabs()}
+            val slot=FrameLayout(this).apply{background=frame}
+            val label=when{
+                ws?.locked==true->"${index+1}"
+                active->"${index+1}\n${store.columns}×${6/store.columns}"
+                next->"${index+1}\n+"
+                else->(index+1).toString()
+            }
+            val number=TextView(this).apply{
+                text=label
+                gravity=if(ws?.locked==true)Gravity.TOP or Gravity.CENTER_HORIZONTAL else Gravity.CENTER
+                textSize=if(active||next||ws?.locked==true)11f else 13f
+                setTextColor(if(light)Color.rgb(26,43,63) else Color.rgb(231,239,250))
+                if(ws?.locked==true)setPadding(0,dp(1),0,0)
+                alpha=if(ws==null).48f else 1f
+                contentDescription=when{
+                    ws==null&&next->"Create workspace ${index+1}"
+                    ws==null->"Unused workspace slot ${index+1}"
+                    ws?.locked==true->"Workspace ${index+1} locked; tap red lock to unlock"
+                    active->"Workspace ${index+1}; tap to change grid layout; hold to lock"
+                    else->"Workspace ${index+1}; tap to switch; hold to lock"
                 }
-                slot.addView(unlock,FrameLayout.LayoutParams(dp(30),dp(26),
+                isEnabled=(!selecting||active)&&(ws!=null||next)
+                if(ws!=null){
+                    setOnClickListener{
+                        if(ws.id!=store.currentId){
+                            store.currentId=ws.id;store.focusId=null;store.save()
+                            renderTabs();updateUniversalBar();positionCards(true)
+                        }else changeGridColumns(if(store.columns==2)3 else 2)
+                    }
+                    setOnLongClickListener{
+                        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        if(!ws.locked)toggleWorkspaceLock(ws)
+                        else notice("Tap red lock on workspace ${index+1} to unlock")
+                        true
+                    }
+                }else if(next)setOnClickListener{if(!selecting)createWorkspace()}
+            }
+            slot.addView(number,FrameLayout.LayoutParams(-1,-1))
+            if(ws?.locked==true){
+                val redLock=CornerIcon(this,CornerIcon.Kind.LOCK).apply{
+                    locked=true
+                    contentDescription="Unlock workspace ${index+1}"
+                    setOnClickListener{pressedFeedback();toggleWorkspaceLock(ws)}
+                    setOnLongClickListener{
+                        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);true
+                    }
+                }
+                tabLockIcons[ws.id]=redLock
+                slot.addView(redLock,FrameLayout.LayoutParams(dp(30),dp(24),
                     Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
             }
-            val lp=LinearLayout.LayoutParams(0,dp(44),1f).apply{
+            tabStrip.addView(slot,LinearLayout.LayoutParams(0,dp(44),1f).apply{
                 leftMargin=dp(1);rightMargin=dp(1)
-            }
-            tabStrip.addView(slot,lp)
+            })
         }
     }
+    private fun toggleWorkspaceLock(ws:WorkspaceState){
+        if(store.spaces.none{it.id==ws.id})return
+        ws.locked=!ws.locked;store.save();renderTabs()
+    }
+    private fun changeGridColumns(columns:Int){
+        if(store.columns==columns)return
+        store.columns=columns;store.save();positionCards(true)
+    }
+    /** Light mode styles the app chrome, never webpages or browser identities. */
+    fun applyChromeTheme(){
+        if(!::screen.isInitialized||!::universalBar.isInitialized)return
+        val light=store.lightMode
+        val surface=if(light)Color.rgb(235,241,249) else Color.rgb(15,21,31)
+        screen.setBackgroundColor(surface);stage.setBackgroundColor(surface)
+        tabStrip.setBackgroundColor(if(light)Color.rgb(225,233,242) else Color.rgb(17,23,29))
+        filterEmpty.setTextColor(if(light)Color.rgb(65,78,96) else Color.rgb(174,186,206))
+        universalBar.applyChromeTheme(light)
+        renderTabs()
+    }
     private fun createWorkspace(){
+        if(filtering()){notice("Clear the filter to add a workspace");return}
         if(!WorkspacePolicy.canCreate(store.spaces.size))return
         try{
             val new=store.create();renderTabs();positionCards(false)
+            // Fixed seven-slot tab strip needs no scroll adjustment.
             new.panes.forEachIndexed{i,p->handler.postDelayed({
                 if(!isFinishing&&!isDestroyed&&store.spaces.any{w->w.id==new.id&&w.panes.any{it.id==p.id}}){
                     try{val card=PaneCard(this,p);cards[p.id]=card;stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)));positionCards(false)}
@@ -428,8 +515,18 @@ class MainActivity:Activity(){
         }catch(e:Exception){notice("Cannot create workspace: ${e.message}")}
     }
     private fun closeWorkspace(ws:WorkspaceState){
-        if(ws.locked){notice("Workspace locked");return}
+        if(!WorkspacePolicy.canCloseWorkspace(ws.locked,ws.panes.map{it.locked})){
+            tabLockIcons[ws.id]?.blockedFeedback()
+            ws.panes.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
+            notice("Unlock workspace and all six browsers before closing");return
+        }
         confirm("Close workspace?","All six browser sessions will close immediately and their stored profiles will be retired for deletion. Disk cleanup may require a clean app restart. New workspaces start with fresh profiles.","Close & Delete"){
+            // Recheck the live locks at confirmation time. Never delete protected profiles.
+            val current=store.spaces.firstOrNull{it.id==ws.id}?:return@confirm
+            if(!WorkspacePolicy.canCloseWorkspace(current.locked,current.panes.map{it.locked})){
+                current.panes.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
+                notice("Workspace or a browser became locked; close cancelled");return@confirm
+            }
             // Don't mark cleanup complete while WebKit still has references to the profiles.
             store.close(ws.id) // durable tombstone FIRST: even a crash cannot restore these profiles
             for(p in ws.panes){
@@ -448,11 +545,11 @@ class MainActivity:Activity(){
             notice("Six sessions closed. Their profiles are retired; on-disk cleanup is pending a clean restart.")
         }
     }
-    /** Selection is scoped to the six panes in the current workspace, never across tabs. */
+    /** Selection is scoped to the six panes shown on the current workspace/filter tab. */
     fun enterSelection(initial:String?=null){
         selecting=true
         selectedPanes.clear()
-        if(initial!=null && store.active().panes.any{it.id==initial}) selectedPanes.add(initial)
+        if(initial!=null && currentFilteredPanes().any{it.id==initial}) selectedPanes.add(initial)
         // Select from the full six-pane grid rather than tiny Right Stack thumbnails.
         if(store.focusId!=null){store.focusId=null;store.save()}
         updateSelection()
@@ -463,27 +560,39 @@ class MainActivity:Activity(){
     }
     fun toggleWindowSelection(id:String){
         if(!selecting){enterSelection(id);return}
-        if(store.active().panes.none{it.id==id})return
+        if(currentFilteredPanes().none{it.id==id})return
         if(!selectedPanes.add(id))selectedPanes.remove(id)
         updateSelection()
     }
     private fun updateSelection(){
+        val visibleIds=currentFilteredPanes().map{it.id}.toSet()
         renderTabs();updateUniversalBar()
         cards.forEach{(id,card)->
-            card.updateSelection(selecting && store.active().panes.any{it.id==id},selectedPanes.contains(id))
+            card.updateSelection(selecting && id in visibleIds,selectedPanes.contains(id))
         }
     }
-    /** Per-pane controls; report copy is user-triggered and does not change sessions. */
+    /** Exactly seven pane actions. A workspace-tab hold owns workspace-wide tools. */
     fun windowContextMenu(card:PaneCard){
         if(selecting&&!selectedPanes.contains(card.state.id)){selectedPanes.add(card.state.id);updateSelection()}
-        val targets=if(selecting&&selectedPanes.isNotEmpty())store.active().panes.filter{it.id in selectedPanes} else listOf(card.state)
+        val targets=if(selecting&&selectedPanes.isNotEmpty())allPanes().filter{it.id in selectedPanes} else listOf(card.state)
         WindowActions(this,card,targets).open()
     }
     fun selectingWindows():Boolean=selecting
     fun toggleSelectionFromMenu(card:PaneCard){if(selecting)exitSelection() else enterSelection(card.state.id)}
     fun updateWindowLocks(){cards.values.forEach{it.updateLockStatus()};persist();updateSelection()}
     fun windowCard(id:String):PaneCard?=cards[id]
-    fun recolorWindows(ids:Set<String>,color:Int){store.setFrameColor(ids,color);ids.forEach{cards[it]?.updateFrameColor()};positionCards(false)}
+    fun recolorWindows(ids:Set<String>,color:Int){
+        store.setFrameColor(ids,color)
+        ids.forEach{cards[it]?.updateFrameColor()}
+        if(filtering()){
+            clampFilteredPage()
+            if(store.focusId!=null && currentFilteredPanes().none{it.id==store.focusId})
+                store.focusId=null
+            if(selecting)selectedPanes.retainAll(currentFilteredPanes().map{it.id}.toSet())
+            renderTabs();updateUniversalBar()
+        }
+        positionCards(false)
+    }
     fun closeWindows(ids:Set<String>)=confirmCloseWindows(ids)
     private fun shareUrls(urls:List<String>){
         val sites=urls.filter{it.startsWith("https://")||it.startsWith("http://")}.distinct()
@@ -496,38 +605,72 @@ class MainActivity:Activity(){
     }
     private fun selectionMenu()=universalMenu()
     private fun confirmCloseSelected()=confirmCloseWindows(selectedPanes.toSet())
+    /** Preserve the original source workspaces even when selecting virtual filter pages. */
     private fun confirmCloseWindows(requested:Set<String>){
-        val ws=store.active()
-        val selected=ws.panes.filter{it.id in requested}
+        val crossWorkspace=filtering()
+        val originalWorkspace=store.currentId
+        val available=if(crossWorkspace)allPanes() else store.active().panes
+        val selected=available.filter{it.id in requested}
         if(selected.isEmpty())return
+        val ids=selected.map{it.id}.toSet()
         if(selected.any{it.locked}){
             selected.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
-            notice("Unlock all selected windows before closing them")
+            notice("Unlock selected browsers before closing them");return
+        }
+        if(crossWorkspace && store.spaces.any{ws->ws.locked&&ws.panes.any{it.id in ids}}){
+            notice("Unlock the original workspace tabs before closing filtered browsers")
             return
         }
-        val currentId=ws.id
-        confirm("Close ${selected.size} window${if(selected.size==1)"" else "s"}?",
-            "Selected sessions and their saved browser data will be retired for deletion. New blank, isolated browsers will replace them to preserve SIXPANE's six-window layout. Disk cleanup may require an app restart.",
+        confirm("Close "+selected.size+" window"+(if(selected.size==1)"" else "s")+"?",
+            "These sessions and their saved browser data will be retired for deletion. "+
+            "Fresh isolated profiles replace them in their ORIGINAL workspaces. "+
+            "Disk cleanup may require a clean restart.",
             "Close & Replace"){
-            if(store.active().id!=currentId){notice("Workspace changed; close cancelled");return@confirm}
-            val ids=selected.map{it.id}.toSet()
-            if(store.active().panes.filter{it.id in ids}.any{it.locked}){
-                notice("Selected windows were locked; close cancelled");return@confirm
+            if(crossWorkspace!=filtering()||
+                (!crossWorkspace && store.currentId!=originalWorkspace)){
+                notice("The active view changed; close cancelled");return@confirm
             }
-            val replacements=store.replacePanes(ids)
-            replacements.forEach{(old,_)->cards.remove(old.id)?.let{stage.removeView(it);it.destroyExplicitly()}}
+            val live=allPanes().filter{it.id in ids}
+            if(live.size!=ids.size||live.any{it.locked}){
+                live.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
+                notice("A selected browser changed or was locked; close cancelled")
+                return@confirm
+            }
+            if(crossWorkspace&&store.spaces.any{ws->
+                ws.locked&&ws.panes.any{it.id in ids}
+            }){
+                notice("Source workspace became locked; close cancelled");return@confirm
+            }
+            val replacements=try{
+                if(crossWorkspace)store.replacePanesAcrossWorkspaces(ids)
+                else store.replacePanes(ids)
+            }catch(e:IllegalArgumentException){
+                notice("Close cancelled: "+e.message);return@confirm
+            }
+            replacements.forEach{(old,_)->
+                cards.remove(old.id)?.let{stage.removeView(it);it.destroyExplicitly()}
+            }
             exitSelection()
             replacements.forEachIndexed{index,(_,fresh)->
                 handler.postDelayed({
-                    if(!isFinishing&&!isDestroyed&&store.spaces.any{w->w.id==currentId&&w.panes.any{it.id==fresh.id}}){
+                    if(!isFinishing&&!isDestroyed &&
+                        store.spaces.any{ws->ws.panes.any{it.id==fresh.id}}){
                         try{
-                            val card=PaneCard(this,fresh);cards[fresh.id]=card
-                            stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)));positionCards(false)
-                        }catch(e:Throwable){notice("New window could not start: ${e.message}")}
+                            val card=PaneCard(this,fresh)
+                            cards[fresh.id]=card
+                            stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)))
+                            positionCards(false)
+                        }catch(e:Throwable){
+                            notice("New browser could not start: "+e.message)
+                        }
                     }
                 },index*130L)
             }
-            notice("${selected.size} sessions retired. Fresh profiles created; disk deletion pending clean restart.")
+            clampFilteredPage()
+            renderTabs()
+            positionCards(false)
+            notice(replacements.size.toString()+
+                " sessions retired; new profiles created in their original workspaces.")
         }
     }
     private fun showBookmarksForPane(id:String){
@@ -543,8 +686,8 @@ class MainActivity:Activity(){
             }.show()
     }
     private fun showBookmarks(){
-        val panes=store.active().panes
-        val focused=panes.firstOrNull{it.id==store.focusId}
+        val panes=if(filtering())currentFilteredPanes() else store.active().panes
+        val focused=allPanes().firstOrNull{it.id==store.focusId}
         if(focused!=null){showBookmarksForPane(focused.id);return}
         AlertDialog.Builder(this).setTitle("Bookmarks by browser")
             .setItems(panes.mapIndexed{index,p->
@@ -552,29 +695,31 @@ class MainActivity:Activity(){
             }.toTypedArray()){_,which->showBookmarksForPane(panes[which].id)}.show()
     }
     private fun workspaceMenu(){
-        val options=arrayOf(if(store.columns==2)"Switch to 3 × 2 grid" else "Switch to 2 × 3 grid",
-            if(store.active().panes.all{it.locked})"Unlock all six" else "Lock all six",
-            "Controlled test page", "Pending deletion status", "Select windows", "Bookmarks",
-            "Open in all panes · this workspace", "Open in all panes · all workspaces",
-            "Session audit", "Desktop UA: ${if(store.desktopUserAgent)"on" else "off"}",
-            "Battery optimization exemption", "Lock / unlock workspace", "Close workspace")
-        AlertDialog.Builder(this).setItems(options){_,idx->when(idx){
-            0->{store.columns=if(store.columns==2)3 else 2;store.save();positionCards(true)}
-            1->{val value=!store.active().panes.all{it.locked};store.active().panes.forEach {it.locked=value;cards[it.id]?.updateLockStatus()};store.save()}
-            2->{confirm("Open controlled test pages?","Navigates all six browsers in this workspace to the local isolation test page. Existing live page state would be interrupted.","Open test pages"){
-                navigatePanes(store.active().panes.toList(),"https://appassets.androidplatform.net/assets/isolation_test.html")
-            }}
-            3->notice("${store.pendingDeletion.size} retired profiles still awaiting deletion on a clean process start")
-            4->enterSelection()
-            5->showBookmarks()
-            6->bulkNavigation(false)
-            7->bulkNavigation(true)
-            8->SessionAudit(this).open()
-            9->toggleGlobalUserAgent()
-            10->requestBatteryExemption(true)
-            11->{store.active().locked=!store.active().locked;persist();renderTabs()}
-            12->closeWorkspace(store.active())
+        if(filtering()){notice("Clear the filter to manage original workspaces");return}
+        val options=arrayOf(
+            if(store.active().panes.all{it.locked})"Unlock all six windows" else "Lock all six windows",
+            "Select windows","Bookmarks",
+            "Open in all panes · this workspace","Open in all panes · all workspaces",
+            "Close workspace"
+        )
+        AlertDialog.Builder(this).setTitle("Workspace tools").setItems(options){_,idx->when(idx){
+            0->{
+                val value=!store.active().panes.all{it.locked}
+                store.active().panes.forEach{it.locked=value;cards[it.id]?.updateLockStatus()}
+                store.save()
+            }
+            1->enterSelection()
+            2->showBookmarks()
+            3->bulkNavigation(false)
+            4->bulkNavigation(true)
+            5->closeWorkspace(store.active())
         }}.show()
+    }
+    fun openControlledTestPage(){
+        confirm("Open controlled test pages?","This replaces the live pages in this workspace without deleting the six browser profiles.","Open test pages"){
+            navigatePanes(store.active().panes.toList(),
+                "https://appassets.androidplatform.net/assets/isolation_test.html")
+        }
     }
     private fun navigatePanes(panes:List<PaneState>,url:String){
         panes.forEach{pane->
@@ -610,15 +755,6 @@ class MainActivity:Activity(){
             }
         };dialog.show()
     }
-    private fun toggleGlobalUserAgent(){
-        if(store.spaces.any{ws->ws.panes.any{it.locked}}){notice("Unlock all panes before changing the shared user agent");return}
-        confirm("Change desktop UA for all panes?",
-            "This changes all browser request identities and may reload pages. Do this before joining a queue. The per-pane Desktop site toggle continues to control viewport fitting; when shared desktop UA is off it also selects desktop UA for that pane."){
-            if(store.spaces.any{ws->ws.panes.any{it.locked}}){notice("A pane was locked; change cancelled");return@confirm}
-            store.desktopUserAgent=!store.desktopUserAgent
-            cards.values.forEach{it.applyGlobalUserAgent()}
-        }
-    }
     fun paneMenu(card:PaneCard){
         val choices=arrayOf(if(card.state.desktop)"Desktop site: on" else "Desktop site: off",
             "Back", "Forward", "Refresh", "Bookmark page", "Share page", "Advanced…", "Copy page report")
@@ -636,6 +772,7 @@ class MainActivity:Activity(){
     fun cookieEditor(card:PaneCard){CookieEditor(this,card).open()}
     fun copyPanePageReport(card:PaneCard){PanePageReport(this).copy(card)}
     fun focus(card:PaneCard){
+        if(currentFilteredPanes().none{it.id==card.state.id})return
         store.focusId=if(store.focusId==card.state.id)null else card.state.id
         store.save();updateUniversalBar();positionCards(true)
     }
@@ -645,9 +782,15 @@ class MainActivity:Activity(){
         if(width<10||height<10)return
         val layoutRun=++layoutGeneration
         val gap=dp(2);val visible=currentFilteredPanes()
-        val f=store.focusId?.takeIf{id->visible.any{it.id==id}}
-        val rects=PaneLayout.visibleBounds(width,height,gap,store.columns,visible.size,
-            f?.let{id->visible.indexOfFirst{it.id==id}},dp(72),dp(80))
+        if(store.focusId!=null && visible.none{it.id==store.focusId}){
+            store.focusId=null
+            store.save()
+        }
+        val f=store.focusId
+        // Allocate full six-slot geometry even with only 1–5 filtered matches.
+        // Unfilled cells stay the stage background, never stretched panes.
+        val rects=FilteredPanePages.bounds(width,height,gap,store.columns,visible.size,
+            f?.let{id->visible.indexOfFirst{it.id==id}},dp(54),dp(80))
         filterEmpty.visibility=if(visible.isEmpty())View.VISIBLE else View.GONE
         updateUniversalBar()
         val desired=visible.mapIndexed{i,p->val r=rects[i];p.id to intArrayOf(r.x,r.y,r.width,r.height)}.toMap()
@@ -655,10 +798,20 @@ class MainActivity:Activity(){
             card.updatePaneNumber()
             val r=desired[id]
             if(r==null){
-                // Keep off-workspace WebViews allocated and attached; never pauseTimers/stopLoading.
+                // Hidden pages stay live and attached, without pauseTimers/stopLoading.
+                // A negative layout margin is stable across parent re-layouts,
+                // unlike View.setX(), which may be reset after resize/keyboard changes.
                 card.animate().cancel()
-                card.x=-10000f
-                card.y=0f
+                card.translationX=0f
+                card.translationY=0f
+                card.scaleX=1f
+                card.scaleY=1f
+                val offscreen=card.layoutParams as FrameLayout.LayoutParams
+                if(offscreen.leftMargin!=-10000 || offscreen.topMargin!=0){
+                    offscreen.leftMargin=-10000
+                    offscreen.topMargin=0
+                    card.layoutParams=offscreen
+                }
                 card.visibility=View.VISIBLE
                 continue
             }
@@ -668,7 +821,7 @@ class MainActivity:Activity(){
             lp.width=r[2].coerceAtLeast(1);lp.height=r[3].coerceAtLeast(1)
             lp.leftMargin=r[0];lp.topMargin=r[1]
             card.layoutParams=lp
-            card.compact=r[2]<dp(155)
+            card.compact=f!=null&&id!=f
             card.focused=f==id
             card.updateSelection(selecting && visible.any{it.id==id},selectedPanes.contains(id))
             if(animate&&oldW>0&&oldH>0&&oldX>-1000f){
@@ -696,35 +849,30 @@ class MainActivity:Activity(){
         if(started)try{startForegroundService(Intent(this,PaneKeepAliveService::class.java))}
         catch(e:RuntimeException){notice("Background process priority unavailable: ${e.message}")}
     }
-    override fun onResume(){
-        super.onResume()
-        if(!started)return
-        val prompts=getSharedPreferences("sixpane-runtime-prompts",MODE_PRIVATE)
-        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED
-            &&!prompts.getBoolean("notifications-asked",false)){
-            prompts.edit().putBoolean("notifications-asked",true).apply()
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),NOTIFICATION_REQUEST)
-        }else requestBatteryExemption()
+    override fun onResume(){super.onResume()}
+    /** Settings is the only entrypoint for permission requests. */
+    fun requestNotificationPermissionFromSettings(){
+        if(Build.VERSION.SDK_INT<33){notice("Notification controls are managed by Android");return}
+        if(checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED){
+            notice("Notifications already enabled");return
+        }
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),NOTIFICATION_REQUEST)
     }
     override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray){
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)
-        if(requestCode==NOTIFICATION_REQUEST){
-            if(grantResults.firstOrNull()!=PackageManager.PERMISSION_GRANTED)
-                notice("Notifications denied. Background service can still run; Android shows it in Active apps. Keep SIXPANE open for live sessions.")
-            requestBatteryExemption()
-        }
+        if(requestCode==NOTIFICATION_REQUEST)notice(
+            if(grantResults.firstOrNull()==PackageManager.PERMISSION_GRANTED)
+                "Notifications enabled" else "Notifications remain disabled"
+        )
     }
-    private fun requestBatteryExemption(explicit:Boolean=false){
+    fun requestBatteryExemption(explicit:Boolean=true){
         val manager=getSystemService(PowerManager::class.java)
         if(manager.isIgnoringBatteryOptimizations(packageName)){
-            if(explicit)notice("SIXPANE already has a battery optimization exemption")
+            if(explicit)notice("Battery optimization exemption already enabled")
             return
         }
-        val prompts=getSharedPreferences("sixpane-runtime-prompts",MODE_PRIVATE)
-        if(!explicit&&prompts.getBoolean("battery-asked",false))return
-        prompts.edit().putBoolean("battery-asked",true).apply()
         try{startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,Uri.parse("package:$packageName")))}
-        catch(_:RuntimeException){notice("Battery exemption request unavailable. Set SIXPANE battery use to Unrestricted in Android app settings.")}
+        catch(_:RuntimeException){notice("Open Android App info → Battery → Unrestricted for SIXPANE")}
     }
     override fun onPause(){
         handler.removeCallbacks(saveFilter)

@@ -25,6 +25,12 @@ class PaneLayoutTest {
             if(count==1)assertTrue(rects[0].width>=350)
         }
     }
+    @Test fun tighterRightStackKeepsMainPaneLarge(){
+        val panes=PaneLayout.visibleBounds(700,1100,2,2,6,0,56,80)
+        assertEquals(6,panes.size)
+        assertTrue(panes[0].width>700*.78)
+        assertTrue(panes.drop(1).all{it.width<700*.21})
+    }
     @Test fun restoreReturnsOriginalGridAfterResizing(){
         for(columns in 2..3){
             val original=PaneLayout.bounds(360,700,2,columns,null,72,80)

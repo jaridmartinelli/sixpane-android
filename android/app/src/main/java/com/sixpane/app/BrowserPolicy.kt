@@ -2,9 +2,8 @@ package com.sixpane.app
 
 import java.net.URI
 
-/** Shared request identity and bounded recovery; no per-pane UA variation. */
+/** Navigation and bounded recovery; WebView provides its own genuine system user agent. */
 object BrowserPolicy {
-    const val DESKTOP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
     const val MAX_RECOVERY_ATTEMPTS = 10
     const val RECOVERY_LOAD_TIMEOUT_MS = 60_000L
     fun recoveryDelayMs(attempt:Int):Long {
