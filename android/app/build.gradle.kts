@@ -2,7 +2,22 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+// GitHub Actions provides this keystore only for canonical main-branch builds.
+// Pull-request builds continue to use Android's disposable debug signer.
+val canonicalKeyPath = System.getenv("SIXPANE_CANONICAL_KEYSTORE_PATH")
+val canonicalKeyPassword = System.getenv("SIXPANE_CANONICAL_KEYSTORE_PASSWORD")
+
 android {
+    signingConfigs {
+        if (!canonicalKeyPath.isNullOrBlank() && !canonicalKeyPassword.isNullOrBlank()) {
+            create("canonical") {
+                storeFile = file(canonicalKeyPath)
+                storePassword = canonicalKeyPassword
+                keyAlias = "sixpane-canonical"
+                keyPassword = canonicalKeyPassword
+            }
+        }
+    }
     namespace = "com.sixpane.app"
     compileSdk = 35
     defaultConfig {
@@ -20,6 +35,7 @@ android {
             applicationIdSuffix = ".preview.filterview"
             versionNameSuffix = "-preview"
             manifestPlaceholders["appLabel"] = "SIXPANE"
+            signingConfigs.findByName("canonical")?.let { signingConfig = it }
         }
         release { isMinifyEnabled = false }
     }
