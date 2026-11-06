@@ -505,7 +505,7 @@ class MainActivity:Activity(){
         if(!WorkspacePolicy.canCreate(store.spaces.size))return
         try{
             val new=store.create();renderTabs();positionCards(false)
-            tabScroller.post{tabScroller.fullScroll(View.FOCUS_RIGHT)}
+            // Fixed seven-slot tab strip needs no scroll adjustment.
             new.panes.forEachIndexed{i,p->handler.postDelayed({
                 if(!isFinishing&&!isDestroyed&&store.spaces.any{w->w.id==new.id&&w.panes.any{it.id==p.id}}){
                     try{val card=PaneCard(this,p);cards[p.id]=card;stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)));positionCards(false)}
