@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -Fq 'applicationIdSuffix = ".preview.filterview"' android/app/build.gradle.kts
-          grep -Fq 'versionCode = 14' android/app/build.gradle.kts
+          grep -Fq 'versionCode = 15' android/app/build.gradle.kts
           grep -Fq 'newUniquePanes(ids)' android/app/src/main/java/com/sixpane/app/LocalStore.kt
           grep -Fq 'replacePanesAcrossWorkspaces' android/app/src/main/java/com/sixpane/app/LocalStore.kt
           grep -Fq 'fun copyPanePageReport(card:PaneCard)' android/app/src/main/java/com/sixpane/app/MainActivity.kt
@@ -101,6 +101,19 @@ jobs:
           BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
           echo "$BADGING" | grep -Fq "package: name='com.sixpane.app.preview.filterview' versionCode='14'"
           echo "$BADGING" | grep -Fq "application-label:'SIXPANE'"
+      # Explicit v14 clean-install test build: CI's temporary debug signer is NOT
+      # update-compatible with earlier installations. Publication of an upgrade
+      # from main still requires the separately approved canonical certificate.
+      - name: Upload v14 clean-install APK for the requested feature branch
+        if: success() && github.event_name == 'pull_request' && github.head_ref == 'release/v14-clean-install'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SIXPANE-v14-CLEAN-INSTALL-only
+          if-no-files-found: error
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/reports/**
+            android/app/build/test-results/**
       # Default GitHub-hosted debug keys rotate on every runner. Never distribute
       # an APK until its signer matches the explicitly approved stable identity.
       - name: Block unapproved signing certificates from release
