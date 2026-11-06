@@ -9,14 +9,14 @@ android {
         applicationId = "com.sixpane.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.13-consolidated"
+        versionCode = 15
+        versionName = "0.14-consolidated"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }
     buildTypes {
         debug {
-            // Canonical v0.13 installation identity. Never rotate the suffix.
+            // Keep the established canonical preview package ID; v14 supports clean installation.
             applicationIdSuffix = ".preview.filterview"
             versionNameSuffix = "-preview"
             manifestPlaceholders["appLabel"] = "SIXPANE"
