@@ -11,6 +11,7 @@
 ## Recoverable primary backups
 
 - Private ChatGPT Library: `/SIXPANE/Signing/SIXPANE_CANONICAL_v14_AND_FUTURE.p12`.
+- Copy-ready GitHub Actions keystore secret value, independently decoded and byte-compared to the original: `/SIXPANE/Signing/SIXPANE_CANONICAL_GITHUB_SECRET_BASE64.txt`. This encoded content is **sensitive encrypted key material**; keep it private.
 - Password, separately: `/Private Recovery/SIXPANE_CANONICAL_KEY_PASSWORD.txt`.
 - The November 6, 2026 backup was tested by materializing both files again, checking exact byte equivalence, and successfully loading alias `sixpane-canonical` with the expected certificate SHA-256.
 - These backups are **within the same ChatGPT account**; keep an additional independent, private offline copy if continued account access cannot be guaranteed. Do not share a keystore together with its password.
@@ -19,7 +20,7 @@
 
 The connected GitHub connector does not grant access to GitHub Actions repository secrets. A repository administrator must add **two Actions secrets** at Settings → Secrets and variables → Actions → New repository secret:
 
-1. `SIXPANE_CANONICAL_KEYSTORE_BASE64`: base64 encoding of the *exact backed-up* `.p12` keystore bytes (one line, no formatting).
+1. `SIXPANE_CANONICAL_KEYSTORE_BASE64`: **the complete contents** of the prepared Library file `/SIXPANE/Signing/SIXPANE_CANONICAL_GITHUB_SECRET_BASE64.txt` (one line, no extra formatting). This has already been decoded and verified against the original `.p12`.
 2. `SIXPANE_CANONICAL_KEYSTORE_PASSWORD`: the exact password from the separate private recovery file (same key and store password).
 
 **Do not generate a second key.** The same saved keystore is required on every update. Do not paste either secret into a GitHub issue, PR, commit, or chat message.
