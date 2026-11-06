@@ -47,6 +47,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     private lateinit var cmd: CommandBar
     private lateinit var sel: SelectionBar
     private lateinit var suggest: LinearLayout
+    private lateinit var overview: WorkspaceOverview
     private lateinit var snack: Snack
     private lateinit var dock: LinearLayout
     private lateinit var emptyState: LinearLayout
@@ -141,6 +142,9 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
             }
         }
 
+        overview = WorkspaceOverview(this)
+        root.addView(overview, FrameLayout.LayoutParams(-1, -1))
+
         root.setOnApplyWindowInsetsListener { _, ins ->
             val l: Int; val t: Int; val r: Int; val b: Int
             if (Build.VERSION.SDK_INT >= 30) {
@@ -154,6 +158,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
             // Keyboard: lift the dock (and what sits on it) above the IME without resizing the panes.
             val lift = if (Build.VERSION.SDK_INT >= 30) (ins.getInsets(WindowInsets.Type.ime()).bottom - b).coerceAtLeast(0) else 0
             listOf<View>(dock, suggest, snack).forEach { it.translationY = -lift.toFloat() }
+            overview.dispatchApplyWindowInsets(ins)
             ins
         }
         setContentView(root)
@@ -220,6 +225,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         val p = activePane()
         val wv = hub.view(p.id)
         when {
+            overview.showing -> overview.hide()
             cmd.editing -> cmd.clearAddress()
             selecting -> exitSelection()
             wv != null && wv.canGoBack() -> wv.goBack()
@@ -273,6 +279,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         bindBars()
         chips.visibility = if (filtering()) View.VISIBLE else View.GONE
         if (filtering()) chips.bind(state.filter, state.allPanes().count { shown(it) })
+        if (overview.showing) overview.render()
         app.store.save()
     }
 
@@ -431,66 +438,32 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
 
     fun currentWorkspace(): Workspace = state.current()
 
-    /** Workspace screen: up to 7 workspaces, add new ones here. */
+    /** Full-screen workspace overview: switch, close, or add (up to 7). */
     fun openWorkspaces() {
         cmd.clearAddress()
         if (selecting) { toast("Finish selecting first (tap \u2715)"); return }
-        val vis = visibleWorkspaces()
-        val s = Sheet(this, "Workspaces", "${state.workspaces.size} of ${AppState.MAX_WORKSPACES}" + if (filtering()) " \u00B7 filtered" else "")
-        val gridView = android.widget.GridLayout(this).apply { columnCount = 4; useDefaultMargins = false }
-        val cell = { v: View ->
-            gridView.addView(v, android.widget.GridLayout.LayoutParams().apply {
-                width = 0; height = dp(96)
-                columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
-                setMargins(dp(5), dp(5), dp(5), dp(5))
-            })
-        }
-        vis.forEach { w ->
-            val idx = state.workspaces.indexOf(w) + 1
-            val current = w.id == state.currentId
-            val open = w.panes.count { it.url.isNotBlank() }
-            val card = FrameLayout(this).apply {
-                background = ripple(rounded(if (current) T.surface3 else T.surface2, dpf(14f),
-                    if (current) Color.WHITE else T.stroke, if (current) dp(2) else 1), dpf(14f))
-                addView(label(idx.toString(), 22f, T.text, bold = true).apply { gravity = Gravity.CENTER },
-                    FrameLayout.LayoutParams(-1, -1).apply { bottomMargin = dp(16) })
-                val dots = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER }
-                w.panes.forEach { p ->
-                    dots.addView(View(this@MainActivity).apply {
-                        background = rounded(T.color(p.color) ?: if (p.url.isNotBlank()) T.text2 else T.text3, dpf(3f))
-                        alpha = if (p.url.isNotBlank()) 1f else 0.4f
-                    }, LinearLayout.LayoutParams(dp(6), dp(6)).apply { leftMargin = dp(2); rightMargin = dp(2) })
-                }
-                addView(dots, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { bottomMargin = dp(14) })
-                if (w.lockedCount > 0) addView(ImageView(this@MainActivity).apply {
-                    setImageDrawable(IconDrawable(Icon.LOCK, T.lock))
-                    alpha = if (w.allLocked) 1f else 0.6f
-                }, FrameLayout.LayoutParams(dp(14), dp(14), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(8), dp(8), 0) })
-                contentDescription = "Workspace $idx, $open of 6 open" + (if (current) ", current" else "") +
-                    (if (w.lockedCount > 0) ", ${w.lockedCount} locked" else "") + ". Hold for options"
-                setOnClickListener { s.dismiss(); switchWorkspace(w.id) }
-                setOnLongClickListener { s.dismiss(); openWorkspaceMenu(w); true }
-            }
-            cell(card)
-        }
-        val full = state.workspaces.size >= AppState.MAX_WORKSPACES
-        cell(FrameLayout(this).apply {
-            background = ripple(rounded(T.bg, dpf(14f), T.stroke, 1), dpf(14f))
-            alpha = if (full || filtering()) 0.4f else 1f
-            addView(ImageView(this@MainActivity).apply { setImageDrawable(IconDrawable(Icon.ADD, T.text2)) },
-                FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
-            contentDescription = "New workspace"
-            setOnClickListener {
-                when {
-                    full -> toast("7 is the maximum. Close a workspace to add one.")
-                    filtering() -> toast("Clear filters to add a workspace", "Clear") { clearFilters() }
-                    else -> { s.dismiss(); addWorkspace() }
-                }
-            }
-        })
-        s.custom(gridView, padH = 12)
-        s.show()
+        overview.show()
     }
+
+    fun addWorkspaceFromOverview() {
+        when {
+            state.workspaces.size >= AppState.MAX_WORKSPACES -> toast("7 is the maximum. Close a workspace to add one.")
+            filtering() -> toast("Clear filters to add a workspace", "Clear") { clearFilters() }
+            else -> { addWorkspace(); overview.hide() }
+        }
+    }
+
+    fun requestCloseWorkspace(w: Workspace) {
+        if (w.lockedCount > 0) {
+            w.panes.filter { it.locked }.forEach { grid.card(it.id)?.shakeLock() }
+            toast("${w.lockedCount} locked pane${if (w.lockedCount == 1) "" else "s"} \u2014 unlock to close this workspace")
+            return
+        }
+        closeWorkspace(w)
+    }
+
+    internal fun visibleWorkspacesRef() = visibleWorkspaces()
+    internal fun isFiltering() = filtering()
 
     private fun paneTitle(p: Pane): String {
         val w = state.workspaces.indexOfFirst { it.id == state.workspaceOf(p.id)?.id } + 1
