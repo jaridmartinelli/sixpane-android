@@ -91,7 +91,6 @@ jobs:
         if: always() && github.event_name == 'push'
         run: |
           set -euo pipefail
-          [ -d tessera-evidence/shots ] || exit 0
           mkdir -p ci-evidence/tessera && rm -f ci-evidence/tessera/*.jpg
           python3 -m pip install --quiet pillow
           python3 - <<'PYEOF'
@@ -103,6 +102,10 @@ jobs:
               im.save("ci-evidence/tessera/" + os.path.basename(f)[:-4] + ".jpg", quality=72)
           PYEOF
           git config user.name "tessera-ci"; git config user.email "tessera-ci@users.noreply.github.com"
+          APK=tessera/app/build/outputs/apk/debug/app-debug.apk
+          cp "$APK" ci-evidence/tessera/Tessera-1.0-debug.apk
+          (cd ci-evidence/tessera && sha256sum Tessera-1.0-debug.apk > Tessera-1.0-debug.apk.sha256 && cat Tessera-1.0-debug.apk.sha256)
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | grep -i "SHA-256" | tee ci-evidence/tessera/signer.txt || true
           git add ci-evidence/tessera
           git diff --cached --quiet && exit 0
           git commit -m "CI: Tessera emulator screenshots for ${GITHUB_SHA::7} [skip ci]"

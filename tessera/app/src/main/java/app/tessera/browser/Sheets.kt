@@ -159,8 +159,20 @@ class Sheet(private val a: MainActivity, title: String, subtitle: String? = null
         return this
     }
 
-    fun show(): Sheet { dialog.show(); return this }
+    fun show(): Sheet {
+        open += this
+        dialog.setOnDismissListener { open -= this; dismissHook?.invoke() }
+        dialog.show(); return this
+    }
     fun dismiss() = dialog.dismiss()
+    private var dismissHook: (() -> Unit)? = null
+    fun onDismiss(hook: () -> Unit): Sheet { dismissHook = hook; return this }
+
+    companion object {
+        private val open = linkedSetOf<Sheet>()
+        /** Closes every open sheet (used when the screen is rebuilt, and by tests). */
+        fun dismissAll() { open.toList().forEach { it.dismiss() }; CookieEditor.closeOpen() }
+    }
 }
 
 fun MainActivity.confirm(title: String, message: String, action: String, danger: Boolean = true, onConfirm: () -> Unit) {

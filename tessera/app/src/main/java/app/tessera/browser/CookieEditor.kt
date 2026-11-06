@@ -89,7 +89,14 @@ class CookieEditor(private val a: MainActivity, private val pane: Pane) {
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         }
+        dialog.setOnDismissListener { if (current === dialog) current = null }
+        current = dialog
         dialog.show()
+    }
+
+    companion object {
+        private var current: Dialog? = null
+        fun closeOpen() { current?.dismiss() }
     }
 
     private fun count(n: Int) = if (n < 0) "blocked" else "$n key${if (n == 1) "" else "s"}"

@@ -65,6 +65,7 @@ class TesseraDeviceTest {
 
     @Test
     fun fortyTwoIsolatedSessionsStayAwakeInBackground() {
+        main { (inst.targetContext.applicationContext as TesseraApp).store.state.onboarded = true }
         ActivityScenario.launch(MainActivity::class.java).use { sc ->
             lateinit var act: MainActivity
             sc.onActivity { act = it }
@@ -140,6 +141,7 @@ class TesseraDeviceTest {
 
     @Test
     fun uiTour() {
+        main { (inst.targetContext.applicationContext as TesseraApp).store.state.onboarded = true }
         ActivityScenario.launch(MainActivity::class.java).use { sc ->
             lateinit var act: MainActivity
             sc.onActivity { act = it }
@@ -154,26 +156,27 @@ class TesseraDeviceTest {
                 act.refreshAll()
             }
             Thread.sleep(6000)
+            main { Sheet.dismissAll() }
             shot("01-grid")
             main { act.toggleExpandActive() }; Thread.sleep(800); shot("02-expanded")
             main { act.toggleExpandActive() }; Thread.sleep(600)
             main { act.openPaneMenu(ws.panes[2]) }; shot("03-pane-menu-locked")
-            inst.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); Thread.sleep(500)
+            main { Sheet.dismissAll() }; Thread.sleep(500)
             main { act.openMainMenu() }; shot("04-main-menu")
-            inst.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); Thread.sleep(500)
+            main { Sheet.dismissAll() }; Thread.sleep(500)
             main { act.openAddress(act.activePane()) }; shot("05-address")
-            inst.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); Thread.sleep(300)
-            inst.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); Thread.sleep(500)
+            main { Sheet.dismissAll() }; Thread.sleep(300)
+            main { Sheet.dismissAll() }; Thread.sleep(500)
             main { act.enterSelection(ws.panes[0].id); act.onSelectToggle(ws.panes[1].id); act.onSelectToggle(ws.panes[2].id) }; shot("06-selection")
             main { act.exitSelection(); act.stateRef().filter = PaneFilter(setOf(6)); act.refreshAll() }; shot("07-filter-blue")
             main { act.clearFilters(); act.addWorkspace() }; Thread.sleep(1500); shot("08-second-workspace")
             main { act.openWorkspaceMenu(act.stateRef().workspaces[0]) }; shot("09-workspace-menu")
-            inst.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); Thread.sleep(500)
+            main { Sheet.dismissAll() }; Thread.sleep(500)
             main { act.switchWorkspace(act.stateRef().workspaces[0].id) }
             main { CookieEditor(act, ws.panes[0]).show() }; shot("10-cookies")
-            inst.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); Thread.sleep(500)
+            main { Sheet.dismissAll() }; Thread.sleep(500)
             main { Diagnostics.isolationCheck(act) }; Thread.sleep(3000); shot("11-isolation-check")
-            inst.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); Thread.sleep(500)
+            main { Sheet.dismissAll() }; Thread.sleep(500)
             main { act.openSettings() }; shot("12-settings")
         }
     }

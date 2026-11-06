@@ -174,6 +174,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         super.onConfigurationChanged(newConfig)
         if (!uiReady) return
         // Fold/unfold or density change: rebuild app chrome, re-parent the same live WebViews.
+        Sheet.dismissAll()
         buildUi()
         state.allPanes().forEach { p -> ensureCard(p); hub.view(p.id)?.let { grid.card(p.id)?.attachWeb(it) } }
         refreshAll()
@@ -916,7 +917,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         if (!notificationsAllowed()) s.item(Icon.SETTINGS, "Allow the keep-alive notification", keepOpen = false) { requestNotifications() }
         if (!batteryUnrestricted()) s.item(Icon.SHIELD, "Allow running in the background", detail = "Turns off battery optimisation for Tessera") { requestBatteryExemption() }
         s.buttons(pillButton("Got it", filled = true) { s.dismiss() })
-        s.dialog.setOnDismissListener { state.onboarded = true; app.store.save() }
+        s.onDismiss { state.onboarded = true; app.store.save() }
         s.show()
     }
 
