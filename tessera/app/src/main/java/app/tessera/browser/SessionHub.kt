@@ -215,6 +215,28 @@ class SessionHub(private val app: TesseraApp, private val store: Store) {
         handler.postDelayed(beat, 2000)
     }
 
+    /** Pings every live page right now; reports how many answered within [timeoutMs]. */
+    fun pingAll(timeoutMs: Long, done: (answered: Int, visible: Int, total: Int) -> Unit) {
+        val targets = views.toMap()
+        if (targets.isEmpty()) { done(0, 0, 0); return }
+        var answered = 0; var visible = 0; var finished = false
+        val finish = Runnable { if (!finished) { finished = true; done(answered, visible, targets.size) } }
+        targets.forEach { (id, wv) ->
+            runCatching {
+                wv.evaluateJavascript("document.visibilityState") { v ->
+                    if (finished) return@evaluateJavascript
+                    val r = runtime(id)
+                    r.lastHeartbeat = SystemClock.elapsedRealtime()
+                    r.visibilityState = v?.trim('"') ?: "?"
+                    answered++
+                    if (r.visibilityState == "visible") visible++
+                    if (answered == targets.size) { handler.removeCallbacks(finish); finish.run() }
+                }
+            }
+        }
+        handler.postDelayed(finish, timeoutMs)
+    }
+
     fun responsiveCount(withinMs: Long = HEARTBEAT_MS * 3): Int {
         val now = SystemClock.elapsedRealtime()
         return views.keys.count { now - runtime(it).lastHeartbeat <= withinMs }

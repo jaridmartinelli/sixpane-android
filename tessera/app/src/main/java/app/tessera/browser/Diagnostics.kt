@@ -101,13 +101,15 @@ object Diagnostics {
         panes.forEach { p ->
             val cm = store.getOrCreateProfile(p.profile).cookieManager
             cm.setCookie(url, "tessera_iso=${tokens[p.id]}; Path=/") {
-                if (--pending == 0) verify(a, panes, tokens, url, uniqueNames, mismatched)
+                if (--pending == 0) hub.pingAll(4000) { answered, visible, total ->
+                    verify(a, panes, tokens, url, uniqueNames, mismatched, answered, visible, total)
+                }
             }
         }
     }
 
     private fun verify(a: MainActivity, panes: List<Pane>, tokens: Map<String, String>, url: String,
-                       uniqueNames: Boolean, mismatched: List<Pane>) {
+                       uniqueNames: Boolean, mismatched: List<Pane>, awake: Int, visible: Int, live: Int) {
         val hub = a.hubRef()
         val store = ProfileStore.getInstance()
         val leaks = mutableListOf<String>()
@@ -119,9 +121,6 @@ object Diagnostics {
             cm.setCookie(url, "tessera_iso=; Path=/; Max-Age=0", null)
             cm.flush()
         }
-        val live = hub.liveCount()
-        val awake = hub.responsiveCount()
-        val visible = panes.count { hub.view(it.id) != null && hub.runtime(it.id).visibilityState == "visible" }
         val isolated = leaks.isEmpty() && uniqueNames && mismatched.isEmpty()
         val n = panes.size
 

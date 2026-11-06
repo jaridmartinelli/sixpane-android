@@ -77,6 +77,12 @@ class CookieEditor(private val a: MainActivity, private val pane: Pane) {
             }
         }
         root.addView(ScrollView(a).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        // Edge-to-edge: keep the header clear of the status bar and the list clear of the nav bar.
+        root.setOnApplyWindowInsetsListener { v, ins ->
+            @Suppress("DEPRECATION")
+            v.setPadding(0, ins.systemWindowInsetTop, 0, ins.systemWindowInsetBottom); ins
+        }
+        root.fitsSystemWindows = false
         dialog.setContentView(root)
         dialog.window?.apply {
             setBackgroundDrawable(ColorDrawable(T.bg))

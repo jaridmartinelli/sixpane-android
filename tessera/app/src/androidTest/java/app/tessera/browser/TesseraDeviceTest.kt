@@ -57,7 +57,8 @@ class TesseraDeviceTest {
     }
 
     private fun shot(name: String) {
-        Thread.sleep(700)
+        // Software-rendered emulator with live pages draws slowly: let frames settle.
+        inst.waitForIdleSync(); Thread.sleep(2500)
         val bmp: Bitmap? = inst.uiAutomation.takeScreenshot()
         bmp?.let { File(shots, "$name.png").outputStream().use { o -> it.compress(Bitmap.CompressFormat.PNG, 100, o) } }
     }

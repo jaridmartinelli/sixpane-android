@@ -908,7 +908,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     }
 
     private fun showOnboarding() {
-        if (isFinishing) return
+        if (isFinishing || state.onboarded) return
         val s = Sheet(this, "Welcome to Tessera", "42 private browsers — 7 workspaces of 6 panes.")
         s.note("Tap a page to make its pane active. The bar at the bottom always controls the active pane. Use Android's back gesture to go back.")
         s.note("Each pane's thin top strip is Tessera's: double-tap to enlarge, hold for the pane menu. Long-presses on websites stay with the website.")
