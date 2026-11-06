@@ -103,7 +103,7 @@ internal class SessionIntegrityReport(private val host: MainActivity) {
             appendLine("Declared pane profiles: ${panes.size} / 42")
             appendLine("Distinct declared profile names: $uniqueNames / ${panes.size}")
             appendLine("Manifest profile uniqueness: ${if (uniqueNames == panes.size) "PASS" else "FAIL"}")
-            appendLine("Active panes: $online | recovering: $recovering | not allocated: ${panes.size - online - recovering}")
+            appendLine("Allocated non-recovering WebViews: $online | recovering: $recovering | not allocated: ${panes.size - online - recovering}")
             appendLine("Runtime profile binding: $boundCorrect matched, $boundIncorrect mismatched, $boundUnavailable unavailable")
             appendLine("Runtime profile-binding result: ${if (boundIncorrect > 0) "FAIL" else if (boundUnavailable > 0) "INCOMPLETE" else "PASS"}")
             appendLine("JavaScript enabled in live panes: $jsReady / $online")
