@@ -46,7 +46,10 @@ class MainActivity:Activity(){
             val missing=visible.count{it.id !in cards}
             val excess=(cards.size+missing-limit).coerceAtLeast(0)
             cards.keys.filter{it !in desired}.take(excess).forEach{id->
-                cards.remove(id)?.let{stage.removeView(it);it.destroyExplicitly()}
+                cards.remove(id)?.let{
+                    it.flushCookies()
+                    stage.removeView(it);it.destroyExplicitly()
+                }
             }
             visible.filter{it.id !in cards}.forEach{pane->
                 if(cards.size<limit){
