@@ -1,10 +1,42 @@
 package com.sixpane.app
 
 import android.content.Context
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.SecureRandom
 import java.util.UUID
+
+enum class DeploymentMode { EDGE, SERVER_CONNECTOR, CLIENT_JS, SIMPLE_LINK, UNKNOWN }
+enum class SessionPhase { CREATED, ACTIVE, CLEARANCE_OBSERVED, RETIRED }
+enum class CookieLifetime { FIXED, EXTENDABLE, UNKNOWN }
+
+/** Only a WebView-observable response can provide cookie attributes. Never store its value twice. */
+data class CookieScopeEvidence(
+    val name:String, val domain:String?, val hostOnly:Boolean,
+    val path:String, val secure:Boolean, val httpOnly:Boolean,
+    val sameSite:String?, val deadlineMs:Long?, val source:String,
+    val classification:CookieLifetime, val expiresSpecified:Boolean
+) {
+    fun json():JSONObject=JSONObject().apply{
+        put("name",name);put("domain",domain?:JSONObject.NULL);put("hostOnly",hostOnly)
+        put("path",path);put("secure",secure);put("httpOnly",httpOnly)
+        put("sameSite",sameSite?:JSONObject.NULL);put("deadlineMs",deadlineMs?:JSONObject.NULL)
+        put("source",source);put("classification",classification.name)
+        put("expiresSpecified",expiresSpecified)
+    }
+    companion object {
+        fun from(j:JSONObject)=CookieScopeEvidence(
+            j.getString("name"),j.optString("domain").takeUnless{it=="null"||it.isBlank()},
+            j.optBoolean("hostOnly",true),j.getString("path"),
+            j.optBoolean("secure"),j.optBoolean("httpOnly"),
+            j.optString("sameSite").takeUnless{it=="null"||it.isBlank()},
+            if(j.isNull("deadlineMs"))null else j.optLong("deadlineMs"),
+            j.optString("source"),CookieLifetime.valueOf(j.optString("classification","UNKNOWN")),
+            j.optBoolean("expiresSpecified")
+        )
+    }
+}
 
 /** Small session manifest; cookie databases belong exclusively to WebKit named profiles. */
 data class PaneState(
@@ -16,7 +48,18 @@ data class PaneState(
     var zoom: Int = 100,
     var widthPercent: Int = randomDimension(),
     var heightPercent: Int = randomDimension(),
-    val bookmarks:MutableList<String> = mutableListOf()
+    val bookmarks:MutableList<String> = mutableListOf(),
+    var deploymentMode:DeploymentMode = DeploymentMode.UNKNOWN,
+    var deploymentLogged:Boolean = false,
+    var assetRegionHint:String? = null,
+    var assetRegionEvidence:String? = null,
+    val sessionCreatedAt:Long = System.currentTimeMillis(),
+    var phase:SessionPhase = SessionPhase.CREATED,
+    var clearanceObservedAt:Long? = null,
+    var retiredAt:Long? = null,
+    var waitingRoomEntryPath:String? = null,
+    var entryPathEvidence:String? = null,
+    val cookieScopes:MutableList<CookieScopeEvidence> = mutableListOf()
 ) {
     companion object {
         private val random = SecureRandom()
@@ -38,6 +81,20 @@ data class PaneState(
             mutableListOf<String>().apply{
                 val saved=j.optJSONArray("paneBookmarks")?:JSONArray()
                 for(i in 0 until saved.length())add(saved.getString(i))
+            },
+            runCatching{DeploymentMode.valueOf(j.optString("deploymentMode","UNKNOWN"))}.getOrDefault(DeploymentMode.UNKNOWN),
+            j.optBoolean("deploymentLogged",false),
+            j.optString("assetRegionHint").takeUnless{it=="null"||it.isBlank()},
+            j.optString("assetRegionEvidence").takeUnless{it=="null"||it.isBlank()},
+            j.optLong("sessionCreatedAt",System.currentTimeMillis()),
+            runCatching{SessionPhase.valueOf(j.optString("phase","CREATED"))}.getOrDefault(SessionPhase.CREATED),
+            if(j.isNull("clearanceObservedAt"))null else j.optLong("clearanceObservedAt"),
+            if(j.isNull("retiredAt"))null else j.optLong("retiredAt"),
+            j.optString("waitingRoomEntryPath").takeUnless{it=="null"||it.isBlank()},
+            j.optString("entryPathEvidence").takeUnless{it=="null"||it.isBlank()},
+            mutableListOf<CookieScopeEvidence>().apply{
+                val evidence=j.optJSONArray("cookieScopes")?:JSONArray()
+                for(i in 0 until evidence.length())add(CookieScopeEvidence.from(evidence.getJSONObject(i)))
             }
         )
     }
@@ -46,6 +103,15 @@ data class PaneState(
         put("locked",locked); put("desktop",desktop); put("zoom",zoom)
         put("widthPercent",widthPercent); put("heightPercent",heightPercent)
         put("paneBookmarks",JSONArray().apply{bookmarks.forEach{put(it)}})
+        put("deploymentMode",deploymentMode.name);put("deploymentLogged",deploymentLogged)
+        put("assetRegionHint",assetRegionHint?:JSONObject.NULL)
+        put("assetRegionEvidence",assetRegionEvidence?:JSONObject.NULL)
+        put("sessionCreatedAt",sessionCreatedAt);put("phase",phase.name)
+        put("clearanceObservedAt",clearanceObservedAt?:JSONObject.NULL)
+        put("retiredAt",retiredAt?:JSONObject.NULL)
+        put("waitingRoomEntryPath",waitingRoomEntryPath?:JSONObject.NULL)
+        put("entryPathEvidence",entryPathEvidence?:JSONObject.NULL)
+        put("cookieScopes",JSONArray().apply{cookieScopes.forEach{put(it.json())}})
     }
 }
 data class WorkspaceState(
@@ -72,6 +138,7 @@ class LocalStore(ctx:Context){
     val spaces:MutableList<WorkspaceState> = mutableListOf()
     val pendingDeletion:MutableSet<String> = linkedSetOf()
     val bookmarks:MutableSet<String> = linkedSetOf()
+    val retiredSessions:MutableList<PaneState> = mutableListOf()
     var currentId:String=""
     var columns:Int=2
     var focusId:String?=null
@@ -98,6 +165,8 @@ class LocalStore(ctx:Context){
             val j=JSONObject(prefs.getString("manifest", "{}")!!)
             val list=j.optJSONArray("spaces")?:JSONArray()
             for(i in 0 until list.length())spaces.add(WorkspaceState.from(list.getJSONObject(i)))
+            val retired=j.optJSONArray("retiredSessions")?:JSONArray()
+            for(i in 0 until retired.length())retiredSessions.add(PaneState.from(retired.getJSONObject(i)))
             val pending=j.optJSONArray("pending")?:JSONArray()
             for(i in 0 until pending.length())pendingDeletion.add(pending.getString(i))
             val savedBookmarks=j.optJSONArray("bookmarks")?:JSONArray()
@@ -157,8 +226,15 @@ class LocalStore(ctx:Context){
             .map{it.widthPercent to it.heightPercent})){
             "Duplicate viewport aspect ratios across SIXPANE workspaces"
         }
+        // One durable deployment-mode observation per profile, including
+        // profiles created while another workspace is active.
+        spaces.flatMap{it.panes}.filterNot{it.deploymentLogged}.forEach {
+            Log.i("SIXPANE_R1","profile="+it.profile+" deploymentMode="+it.deploymentMode.name)
+            it.deploymentLogged=true
+        }
         val j=JSONObject().apply{
             put("spaces",JSONArray().apply{spaces.forEach{put(it.json())}})
+            put("retiredSessions",JSONArray().apply{retiredSessions.forEach{put(it.json())}})
             put("pending",JSONArray().apply{pendingDeletion.forEach{put(it)}})
             put("bookmarks",JSONArray().apply{bookmarks.forEach{put(it)}})
             put("current",currentId);put("columns",columns);put("focus",focusId?:"")
@@ -198,6 +274,8 @@ class LocalStore(ctx:Context){
         current.panes.forEachIndexed{index,old->
             if(old.id in ids){
                 val replacement=fresh.next()
+                old.phase=SessionPhase.RETIRED;old.retiredAt=System.currentTimeMillis()
+                retiredSessions.add(old)
                 pendingDeletion.add(old.profile)
                 current.panes[index]=replacement
                 result.add(old to replacement)
@@ -227,6 +305,8 @@ class LocalStore(ctx:Context){
             space.panes.forEachIndexed{index,old->
                 if(old.id in ids){
                     val replacement=fresh.next()
+                    old.phase=SessionPhase.RETIRED;old.retiredAt=System.currentTimeMillis()
+                    retiredSessions.add(old)
                     pendingDeletion.add(old.profile)
                     space.panes[index]=replacement
                     replacements.add(old to replacement)
@@ -250,7 +330,10 @@ class LocalStore(ctx:Context){
         require(WorkspacePolicy.canCloseWorkspace(w.locked,w.panes.map{it.locked})) {
             "Unlock workspace tab and all its browsers before closing"
         }
-        w.panes.forEach { pendingDeletion.add(it.profile) }
+        w.panes.forEach {
+            it.phase=SessionPhase.RETIRED;it.retiredAt=System.currentTimeMillis()
+            retiredSessions.add(it);pendingDeletion.add(it.profile)
+        }
         spaces.remove(w)
         if(spaces.isEmpty()){
             val fresh=WorkspaceState();spaces.add(fresh)

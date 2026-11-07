@@ -7,7 +7,7 @@ object ViewportRatioPolicy {
     const val MIN_PERCENT = 96
     const val MAX_PERCENT = 104
     private const val NORMAL_PERCENT = 100
-    const val MAX_WINDOWS = 42
+    const val MAX_WINDOWS = WorkspacePolicy.SLOT_CAPACITY
 
     private fun gcd(first: Int, second: Int): Int {
         var a = first

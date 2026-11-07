@@ -156,3 +156,4 @@ Prevention in the QA test: use `currentWebUrl(web)`, which obtains the URL via
 failure diagnostics. Confirm remaining `web.url` source occurrences are under
 `runOnMainSync`. Physical instrumentation must be rerun; until it passes,
 R6 storage isolation remains **unverified**, not failed or passed.
+R7 — FAIL: single egress identity; ProxyController is app-wide, and no per-pane code fix is possible.

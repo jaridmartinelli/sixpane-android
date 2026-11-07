@@ -11,6 +11,10 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.webkit.WebViewCompat
 import java.net.URI
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /** Full-height cookie viewer: CURRENT URL only; Android CookieManager has no complete DevTools metadata API. */
 class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
@@ -114,20 +118,55 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
         card.blocked("Unlock browser to modify cookies")
         return true
     }
+    private fun observedScope(name:String):CookieScopeEvidence?{
+        val host=runCatching{URI(url).host?.lowercase()}.getOrNull()?:return null
+        val path=runCatching{URI(url).rawPath.orEmpty().ifBlank{"/"}}.getOrDefault("/")
+        val scopes=card.state.cookieScopes.filter {
+            it.name==name && (it.domain?.removePrefix(".")?.let{domain->
+                if(it.hostOnly)host==domain else host==domain||host.endsWith("."+domain)
+            }?:it.hostOnly) &&
+                path.startsWith(it.path) && (!it.secure||url.startsWith("https://"))
+        }
+        // CookieManager.getCookie supplies no path/domain/flags; a name alone
+        // cannot distinguish several same-name cookies with different scopes.
+        return scopes.singleOrNull()
+    }
+    private fun observedAttributes(scope:CookieScopeEvidence):String?{
+        if(scope.deadlineMs!=null && scope.deadlineMs<=System.currentTimeMillis())return null
+        val attributes=StringBuilder("; Path="+scope.path)
+        if(!scope.hostOnly){
+            val domain=scope.domain?:return null
+            attributes.append("; Domain=").append(domain)
+        }
+        if(scope.secure)attributes.append("; Secure")
+        if(scope.httpOnly)attributes.append("; HttpOnly")
+        scope.sameSite?.let{attributes.append("; SameSite=").append(it)}
+        if(scope.deadlineMs!=null){
+            val formatter=SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'",Locale.US)
+            formatter.timeZone=TimeZone.getTimeZone("GMT")
+            attributes.append("; Expires=").append(formatter.format(Date(scope.deadlineMs)))
+        }
+        return attributes.toString()
+    }
     private fun editSelected(){
         val name=selected?:return
         if(blocked())return
         val old=cookies()[name]?:return
+        val scope=observedScope(name)
+        val attributes=scope?.let{observedAttributes(it)}
+        if(attributes==null){
+            activity.notice("Cookie scope unverified; edit refused to protect the original.")
+            return
+        }
         val input=EditText(activity).apply{setText(old);setSingleLine(true);setSelection(text.length)}
-        AlertDialog.Builder(activity).setTitle("Edit $name").setMessage("Current site · cookie value only. Original path and security attributes may not be available; this cannot guarantee replacement of every matching cookie.")
+        AlertDialog.Builder(activity).setTitle("Edit $name").setMessage("Observed scope will be preserved: domain, path, Secure, HttpOnly, SameSite and expiry.")
             .setView(input).setNegativeButton("Cancel",null).setPositiveButton("Save"){_,_->
                 val value=input.text.toString()
                 if(value.any{it==';'||it=='\n'||it=='\r'}){activity.notice("Cookie value contains unsupported characters");return@setPositiveButton}
-                val secure=if(url.startsWith("https://"))"; Secure" else ""
-                manager.setCookie(url,"$name=$value; Path=/$secure"){success->
+                manager.setCookie(url,"$name=$value$attributes"){success->
                     manager.flush()
                     activity.runOnUiThread{
-                        if(success){activity.notice("Root-path cookie write accepted; check for duplicate names");render()}
+                        if(success){activity.notice("Cookie value edit accepted with observed scope");render()}
                         else activity.notice("Cookie edit rejected; original cookie preserved")
                     }
                 }
@@ -136,11 +175,16 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
     private fun deleteSelected(){
         val name=selected?:return
         if(blocked())return
+        val scope=observedScope(name)
+        val attributes=scope?.let{observedAttributes(it)}
+        if(attributes==null){
+            activity.notice("Cookie scope unverified; deletion refused.")
+            return
+        }
         AlertDialog.Builder(activity).setTitle("Are you sure?")
-            .setMessage("Delete cookie '$name' from this browser's current website? Only root-path deletion can be attempted because WebView does not reveal the cookie's original path. This cannot be undone if successful.")
+            .setMessage("Delete observed cookie '$name' at its recorded domain and path? This cannot be undone.")
             .setNegativeButton("Cancel",null).setPositiveButton("Delete"){_,_->
-                val secure=if(url.startsWith("https://"))"; Secure" else ""
-                manager.setCookie(url,"$name=; Max-Age=0; Path=/$secure"){success->
+                manager.setCookie(url,"$name=; Max-Age=0$attributes"){success->
                     manager.flush()
                     activity.runOnUiThread{
                         val stillThere=cookies().containsKey(name)
