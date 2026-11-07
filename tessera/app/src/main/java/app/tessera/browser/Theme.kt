@@ -33,16 +33,23 @@ object T {
     const val danger = 0xFFFF6B6B.toInt()
     const val ok = 0xFF3DDC97.toInt()
 
+    /** The user's six tag colours, exactly as supplied (sampled from their swatch images). */
     val palette = intArrayOf(
-        0xFFFF6B6B.toInt(), 0xFFFF9F43.toInt(), 0xFFFFD166.toInt(), 0xFF3DDC97.toInt(),
-        0xFF2EC4B6.toInt(), 0xFF4CC9F0.toInt(), 0xFF7EA6FF.toInt(), 0xFF9B8CFF.toInt(),
-        0xFFD77BFF.toInt(), 0xFFFF7AB6.toInt(), 0xFFB8C1CC.toInt(), 0xFF8D6E63.toInt(),
+        0xFF204DDA.toInt(), 0xFF59B435.toInt(), 0xFFB5381C.toInt(),
+        0xFFC39533.toInt(), 0xFF9A9D32.toInt(), 0xFF7CC5B4.toInt(),
     )
-    val paletteNames = listOf(
-        "Red", "Orange", "Yellow", "Green", "Teal", "Cyan",
-        "Blue", "Indigo", "Purple", "Pink", "Silver", "Brown",
-    )
+    val paletteNames = listOf("Blue", "Green", "Red", "Gold", "Olive", "Teal")
     fun color(index: Int): Int? = palette.getOrNull(index)
+
+    /** Readable text/icon colour on top of [bg]: white on dark tags, near-black on light ones. */
+    fun ink(bg: Int, alpha: Int = 0xFF): Int {
+        fun lin(c: Int): Double { val v = c / 255.0; return if (v <= 0.03928) v / 12.92 else Math.pow((v + 0.055) / 1.055, 2.4) }
+        val l = 0.2126 * lin((bg shr 16) and 0xFF) + 0.7152 * lin((bg shr 8) and 0xFF) + 0.0722 * lin(bg and 0xFF)
+        // Pick whichever of white / near-black gives the higher contrast ratio.
+        val vsWhite = 1.05 / (l + 0.05); val vsDark = (l + 0.05) / (0.0045 + 0.05)
+        val base = if (vsWhite >= vsDark) 0xFFFFFF else 0x0B0E13
+        return (alpha shl 24) or base
+    }
     fun colorName(index: Int): String = paletteNames.getOrElse(index) { "None" }
 }
 

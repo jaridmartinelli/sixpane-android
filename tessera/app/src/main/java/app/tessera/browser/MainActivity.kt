@@ -877,7 +877,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
                 row.addView(FrameLayout(this).apply {
                     background = rounded(c, dpf(17f), if (on) Color.WHITE else 0, if (on) dp(3) else 0)
                     alpha = if (count == 0 && !on) 0.35f else 1f
-                    if (on) addView(ImageView(this@MainActivity).apply { setImageDrawable(IconDrawable(Icon.CHECK, 0xFF0B0E13.toInt())) },
+                    if (on) addView(ImageView(this@MainActivity).apply { setImageDrawable(IconDrawable(Icon.CHECK, T.ink(c))) },
                         FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER))
                     contentDescription = "${T.colorName(i)}, $count pane${if (count == 1) "" else "s"}" + if (on) ", filtering" else ""
                     setOnClickListener {

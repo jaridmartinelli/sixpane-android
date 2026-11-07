@@ -104,9 +104,9 @@ class CommandBar(private val a: MainActivity) : FrameLayout(a) {
     fun bind(p: Pane, rt: PaneRuntime, number: Int, expanded: Boolean, bookmarked: Boolean, workspace: Int, workspaces: Int) {
         val c = T.color(p.color)
         chipNum.text = number.toString()
-        chipNum.setTextColor(if (c != null) 0xFF0B0E13.toInt() else T.text)
+        chipNum.setTextColor(if (c != null) T.ink(c) else T.text)
         chip.background = ripple(rounded(c ?: T.surface3, a.dpf(12f), Color.WHITE, a.dp(1)), a.dpf(12f))
-        chipGlyph.setImageDrawable(IconDrawable(if (expanded) Icon.COLLAPSE else Icon.EXPAND, if (c != null) 0xCC0B0E13.toInt() else T.text2))
+        chipGlyph.setImageDrawable(IconDrawable(if (expanded) Icon.COLLAPSE else Icon.EXPAND, if (c != null) T.ink(c, 0xCC) else T.text2))
         chip.contentDescription = "Pane $number. Tap to " + (if (expanded) "return to grid" else "expand") + ". Hold for pane menu"
         pillIcon.setImageDrawable(IconDrawable(if (p.locked) Icon.LOCK else Icon.SEARCH, if (p.locked) T.lock else T.text3))
         val changed = url != p.url

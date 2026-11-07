@@ -403,6 +403,21 @@ class SessionHub(private val app: TesseraApp, private val store: Store) {
             val a = activity as? MainActivity ?: return false
             val p = pane(id) ?: return false
             if (!isUserGesture) return false
+            // A tapped link ("open in new tab") simply opens in this pane, like a one-tab browser.
+            // Locked panes keep their page and use the pop-up instead, so a queue isn't lost.
+            // Script-opened windows (e.g. "Sign in with Google") need the pop-up to work.
+            val hit = view.hitTestResult
+            val isLink = hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE || hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+            if (isLink && !p.locked) {
+                val href = hit.extra.takeIf { hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE && !it.isNullOrBlank() }
+                if (href != null) view.loadUrl(href)
+                else view.requestFocusNodeHref(handler.obtainMessage().also { msg ->
+                    msg.target = android.os.Handler(Looper.getMainLooper()) { m ->
+                        m.data?.getString("url")?.takeIf { it.isNotBlank() }?.let { view.loadUrl(it) }; true
+                    }
+                })
+                return false
+            }
             val popup = createPopup(p)
             (resultMsg.obj as WebView.WebViewTransport).webView = popup
             resultMsg.sendToTarget()

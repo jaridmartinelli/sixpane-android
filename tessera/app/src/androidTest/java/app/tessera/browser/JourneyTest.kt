@@ -72,15 +72,26 @@ class JourneyTest {
         }
     }
 
+    @Test fun newTabLinkOpensInUnlockedPane() = launch { _, act ->
+        val p = main { act.stateRef().current().panes[1] }
+        load(act, p, "<a id=ready href='https://example.org/' target='_blank' style='display:block;height:3000px;font-size:40px'>open new tab</a>")
+        val (x, y) = center(act, p); tap(x, y)
+        waitFor(20_000, "link opened in the pane itself") { main { act.hubRef().view(p.id)?.url?.contains("example.org") == true } }
+        assertTrue("no pop-up for a plain link in an unlocked pane", !main { act.popupShowing })
+        Log.i("TesseraTest", "JOURNEY link-unlocked: openedInPane=true popup=false")
+    }
+
     @Test fun newTabLinkOpensPopupAndKeepsPanePage() = launch { _, act ->
         val p = main { act.stateRef().current().panes[0] }
         load(act, p, "<a id=ready href='https://example.org/' target='_blank' style='display:block;height:3000px;font-size:40px'>open new tab</a>")
+        main { p.locked = true; act.refreshAll() } // locked panes protect their page with the pop-up
         val (x, y) = center(act, p); tap(x, y)
         waitFor(15_000, "pop-up shown") { main { act.popupShowing } }
         // getUrl() reports about:blank for loadDataWithBaseURL pages, so check the page content itself.
         main { act.closePopup() }
         assertEquals("pane page must stay", "y", js(act, p, "document.getElementById('ready')?'y':'n'"))
         Log.i("TesseraTest", "JOURNEY popup: shown=true panePageKept=true")
+        main { p.locked = false; act.refreshAll() }
     }
 
     @Test fun fileUploadOpensPicker() = launch { _, act ->

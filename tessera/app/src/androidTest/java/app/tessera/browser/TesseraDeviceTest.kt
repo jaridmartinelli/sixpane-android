@@ -151,7 +151,7 @@ class TesseraDeviceTest {
             val sites = listOf("https://example.com", "https://www.wikipedia.org", "https://news.ycombinator.com", "", "https://example.org", "")
             main {
                 ws.panes.forEachIndexed { i, p -> if (sites[i].isNotEmpty()) act.hubRef().navigate(p, sites[i]) }
-                ws.panes[0].color = 6; ws.panes[1].color = 3; ws.panes[2].color = 1; ws.panes[4].color = 6
+                ws.panes[0].color = 0; ws.panes[1].color = 1; ws.panes[2].color = 2; ws.panes[4].color = 0
                 ws.panes[2].locked = true
                 act.refreshAll()
             }
@@ -182,7 +182,7 @@ class TesseraDeviceTest {
             main { Sheet.dismissAll() }; Thread.sleep(300)
             main { Sheet.dismissAll() }; Thread.sleep(500)
             main { act.enterSelection(ws.panes[0].id); act.onSelectToggle(ws.panes[1].id); act.onSelectToggle(ws.panes[2].id) }; shot("06-selection")
-            main { act.exitSelection(); act.stateRef().filter = PaneFilter(setOf(6)); act.refreshAll() }; shot("07-filter-blue")
+            main { act.exitSelection(); act.stateRef().filter = PaneFilter(setOf(0)); act.refreshAll() }; shot("07-filter-blue")
             main { act.clearFilters(); act.addWorkspace() }; Thread.sleep(1500); shot("08-second-workspace")
             main { act.openWorkspaceMenu(act.stateRef().workspaces[0]) }; shot("09-workspace-menu")
             main { Sheet.dismissAll() }; Thread.sleep(500)

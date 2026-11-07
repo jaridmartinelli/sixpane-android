@@ -232,7 +232,7 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         minPageWidthPx: Int = 0,
     ) {
         val color = T.color(pane.color)
-        val ink = if (color != null) 0xFF0B0E13.toInt() else T.text
+        val ink = if (color != null) T.ink(color) else T.text
         chip.text = number.toString()
         chip.background = rounded(if (color != null) 0x2E000000 else T.surface3, dpf(5f))
         chip.setTextColor(ink)
@@ -246,7 +246,7 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
             pane.url.isBlank() -> "New session"
             else -> AddressPolicy.label(pane.url)
         }
-        site.setTextColor(if (color != null) 0xD90B0E13.toInt() else if (active) T.text else T.text2)
+        site.setTextColor(if (color != null) T.ink(color, 0xE6) else if (active) T.text else T.text2)
         badge.setTextColor(if (color != null) ink else T.text2)
         badge.background = rounded(if (color != null) 0x2E000000 else T.surface3, dpf(6f))
         val extras = buildList {

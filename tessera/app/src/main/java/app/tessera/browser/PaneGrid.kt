@@ -72,7 +72,7 @@ class PaneGrid(context: Context) : ViewGroup(context) {
 
     private fun targets(w: Int, h: Int): List<Box> {
         columns = columnsOverride ?: GridGeometry.autoColumns(w, h)
-        return if (expandedSlot >= 0) GridGeometry.expanded(w, h, expandedSlot, gap, dp(110))
+        return if (expandedSlot >= 0) GridGeometry.expanded(w, h, expandedSlot, gap, dp(78))
         else GridGeometry.grid(w, h, columns, gap)
     }
 
