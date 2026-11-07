@@ -155,9 +155,23 @@ class TesseraDeviceTest {
                 ws.panes[2].locked = true
                 act.refreshAll()
             }
+            // An unstyled page (no background colour) must read as black text on white.
+            main { act.hubRef().view(ws.panes[5].id)!!.loadDataWithBaseURL("https://plain.tessera.test/",
+                "<h3>Plain form</h3><label>First name</label><br><input placeholder='Name'><p>Unstyled text must be readable.</p>",
+                "text/html", "utf-8", null) }
             Thread.sleep(6000)
             main { Sheet.dismissAll() }
             shot("01-grid")
+            val bg = AtomicReference(0)
+            inst.runOnMainSync {
+                val v = act.hubRef().view(ws.panes[5].id)!!
+                val bmp = android.graphics.Bitmap.createBitmap(v.width.coerceAtLeast(1), v.height.coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
+                v.draw(android.graphics.Canvas(bmp))
+                bg.set(bmp.getPixel(bmp.width - 4, bmp.height - 4))
+            }
+            android.util.Log.i("TesseraTest", "JOURNEY plain-page background=#" + Integer.toHexString(bg.get()))
+            assertTrue("unstyled page background must be white, was #" + Integer.toHexString(bg.get()),
+                android.graphics.Color.red(bg.get()) > 240 && android.graphics.Color.green(bg.get()) > 240 && android.graphics.Color.blue(bg.get()) > 240)
             main { act.toggleExpandActive() }; Thread.sleep(800); shot("02-expanded")
             main { act.toggleExpandActive() }; Thread.sleep(600)
             main { act.openPaneMenu(ws.panes[2]) }; shot("03-pane-menu-locked")

@@ -145,7 +145,9 @@ class SessionHub(private val app: TesseraApp, private val store: Store) {
         WebViewCompat.setProfile(wv, pane.profile)
         wv.keepAwake = true
         wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
-        wv.setBackgroundColor(T.bg)
+        // Web pages that set no background expect the browser's white canvas behind them
+        // (their default text is black). Sites with a dark theme draw their own background.
+        wv.setBackgroundColor(android.graphics.Color.WHITE)
         wv.isFocusableInTouchMode = true
         with(wv.settings) {
             javaScriptEnabled = true
@@ -431,7 +433,7 @@ class SessionHub(private val app: TesseraApp, private val store: Store) {
             allowFileAccess = false; allowContentAccess = false
         }
         WebViewCompat.getProfile(wv).cookieManager.setAcceptThirdPartyCookies(wv, true)
-        wv.setBackgroundColor(T.bg)
+        wv.setBackgroundColor(android.graphics.Color.WHITE)
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String?) { (activity as? MainActivity)?.onPopupPage(url.orEmpty()) }
         }
