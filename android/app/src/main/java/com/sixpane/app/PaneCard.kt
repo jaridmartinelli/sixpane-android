@@ -9,6 +9,8 @@ import android.os.Looper
 import android.view.*
 import android.webkit.*
 import android.widget.*
+import androidx.webkit.UserAgentMetadata
+import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import androidx.webkit.WebViewAssetLoader
@@ -197,9 +199,40 @@ class PaneCard(
                     val reverse = (ordinal / WorkspacePolicy.PANE_COUNT) % 2 == 1
                     if (laterHalf != reverse) {
                         val native = userAgentString
-                        val changed = native.replace("; wv)", ")")
-                        check(native != changed) { "QA UA experiment requires the system WebView ; wv) marker" }
-                        userAgentString = changed
+                        val stripped = native.replace("; wv)", ")")
+                        check(native != stripped) { "QA UA experiment requires the system WebView ; wv) marker" }
+                        // WebView often already includes "Mobile Safari"; never duplicate "Mobile".
+                        val mobile = if (" Mobile Safari/537.36" in stripped) stripped
+                            else stripped.replace(" Safari/537.36", " Mobile Safari/537.36")
+                        check(" Mobile Safari/537.36" in mobile) {
+                            "QA Android mobile UA requires Safari/537.36 anchor"
+                        }
+                        userAgentString = mobile
+                        // Only treated QA panes get this metadata. The native
+                        // comparison panes retain the system WebView defaults.
+                        if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+                            fun brand(name: String, major: String, full: String) =
+                                UserAgentMetadata.BrandVersion.Builder()
+                                    .setBrand(name)
+                                    .setMajorVersion(major)
+                                    .setFullVersion(full)
+                                    .build()
+                            val metadata = UserAgentMetadata.Builder()
+                                .setBrandVersionList(listOf(
+                                    brand("Chromium", "156", "156.0.0.0"),
+                                    brand("Google Chrome", "156", "156.0.0.0"),
+                                    brand("Not:A-Brand", "8", "8.0.0.0")
+                                ))
+                                .setFullVersion("156.0.0.0")
+                                .setMobile(true)
+                                .setPlatform("Android")
+                                .setPlatformVersion("16")
+                                .setModel("CPH2551")
+                                .setArchitecture("")
+                                .setBitness(UserAgentMetadata.BITNESS_DEFAULT)
+                                .build()
+                            WebSettingsCompat.setUserAgentMetadata(this, metadata)
+                        }
                     }
                 }
                 mediaPlaybackRequiresUserGesture=true
