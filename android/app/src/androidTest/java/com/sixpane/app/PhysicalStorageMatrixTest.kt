@@ -123,7 +123,7 @@ class PhysicalStorageMatrixTest {
 
     private fun probe(web: WebView, mine: Case, other: Case, operation: String): JSONObject {
         assertEquals("QA test must remain on example.com origin",
-            DEMO_HOST, Uri.parse(web.url).host)
+            DEMO_HOST, Uri.parse(currentWebUrl(web)).host)
         val injected = PROBE_JS
             .replace("__MINE__", JSONObject.quote(mine.key))
             .replace("__OTHER__", JSONObject.quote(other.key))
@@ -142,8 +142,15 @@ class PhysicalStorageMatrixTest {
             }
             Thread.sleep(150)
         }
-        fail("Injected live-page probe never completed; URL=" + web.url)
+        fail("Injected live-page probe never completed; URL=" + currentWebUrl(web))
         throw AssertionError("unreachable")
+    }
+
+    /** Every WebView getter, including error diagnostics, must run on its owning main thread. */
+    private fun currentWebUrl(web: WebView): String {
+        val value = AtomicReference<String>("")
+        instrumentation.runOnMainSync { value.set(web.url.orEmpty()) }
+        return value.get()
     }
 
     private fun evaluate(web: WebView, script: String): String {
