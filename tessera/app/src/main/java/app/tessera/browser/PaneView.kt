@@ -200,6 +200,14 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         content.addView(select, LayoutParams(-1, -1))
 
         addView(content, LayoutParams(-1, -1).apply { topMargin = headerH })
+        // Overlays start hidden; bind() shows the ones that apply.
+        listOf(blank, error, mini, select).forEach { it.visibility = GONE }
+    }
+
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        // Overlays that are fading away must not swallow taps meant for the page.
+        listOf(error, select, blank).forEach { if (Motion.isLeaving(it)) it.isClickable = false else if (it !== blank) it.isClickable = true }
+        return super.onInterceptTouchEvent(ev)
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {

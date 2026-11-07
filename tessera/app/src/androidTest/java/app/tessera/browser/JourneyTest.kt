@@ -125,8 +125,16 @@ class JourneyTest {
             "<div id=bar><input id=box placeholder='Ask anything'><button id=send>Send</button></div>")
         main { act.onPaneTouched(p.id); act.toggleExpandActive() }
         Thread.sleep(1200)
-        val (x, bottom) = main { val v = act.cardRef(p.id)!!; val l = IntArray(2); v.getLocationOnScreen(l); (l[0] + v.width / 3f) to (l[1] + v.height.toFloat()) }
-        tap(x, bottom - 30f)
+        // Tap exactly where the page reports its text box is (CSS px -> screen px).
+        val rect = js(act, p, "(function(){var r=document.getElementById('box').getBoundingClientRect();return (r.left+r.width/2)+','+(r.top+r.height/2)})()")
+        val (cx, cy) = rect.split(',').map { it.toFloat() }
+        val (x, y) = main {
+            val wv = act.hubRef().view(p.id)!!; val l = IntArray(2); wv.getLocationOnScreen(l)
+            @Suppress("DEPRECATION") val sc = wv.scale
+            (l[0] + cx * sc) to (l[1] + cy * sc)
+        }
+        Log.i("TesseraTest", "JOURNEY keyboard: tapping css=($cx,$cy) screen=($x,$y)")
+        tap(x, y)
         try {
             waitFor(15_000, "keyboard up while typing in the page") {
                 js(act, p, "document.activeElement&&document.activeElement.id") == "box" &&

@@ -59,18 +59,30 @@ object Motion {
         }.start()
     }
 
+    // Views remember which way they are fading, so frequent re-binds (e.g. page-load
+    // progress) never restart a fade, and a fading-out view stops catching touches at once.
+    private const val FADING_OUT = 0x7e0f0001
+    private const val FADING_IN = 0x7e0f0002
+
     fun fadeIn(v: View, duration: Long = FADE_MS) {
-        if (v.visibility == View.VISIBLE && v.alpha == 1f) return
+        if (v.getTag(FADING_IN) == true) return
+        if (v.visibility == View.VISIBLE && v.alpha == 1f && v.getTag(FADING_OUT) != true) return
         v.animate().cancel()
+        v.setTag(FADING_OUT, false); v.setTag(FADING_IN, true)
         if (v.visibility != View.VISIBLE) { v.alpha = 0f; v.visibility = View.VISIBLE }
-        v.animate().alpha(1f).setDuration(duration).setInterpolator(decelerate).start()
+        v.animate().alpha(1f).setDuration(duration).setInterpolator(decelerate)
+            .withEndAction { v.setTag(FADING_IN, false) }.start()
     }
 
     fun fadeOut(v: View, duration: Long = FADE_MS) {
-        if (v.visibility != View.VISIBLE) return
+        if (v.visibility != View.VISIBLE || v.getTag(FADING_OUT) == true) return
         v.animate().cancel()
+        v.setTag(FADING_IN, false); v.setTag(FADING_OUT, true)
         v.animate().alpha(0f).setDuration(duration).setInterpolator(accelerate).withEndAction {
-            v.visibility = View.GONE; v.alpha = 1f
+            v.visibility = View.GONE; v.alpha = 1f; v.setTag(FADING_OUT, false)
         }.start()
     }
+
+    /** True while [v] is fading away: it must not intercept touches. */
+    fun isLeaving(v: View) = v.getTag(FADING_OUT) == true
 }
