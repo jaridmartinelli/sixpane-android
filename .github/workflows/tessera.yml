@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# A newer push supersedes an older run, so two runs never race to commit evidence.
+concurrency:
+  group: tessera-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -109,7 +114,8 @@ jobs:
           git add ci-evidence/tessera
           git diff --cached --quiet && exit 0
           git commit -m "CI: Tessera emulator screenshots for ${GITHUB_SHA::7} [skip ci]"
-          git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}"
+          # If another commit landed meanwhile, keep THIS run's evidence files.
+          git pull --rebase -X theirs origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

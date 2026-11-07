@@ -127,9 +127,15 @@ class JourneyTest {
         Thread.sleep(1200)
         val (x, bottom) = main { val v = act.cardRef(p.id)!!; val l = IntArray(2); v.getLocationOnScreen(l); (l[0] + v.width / 3f) to (l[1] + v.height.toFloat()) }
         tap(x, bottom - 30f)
-        waitFor(15_000, "keyboard up while typing in the page") {
-            js(act, p, "document.activeElement&&document.activeElement.id") == "box" &&
-                main { act.window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true }
+        try {
+            waitFor(15_000, "keyboard up while typing in the page") {
+                js(act, p, "document.activeElement&&document.activeElement.id") == "box" &&
+                    main { act.window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true }
+            }
+        } catch (e: AssertionError) {
+            Log.i("TesseraTest", "JOURNEY keyboard: FAILED focus=${js(act, p, "String(document.activeElement&&document.activeElement.id)")} " +
+                "ime=${main { act.window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) }}")
+            throw e
         }
         Thread.sleep(1500) // keyboard slide + pane resize settle
         val visible = js(act, p, "(function(){var r=document.getElementById('send').getBoundingClientRect();return r.bottom<=innerHeight&&r.top>=0?'y':'n'})()")
