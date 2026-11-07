@@ -187,6 +187,21 @@ class PaneCard(
                 setSupportZoom(true)
                 builtInZoomControls=true;displayZoomControls=false
                 useWideViewPort=true;loadWithOverviewMode=!state.desktop
+                // QA variant ONLY: workspace 1 panes 1-3 are native-UA controls;
+                // panes 4-6 omit "; wv)". Workspace 2 swaps assignments.
+                // The same crossover repeats across subsequent workspaces.
+                if (BuildConfig.QA_WV_AB) {
+                    val ordinal = host.paneIndex(state.id) - 1
+                    check(ordinal >= 0) { "QA pane missing from workspace manifest" }
+                    val laterHalf = ordinal % WorkspacePolicy.PANE_COUNT >= 3
+                    val reverse = (ordinal / WorkspacePolicy.PANE_COUNT) % 2 == 1
+                    if (laterHalf != reverse) {
+                        val native = userAgentString
+                        val changed = native.replace("; wv)", ")")
+                        check(native != changed) { "QA UA experiment requires the system WebView ; wv) marker" }
+                        userAgentString = changed
+                    }
+                }
                 mediaPlaybackRequiresUserGesture=true
             }
             WebViewCompat.getProfile(fresh).cookieManager.setAcceptThirdPartyCookies(fresh,true)
