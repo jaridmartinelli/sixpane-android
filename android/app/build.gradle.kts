@@ -48,8 +48,11 @@ android {
             applicationIdSuffix = ".qa.wvab"
             versionNameSuffix = "-uaab"
             manifestPlaceholders["appLabel"] = "SIXPANE UA QA"
-            // Disposable QA signer, never inherit the canonical signing key.
-            signingConfig = signingConfigs.getByName("debug")
+            // CI provisions the established canonical signer for both QA app and
+            // its instrumentation APK; local no-secret QA builds retain a
+            // disposable debug signer and must never be published as canonical.
+            signingConfig = signingConfigs.findByName("canonical")
+                ?: signingConfigs.getByName("debug")
             buildConfigField("boolean", "QA_WV_AB", "true")
         }
         release { isMinifyEnabled = false }
