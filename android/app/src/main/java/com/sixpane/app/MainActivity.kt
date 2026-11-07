@@ -34,6 +34,34 @@ class MainActivity:Activity(){
     private var filteredPageIndex=0
     private lateinit var stage:FrameLayout
     private val cards=linkedMapOf<String,PaneCard>()
+    private var allocatingCards=false
+    private fun syncVisibleWebViews(visible:List<PaneState>){
+        if(allocatingCards)return
+        allocatingCards=true
+        try {
+            val am=getSystemService(ACTIVITY_SERVICE) as ActivityManager
+            val memory=ActivityManager.MemoryInfo().also{am.getMemoryInfo(it)}
+            val limit=WorkspacePolicy.concurrentWebViewLimit(am.memoryClass,memory.availMem,memory.lowMemory)
+            val desired=visible.map{it.id}.toSet()
+            val missing=visible.count{it.id !in cards}
+            val excess=(cards.size+missing-limit).coerceAtLeast(0)
+            cards.keys.filter{it !in desired}.take(excess).forEach{id->
+                cards.remove(id)?.let{
+                    it.flushCookies()
+                    stage.removeView(it);it.destroyExplicitly()
+                }
+            }
+            visible.filter{it.id !in cards}.forEach{pane->
+                if(cards.size<limit){
+                    try {
+                        val card=PaneCard(this,pane)
+                        cards[pane.id]=card
+                        stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)))
+                    }catch(e:Throwable){notice("Browser allocation failed: "+e.message)}
+                }
+            }
+        }finally{allocatingCards=false}
+    }
     private var started=false
     private var pendingFailures=0
     private var lastLayoutWidth=0
@@ -54,20 +82,8 @@ class MainActivity:Activity(){
         cleanupDeletedProfiles()
         buildUI()
         started=true
-        // Stagger WebView allocation only to avoid device resource spikes, not to evade site controls.
-        val panes=store.spaces.flatMap { it.panes }
-        panes.forEachIndexed { index,pane ->handler.postDelayed({
-            if(!isFinishing&&!isDestroyed&&store.spaces.any{ws->ws.panes.any{it.id==pane.id}}){
-                try {
-                    val card=PaneCard(this,pane)
-                    cards[pane.id]=card
-                    stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)))
-                    positionCards(false)
-                }catch(e:Throwable){
-                    notice("Browser ${index+1} could not start: ${e.message}. Session NOT active.")
-                }
-            }
-        },index*130L)}
+        // Only allocate the visible panes; all 42 persisted slots remain available.
+        stage.post { if(!isFinishing&&!isDestroyed)positionCards(false) }
     }
     private fun fatal(message:String){
         val label=TextView(this).apply {text=message;textSize=17f;setTextColor(Color.WHITE);setPadding(dp(20),dp(35),dp(20),dp(20))}
@@ -505,13 +521,7 @@ class MainActivity:Activity(){
         if(!WorkspacePolicy.canCreate(store.spaces.size))return
         try{
             val new=store.create();renderTabs();positionCards(false)
-            // Fixed seven-slot tab strip needs no scroll adjustment.
-            new.panes.forEachIndexed{i,p->handler.postDelayed({
-                if(!isFinishing&&!isDestroyed&&store.spaces.any{w->w.id==new.id&&w.panes.any{it.id==p.id}}){
-                    try{val card=PaneCard(this,p);cards[p.id]=card;stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)));positionCards(false)}
-                    catch(e:Throwable){notice("Browser allocation failed: ${e.message}")}
-                }
-            },i*130L)}
+            // Slots are persisted now; visible WebViews allocate on demand.
         }catch(e:Exception){notice("Cannot create workspace: ${e.message}")}
     }
     private fun closeWorkspace(ws:WorkspaceState){
@@ -532,13 +542,7 @@ class MainActivity:Activity(){
             for(p in ws.panes){
                 cards.remove(p.id)?.let{stage.removeView(it);it.destroyExplicitly()}
             }
-            if(store.spaces.size==1 && store.active().panes.none{cards.containsKey(it.id)}){
-                val fresh=store.active()
-                fresh.panes.forEachIndexed{i,p->handler.postDelayed({
-                    try{val card=PaneCard(this,p);cards[p.id]=card;stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)));positionCards(false)}
-                    catch(e:Throwable){notice("Browser allocation failed: ${e.message}")}
-                },i*130L)}
-            }
+            // The replacement workspace remains in LocalStore; WebViews allocate on demand.
             // Can't safely call deleteProfile after a profile has been loaded in this process.
             // Pending tombstones are retired at the next cold start; UI never claims disk deletion is complete.
             renderTabs();positionCards(false)
@@ -651,21 +655,7 @@ class MainActivity:Activity(){
                 cards.remove(old.id)?.let{stage.removeView(it);it.destroyExplicitly()}
             }
             exitSelection()
-            replacements.forEachIndexed{index,(_,fresh)->
-                handler.postDelayed({
-                    if(!isFinishing&&!isDestroyed &&
-                        store.spaces.any{ws->ws.panes.any{it.id==fresh.id}}){
-                        try{
-                            val card=PaneCard(this,fresh)
-                            cards[fresh.id]=card
-                            stage.addView(card,FrameLayout.LayoutParams(dp(150),dp(140)))
-                            positionCards(false)
-                        }catch(e:Throwable){
-                            notice("New browser could not start: "+e.message)
-                        }
-                    }
-                },index*130L)
-            }
+            // Replacement profiles remain durable; active panes allocate on demand.
             clampFilteredPage()
             renderTabs()
             positionCards(false)
@@ -782,6 +772,7 @@ class MainActivity:Activity(){
         if(width<10||height<10)return
         val layoutRun=++layoutGeneration
         val gap=dp(2);val visible=currentFilteredPanes()
+        syncVisibleWebViews(visible)
         if(store.focusId!=null && visible.none{it.id==store.focusId}){
             store.focusId=null
             store.save()

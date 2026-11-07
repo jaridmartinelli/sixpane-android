@@ -6,6 +6,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.*
 import android.webkit.*
 import android.widget.*
@@ -44,13 +45,26 @@ class PaneCard(
         private set
     private var lastWidth=0
     private var lastHeight=0
+    private var entryCandidates:List<String> = emptyList()
+    private var entryIndex=0
+    private var activeEntry:String?=null
     var compact=false
         set(value){field=value;updateControls()}
     var focused=false
         set(value){field=value; expand.expanded=value;updateControls()}
     private val onPageChanged=object:WebViewClient(){
-        override fun shouldInterceptRequest(view:WebView, request:WebResourceRequest):WebResourceResponse? =
-            assetLoader.shouldInterceptRequest(request.url)
+        override fun shouldInterceptRequest(view:WebView, request:WebResourceRequest):WebResourceResponse? {
+            BrowserPolicy.assetRegion(request.url.toString())?.let{(region,evidence)->
+                host.runOnUiThread {
+                    if(!disposed && state.assetRegionHint!=region){
+                        state.assetRegionHint=region;state.assetRegionEvidence=evidence
+                        Log.i("SIXPANE_R3","profile="+state.profile+" "+evidence)
+                        host.persist()
+                    }
+                }
+            }
+            return assetLoader.shouldInterceptRequest(request.url)
+        }
         override fun onPageFinished(view:WebView?, url:String?) {
             if(view!==webView||!webViewAlive||disposed)return
             if(url.isNullOrEmpty()||url!=view?.url)return // Ignore completion from an abandoned navigation.
@@ -59,17 +73,54 @@ class PaneCard(
                 loadTimeout?.let{recoveryHandler.removeCallbacks(it)};loadTimeout=null
                 interrupted=false;recoveryAttempts=0;recoveryIndicator.visibility=View.GONE
             }
+            // Only an observed QueueITAccepted-* cookie is a local clearance signal.
+            // A redirect alone NEVER marks clearance (nor server-side acceptance).
+            if(state.phase!=SessionPhase.RETIRED && state.clearanceObservedAt==null &&
+                url.startsWith("https://")){
+                val cookies=WebViewCompat.getProfile(webView).cookieManager.getCookie(url).orEmpty()
+                if(cookies.split(';').any{it.trim().substringBefore('=').startsWith("QueueITAccepted-",true)}){
+                    state.clearanceObservedAt=System.currentTimeMillis()
+                    state.phase=SessionPhase.CLEARANCE_OBSERVED
+                    Log.i("SIXPANE_R4","profile="+state.profile+" clearance-cookie-observed")
+                    host.persist()
+                }
+            }
+            if(entryCandidates.isNotEmpty()){
+                if(entryIndex<entryCandidates.lastIndex){
+                    entryIndex++
+                    activeEntry=entryCandidates[entryIndex]
+                    webView.loadUrl(activeEntry!!)
+                    return
+                }
+                entryCandidates=emptyList();activeEntry=null
+            }
             updateSiteLabel();updateInteractionSurfaces();host.onPaneUrlChanged(state.id)
         }
         override fun onPageStarted(view:WebView?,url:String?,favicon:android.graphics.Bitmap?){
             if(view!==webView||!webViewAlive||disposed)return
             // Capture redirects before completion as well as normal page finishes.
+            if(!url.isNullOrEmpty()){
+                val entry=activeEntry
+                if(entry!=null && BrowserPolicy.isWaitingRoomRedirect(entry,url)){
+                    state.waitingRoomEntryPath=runCatching{java.net.URI(entry).rawPath}.getOrNull()
+                    state.entryPathEvidence="entryPath="+(state.waitingRoomEntryPath?:"/")+
+                        ";redirectHost="+runCatching{java.net.URI(url).host}.getOrNull().orEmpty()
+                    Log.i("SIXPANE_R2","profile="+state.profile+" "+state.entryPathEvidence)
+                    entryCandidates=emptyList();activeEntry=null
+                    host.persist()
+                }
+                if(state.phase==SessionPhase.CREATED && url!="about:blank"){
+                    state.phase=SessionPhase.ACTIVE;host.persist()
+                }
+            }
             if(!url.isNullOrEmpty()&&url!=state.url){state.url=url;host.persist();updateSiteLabel();updateInteractionSurfaces();host.onPaneUrlChanged(state.id)}
         }
         override fun onReceivedError(view:WebView,request:WebResourceRequest,error:WebResourceError){
             if(view===webView&&interrupted&&request.isForMainFrame)recoveryLoadFailed()
         }
         override fun onReceivedHttpError(view:WebView,request:WebResourceRequest,response:WebResourceResponse){
+            if(view===webView && CookieExpiryObserver.observe(state,request.url.toString(),response.responseHeaders))
+                host.persist()
             if(view===webView&&interrupted&&request.isForMainFrame&&response.statusCode>=400)recoveryLoadFailed()
         }
         override fun onReceivedSslError(view:WebView,handler:SslErrorHandler,error:android.net.http.SslError){
@@ -187,8 +238,26 @@ class PaneCard(
                 setSupportZoom(true)
                 builtInZoomControls=true;displayZoomControls=false
                 useWideViewPort=true;loadWithOverviewMode=!state.desktop
-                // Production: full R8-verified UA + feature-gated metadata on every pane.
-                QaUaConfiguration.apply(this, QaUaConfiguration.Treatment.UA_WITH_METADATA)
+                // QA variant ONLY: workspace 1 panes 1-3 are native-UA controls;
+                // panes 4-6 omit "; wv)". Workspace 2 swaps assignments.
+                // The same crossover repeats across subsequent workspaces.
+                if (BuildConfig.QA_WV_AB) {
+                    val ordinal = host.paneIndex(state.id) - 1
+                    check(ordinal >= 0) { "QA pane missing from workspace manifest" }
+                    val laterHalf = ordinal % WorkspacePolicy.PANE_COUNT >= 3
+                    val reverse = (ordinal / WorkspacePolicy.PANE_COUNT) % 2 == 1
+                    if (laterHalf != reverse) {
+                        // The actual pane and instrumentation metadata arm use
+                        // exactly the same UA/Client-Hints configuration path.
+                        QaUaConfiguration.apply(
+                            this, QaUaConfiguration.Treatment.UA_WITH_METADATA
+                        )
+                    }
+                } else {
+                    // Production builds apply the complete UA treatment to every pane.
+                    // QA-only builds retain their existing control/treatment crossover.
+                    QaUaConfiguration.apply(this, QaUaConfiguration.Treatment.UA_WITH_METADATA)
+                }
                 mediaPlaybackRequiresUserGesture=true
             }
             WebViewCompat.getProfile(fresh).cookieManager.setAcceptThirdPartyCookies(fresh,true)
@@ -293,9 +362,13 @@ class PaneCard(
     }
     fun loadAddress(url:String){
         if(disposed)return
+        val candidates=if(url.startsWith("http://")||url.startsWith("https://"))
+            BrowserPolicy.entryCandidates(url) else listOf(url)
+        entryCandidates=if(candidates.size>1)candidates else emptyList()
+        entryIndex=0;activeEntry=entryCandidates.firstOrNull()
         state.url=url;host.persist();updateSiteLabel();updateInteractionSurfaces();host.onPaneUrlChanged(state.id)
         // A navigation during backoff updates the recovery target without changing its profile.
-        if(webViewAlive)webView.loadUrl(url)
+        if(webViewAlive)webView.loadUrl(activeEntry?:url)
     }
     private fun updateZoomIndicator(){indicator.text=WorkspacePolicy.displayZoom(state.zoom);indicator.visibility=if(state.zoom==100)View.GONE else View.VISIBLE}
     private fun updateDesktopWithoutReload(){
@@ -325,7 +398,8 @@ class PaneCard(
     }
     fun blocked(reason:String){lock.blockedFeedback();host.notice(reason)}
     fun destroyExplicitly(){
-        disposed=true;recoveryHandler.removeCallbacksAndMessages(null);retry=null;loadTimeout=null
+        disposed=true;entryCandidates=emptyList();activeEntry=null
+        recoveryHandler.removeCallbacksAndMessages(null);retry=null;loadTimeout=null
         discardWebView();interrupted=true
     }
     fun flushCookies(){if(webViewAlive)WebViewCompat.getProfile(webView).cookieManager.flush()}

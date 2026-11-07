@@ -6,6 +6,45 @@ import java.net.URI
 object BrowserPolicy {
     const val MAX_RECOVERY_ATTEMPTS = 10
     const val RECOVERY_LOAD_TIMEOUT_MS = 60_000L
+    /** Asset hostname region strings are informational and do not alter routing. */
+    fun assetRegion(url:String):Pair<String,String>? = try {
+        val host=URI(url).host?.lowercase()
+        val region=host?.let {
+            Regex("""(?:^|[.-])(us|eu|ap|sa|ca|me|af)[-_.]?(east|west|central|north|south)[-_.]?[0-9]?""")
+                .find(it)?.value?.trim('.','-','_')
+        }
+        region?.let{it to "hostname=$host; segment="+it}
+    }catch(_:Exception){null}
+    /** Same-origin candidate prefixes, shallowest first; preserves raw query and fragment. */
+    fun entryCandidates(original:String):List<String> = try {
+        val uri=URI(original)
+        if(uri.scheme !in listOf("http","https")||uri.rawAuthority.isNullOrBlank())listOf(original)
+        else {
+            val raw=uri.rawPath.orEmpty()
+            if(raw.isBlank()||raw=="/")listOf(original)
+            else {
+                val pieces=raw.trim('/').split('/').filter{it.isNotBlank()}
+                val prefixes=mutableListOf("/")
+                var prefix=""
+                for(part in pieces.dropLast(1)){
+                    prefix+="/"+part
+                    prefixes.add(prefix+"/")
+                }
+                val requested=if(raw.startsWith('/'))raw else "/"+raw
+                val candidates=(prefixes+requested).distinct().take(3).toMutableList()
+                if(requested !in candidates){candidates.removeAt(candidates.lastIndex);candidates.add(requested)}
+                val suffix=(uri.rawQuery?.let{"?"+it}?:"")+(uri.rawFragment?.let{"#"+it}?:"")
+                candidates.map{uri.scheme+"://"+uri.rawAuthority+it+suffix}
+            }
+        }
+    }catch(_:Exception){listOf(original)}
+    fun isWaitingRoomRedirect(from:String,to:String):Boolean = try{
+        val source=URI(from).host?.lowercase()
+        val destination=URI(to).host?.lowercase()
+        source!=null&&destination!=null&&source!=destination &&
+            (destination.endsWith(".queue-it.net") || destination=="queue-it.net" ||
+             destination.startsWith("queue.") || destination.startsWith("q."))
+    }catch(_:Exception){false}
     fun recoveryDelayMs(attempt:Int):Long {
         require(attempt in 1..MAX_RECOVERY_ATTEMPTS)
         return (2_000L shl (attempt-1)).coerceAtMost(30_000L)

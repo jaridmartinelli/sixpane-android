@@ -1,0 +1,128 @@
+name: SIXPANE UA A/B QA APK (separate package)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - qa/webview-wv-ab-20261107
+permissions:
+  contents: read
+
+jobs:
+  qa-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout isolated QA branch
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKM="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -n "$SDKM"
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Load permanent canonical signing key for QA app and instrumentation
+        shell: bash
+        env:
+          SIXPANE_KEYSTORE_BASE64: ${{ secrets.SIXPANE_CANONICAL_KEYSTORE_BASE64 }}
+          SIXPANE_CANONICAL_KEYSTORE_PASSWORD: ${{ secrets.SIXPANE_CANONICAL_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SIXPANE_KEYSTORE_BASE64:-}" || -z "${SIXPANE_CANONICAL_KEYSTORE_PASSWORD:-}" ]]; then
+            echo "::error::Canonical signing secrets are unavailable. Both QA APKs must use the existing key; no artifacts will be published."
+            exit 1
+          fi
+          KEYSTORE="$RUNNER_TEMP/sixpane-canonical-qa.p12"
+          printf '%s' "$SIXPANE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          keytool -list -keystore "$KEYSTORE" -storepass:env SIXPANE_CANONICAL_KEYSTORE_PASSWORD -alias sixpane-canonical >/dev/null
+          echo "SIXPANE_CANONICAL_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+      - name: Build canonical-signed QA app and QA instrumentation APK
+        working-directory: android
+        env:
+          SIXPANE_CANONICAL_KEYSTORE_PASSWORD: ${{ secrets.SIXPANE_CANONICAL_KEYSTORE_PASSWORD }}
+        run: gradle --no-daemon --stacktrace -PsixpaneQaInstrumentation=true :app:testQaUnitTest :app:assembleQa :app:assembleQaAndroidTest
+      - name: Sign instrumentation APK using the same canonical keystore and alias
+        shell: bash
+        env:
+          SIXPANE_CANONICAL_KEYSTORE_PASSWORD: ${{ secrets.SIXPANE_CANONICAL_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TEST_APK='android/app/build/outputs/apk/androidTest/qa/app-qa-androidTest.apk'
+          test -s "$TEST_APK" || { echo "::error::QA instrumentation APK missing"; exit 1; }
+          SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$SIGNER" sign \
+            --ks "$SIXPANE_CANONICAL_KEYSTORE_PATH" \
+            --ks-type PKCS12 \
+            --ks-key-alias sixpane-canonical \
+            --ks-pass env:SIXPANE_CANONICAL_KEYSTORE_PASSWORD \
+            --key-pass env:SIXPANE_CANONICAL_KEYSTORE_PASSWORD \
+            --out "$RUNNER_TEMP/app-qa-androidTest-canonical.apk" \
+            "$TEST_APK"
+          mv "$RUNNER_TEMP/app-qa-androidTest-canonical.apk" "$TEST_APK"
+      - name: Verify both packages, identical canonical signatures, and prepare artifact
+        shell: bash
+        env:
+          EXPECTED_SIGNER: cced8806d97502e5a7cf950e57c2a82ece12da9c0a0b68cdaca1c03dc0238853
+        run: |
+          set -euo pipefail
+          mkdir -p qa-evidence qa-dist
+          APP_APK='android/app/build/outputs/apk/qa/app-qa.apk'
+          TEST_APK='android/app/build/outputs/apk/androidTest/qa/app-qa-androidTest.apk'
+          for APK in "$APP_APK" "$TEST_APK"; do
+            test -s "$APK" || { echo "::error::APK missing or empty: $APK"; exit 1; }
+            unzip -t "$APK" >/dev/null
+          done
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$AAPT" dump badging "$APP_APK" > qa-evidence/app-badging.txt
+          "$AAPT" dump badging "$TEST_APK" > qa-evidence/instrumentation-badging.txt
+          "$AAPT" dump xmltree "$TEST_APK" AndroidManifest.xml > qa-evidence/instrumentation-manifest-xmltree.txt
+          grep -Fq "package: name='com.sixpane.app.qa.wvab' versionCode='15'" qa-evidence/app-badging.txt
+          grep -Fq "application-label:'SIXPANE UA QA'" qa-evidence/app-badging.txt
+          grep -Fq "package: name='com.sixpane.app.qa.wvab.test'" qa-evidence/instrumentation-badging.txt
+          grep -Fq 'androidx.test.runner.AndroidJUnitRunner' qa-evidence/instrumentation-manifest-xmltree.txt
+          grep -Fq 'com.sixpane.app.qa.wvab' qa-evidence/instrumentation-manifest-xmltree.txt
+          SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$SIGNER" verify --verbose --print-certs "$APP_APK" > qa-evidence/app-signature.txt
+          "$SIGNER" verify --verbose --print-certs "$TEST_APK" > qa-evidence/instrumentation-signature.txt
+          APP_CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}' qa-evidence/app-signature.txt)"
+          TEST_CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}' qa-evidence/instrumentation-signature.txt)"
+          if [[ -z "$APP_CERT" || -z "$TEST_CERT" || "${APP_CERT,,}" != "${EXPECTED_SIGNER,,}" || "${TEST_CERT,,}" != "${EXPECTED_SIGNER,,}" || "${APP_CERT,,}" != "${TEST_CERT,,}" ]]; then
+            echo "::error::App and instrumentation must both use the pinned canonical certificate. Refusing artifact upload."
+            exit 1
+          fi
+          cp "$APP_APK" qa-dist/app-qa.apk
+          cp "$TEST_APK" qa-dist/app-qa-androidTest.apk
+          sha256sum qa-dist/*.apk > qa-evidence/apk-sha256.txt
+          echo "PASS: QA app + instrumentation packages valid; both signatures match canonical certificate."
+      - name: Upload both canonical-signed QA APKs in one artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SIXPANE-UA-AB-QA-PAIR
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            qa-dist/app-qa.apk
+            qa-dist/app-qa-androidTest.apk
+      - name: Upload QA verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SIXPANE-UA-AB-QA-REPORTS
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            qa-evidence/**
+            android/app/build/reports/tests/**
+            android/app/build/test-results/**

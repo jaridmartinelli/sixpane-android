@@ -20,6 +20,11 @@ android {
     }
     namespace = "com.sixpane.app"
     compileSdk = 35
+    buildFeatures { buildConfig = true }
+    // Instrumentation defaults to established debug behavior. Only an explicit
+    // physical-device QA build selects the separate .qa.wvab package.
+    testBuildType = if (project.providers.gradleProperty("sixpaneQaInstrumentation").orNull == "true")
+        "qa" else "debug"
     defaultConfig {
         applicationId = "com.sixpane.app"
         minSdk = 29
@@ -27,6 +32,7 @@ android {
         versionCode = 15
         versionName = "0.14-consolidated"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "QA_WV_AB", "false")
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }
     buildTypes {
@@ -36,6 +42,18 @@ android {
             versionNameSuffix = "-preview"
             manifestPlaceholders["appLabel"] = "SIXPANE"
             signingConfigs.findByName("canonical")?.let { signingConfig = it }
+        }
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".qa.wvab"
+            versionNameSuffix = "-uaab"
+            manifestPlaceholders["appLabel"] = "SIXPANE UA QA"
+            // CI provisions the established canonical signer for both QA app and
+            // its instrumentation APK; local no-secret QA builds retain a
+            // disposable debug signer and must never be published as canonical.
+            signingConfig = signingConfigs.findByName("canonical")
+                ?: signingConfigs.getByName("debug")
+            buildConfigField("boolean", "QA_WV_AB", "true")
         }
         release { isMinifyEnabled = false }
     }

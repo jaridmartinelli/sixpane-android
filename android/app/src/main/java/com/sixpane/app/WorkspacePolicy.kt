@@ -4,6 +4,13 @@ package com.sixpane.app
 object WorkspacePolicy {
     const val MAX_WORKSPACES = 7
     const val PANE_COUNT = 6
+    const val SLOT_CAPACITY = MAX_WORKSPACES * PANE_COUNT
+    fun concurrentWebViewLimit(memoryClass:Int,availableBytes:Long,lowMemory:Boolean):Int {
+        val byClass=(memoryClass/24).coerceIn(PANE_COUNT,SLOT_CAPACITY)
+        val byAvailable=(availableBytes/(64L*1024L*1024L))
+            .coerceIn(PANE_COUNT.toLong(),SLOT_CAPACITY.toLong()).toInt()
+        return minOf(byClass,byAvailable,if(lowMemory)PANE_COUNT else SLOT_CAPACITY)
+    }
     const val MIN_ZOOM = 50
     const val MAX_ZOOM = 200
     const val ZOOM_STEP = 10
