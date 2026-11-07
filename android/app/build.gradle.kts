@@ -20,6 +20,7 @@ android {
     }
     namespace = "com.sixpane.app"
     compileSdk = 35
+    buildFeatures { buildConfig = true }
     defaultConfig {
         applicationId = "com.sixpane.app"
         minSdk = 29
@@ -27,6 +28,7 @@ android {
         versionCode = 15
         versionName = "0.14-consolidated"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "QA_WV_AB", "false")
         manifestPlaceholders["appLabel"] = "SIXPANE"
     }
     buildTypes {
@@ -36,6 +38,15 @@ android {
             versionNameSuffix = "-preview"
             manifestPlaceholders["appLabel"] = "SIXPANE"
             signingConfigs.findByName("canonical")?.let { signingConfig = it }
+        }
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".qa.wvab"
+            versionNameSuffix = "-uaab"
+            manifestPlaceholders["appLabel"] = "SIXPANE UA QA"
+            // Disposable QA signer, never inherit the canonical signing key.
+            signingConfig = signingConfigs.getByName("debug")
+            buildConfigField("boolean", "QA_WV_AB", "true")
         }
         release { isMinifyEnabled = false }
     }
