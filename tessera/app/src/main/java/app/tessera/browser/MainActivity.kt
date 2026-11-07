@@ -52,6 +52,13 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     private lateinit var dock: LinearLayout
     private lateinit var emptyState: LinearLayout
     private var uiReady = false
+    private var imeAnimating = false
+    private var navBottom = 0
+
+    private fun applyImeLift(ins: WindowInsets) {
+        val lift = if (Build.VERSION.SDK_INT >= 30) (ins.getInsets(WindowInsets.Type.ime()).bottom - navBottom).coerceAtLeast(0) else 0
+        listOf<View>(dock, suggest, snack).forEach { it.translationY = -lift.toFloat() }
+    }
 
     private var selecting = false
     private val selection = linkedSetOf<String>()
@@ -142,6 +149,20 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
             }
         }
 
+        // Move the dock in step with the keyboard's own slide instead of jumping at the end.
+        if (Build.VERSION.SDK_INT >= 30) root.setWindowInsetsAnimationCallback(
+            object : android.view.WindowInsetsAnimation.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+                override fun onPrepare(animation: android.view.WindowInsetsAnimation) {
+                    if (animation.typeMask and WindowInsets.Type.ime() != 0) imeAnimating = true
+                }
+                override fun onProgress(insets: WindowInsets, running: MutableList<android.view.WindowInsetsAnimation>): WindowInsets {
+                    if (imeAnimating) applyImeLift(insets); return insets
+                }
+                override fun onEnd(animation: android.view.WindowInsetsAnimation) {
+                    if (animation.typeMask and WindowInsets.Type.ime() != 0) { imeAnimating = false; root.requestApplyInsets() }
+                }
+            })
+
         overview = WorkspaceOverview(this)
         root.addView(overview, FrameLayout.LayoutParams(-1, -1))
 
@@ -156,8 +177,8 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
             grid.setPadding(l + dp(4), t + dp(4), r + dp(4), dp(4))
             dock.setPadding(l, 0, r, b)
             // Keyboard: lift the dock (and what sits on it) above the IME without resizing the panes.
-            val lift = if (Build.VERSION.SDK_INT >= 30) (ins.getInsets(WindowInsets.Type.ime()).bottom - b).coerceAtLeast(0) else 0
-            listOf<View>(dock, suggest, snack).forEach { it.translationY = -lift.toFloat() }
+            navBottom = b
+            if (!imeAnimating) applyImeLift(ins)
             overview.dispatchApplyWindowInsets(ins)
             ins
         }
@@ -274,8 +295,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         val anyMatch = visibleWorkspaces().isNotEmpty()
         emptyState.visibility = if (filtering() && !anyMatch) View.VISIBLE else View.GONE
 
-        cmd.visibility = if (selecting) View.GONE else View.VISIBLE
-        sel.visibility = if (selecting) View.VISIBLE else View.GONE
+        if (selecting) { Motion.fadeOut(cmd); Motion.fadeIn(sel) } else { Motion.fadeOut(sel); Motion.fadeIn(cmd) }
         bindBars()
         chips.visibility = if (filtering()) View.VISIBLE else View.GONE
         if (filtering()) chips.bind(state.filter, state.allPanes().count { shown(it) })
@@ -420,7 +440,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     /** While typing: paste & go and bookmarks appear just above the bar. */
     fun onAddressFocus(focused: Boolean) {
         suggest.removeAllViews()
-        if (!focused) { suggest.visibility = View.GONE; return }
+        if (!focused) { Motion.fadeOut(suggest, Motion.EXIT_MS); return }
         // Only check THAT something is copied; the text is read when "Paste & go" is tapped,
         // so Android doesn't show a "pasted from clipboard" notice every time the bar is tapped.
         val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
@@ -437,7 +457,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         state.bookmarks.take(8).forEach { b ->
             suggest.addView(bookmarkRow(b, onOpen = { submitAddress(b.url) }, onRemove = { removeBookmark(b); onAddressFocus(true) }))
         }
-        suggest.visibility = if (suggest.childCount > 0) View.VISIBLE else View.GONE
+        if (suggest.childCount > 0) Motion.fadeIn(suggest) else suggest.visibility = View.GONE
     }
 
     fun currentWorkspace(): Workspace = state.current()
@@ -529,6 +549,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
             addView(ImageView(this@MainActivity).apply { setImageDrawable(IconDrawable(icon, tint)) }, LinearLayout.LayoutParams(dp(18), dp(18)))
             addView(label(text, 13.5f), LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(8) })
             setOnClickListener { onClick() }
+            Motion.pressable(this, 0.96f)
             layoutParams = LinearLayout.LayoutParams(-2, dp(40)).apply { rightMargin = dp(8) }
         }
 
@@ -575,6 +596,10 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
 
     fun switchWorkspace(id: String) {
         if (id == state.currentId) return
+        // Slide the arriving workspace in from the side it sits on.
+        val from = state.workspaces.indexOfFirst { it.id == state.currentId }
+        val to = state.workspaces.indexOfFirst { it.id == id }
+        grid.enterDx = if (to > from) dpf(36f) else -dpf(36f)
         state.currentId = id
         state.expandedPaneId = null
         state.activePaneId = ""

@@ -22,8 +22,8 @@ android {
         applicationId = "app.tessera.browser"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {

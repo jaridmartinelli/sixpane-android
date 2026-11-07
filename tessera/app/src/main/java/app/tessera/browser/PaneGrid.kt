@@ -4,7 +4,6 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.PathInterpolator
 
 /**
  * Lays out every pane of every workspace. Panes of the current workspace sit in
@@ -29,6 +28,8 @@ class PaneGrid(context: Context) : ViewGroup(context) {
     private var from: Map<Int, Box> = emptyMap()
     private var frac = 1f
     private var anim: ValueAnimator? = null
+    /** Horizontal offset new-workspace panes slide in from (set per switch; 0 = fade only). */
+    var enterDx = 0f
     var emptyView: View? = null
         set(v) { field?.let { removeView(it) }; field = v; v?.let { addView(it) } }
 
@@ -57,8 +58,8 @@ class PaneGrid(context: Context) : ViewGroup(context) {
             from = currentBoxes
             frac = 0f
             anim = ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 280
-                interpolator = PathInterpolator(0.2f, 0f, 0f, 1f)
+                duration = Motion.EXPAND_MS
+                interpolator = Motion.standard
                 addUpdateListener { frac = it.animatedValue as Float; requestLayout() }
                 start()
             }
@@ -110,9 +111,7 @@ class PaneGrid(context: Context) : ViewGroup(context) {
             val here = ws == currentWs
             val visible = here && shown(c.paneId)
             // Never GONE/INVISIBLE: hidden panes stay VISIBLE so their sessions keep running.
-            c.translationX = if (here) 0f else offX
-            c.alpha = if (visible) 1f else 0f
-            c.interactive = visible
+            c.setPresence(here, visible, offX, enterDx)
             c.importantForAccessibility = if (visible) IMPORTANT_FOR_ACCESSIBILITY_AUTO
                 else IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         }

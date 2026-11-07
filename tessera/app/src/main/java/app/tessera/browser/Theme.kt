@@ -85,6 +85,7 @@ fun Context.iconButton(icon: Icon, description: String, sizeDp: Int = 44, tint: 
         tooltipText = description
         minimumWidth = dp(sizeDp); minimumHeight = dp(sizeDp)
         setOnClickListener(onClick)
+        Motion.pressable(this, 0.9f)
     }
 
 fun Context.pillButton(text: String, filled: Boolean, danger: Boolean = false, onClick: (View) -> Unit): TextView =
@@ -96,4 +97,5 @@ fun Context.pillButton(text: String, filled: Boolean, danger: Boolean = false, o
             else rounded(T.surface3, dpf(12f))
         background = ripple(base, dpf(12f))
         setOnClickListener(onClick)
+        Motion.pressable(this, 0.96f)
     }

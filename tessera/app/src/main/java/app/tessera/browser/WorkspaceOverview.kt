@@ -75,14 +75,16 @@ class WorkspaceOverview(private val a: MainActivity) : FrameLayout(a) {
     fun show() {
         render()
         visibility = VISIBLE
-        alpha = 0f; translationY = a.dpf(24f)
-        animate().alpha(1f).translationY(0f).setDuration(180).start()
+        alpha = 0f; translationY = a.dpf(24f); scaleX = 0.98f; scaleY = 0.98f
+        animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+            .setDuration(Motion.ENTER_MS).setInterpolator(Motion.decelerate).start()
         requestApplyInsets()
     }
 
     fun hide() {
         if (!showing) return
-        animate().alpha(0f).translationY(a.dpf(24f)).setDuration(140).withEndAction { visibility = GONE }.start()
+        animate().alpha(0f).translationY(a.dpf(24f)).setDuration(Motion.EXIT_MS).setInterpolator(Motion.accelerate)
+            .withEndAction { visibility = GONE }.start()
     }
 
     fun render() {
@@ -119,6 +121,7 @@ class WorkspaceOverview(private val a: MainActivity) : FrameLayout(a) {
             setPadding(a.dp(8), a.dp(4), a.dp(4), a.dp(8))
             setOnClickListener { a.switchWorkspace(w.id); hide() }
             setOnLongClickListener { a.openWorkspaceMenu(w); true }
+            Motion.pressable(this, 0.97f)
             contentDescription = "Workspace $idx, $open of 6 open" + (if (current) ", current" else "") +
                 (if (w.lockedCount > 0) ", ${w.lockedCount} locked" else "")
         }

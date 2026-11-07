@@ -35,6 +35,7 @@ class CommandBar(private val a: MainActivity) : FrameLayout(a) {
     private val more = a.iconButton(Icon.MORE, "Pane and app menu") { a.openMainMenu() }
     private var url = ""
     private var loading = false
+    private var prevBookmarked: Boolean? = null
 
     val editing get() = field.hasFocus()
 
@@ -49,6 +50,7 @@ class CommandBar(private val a: MainActivity) : FrameLayout(a) {
         chip.addView(chipGlyph, LayoutParams(a.dp(11), a.dp(11), Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, a.dp(3), a.dp(3)) })
         chip.setOnClickListener { a.toggleExpandActive() }
         chip.setOnLongClickListener { a.openPaneMenu(a.activePane()); true }
+        Motion.pressable(chip, 0.92f)
         row.addView(chip, LinearLayout.LayoutParams(a.dp(44), a.dp(44)))
 
         pill.orientation = LinearLayout.HORIZONTAL; pill.gravity = Gravity.CENTER_VERTICAL
@@ -78,6 +80,7 @@ class CommandBar(private val a: MainActivity) : FrameLayout(a) {
         star.setPadding(a.dp(10), a.dp(10), a.dp(10), a.dp(10))
         star.background = ripple(ColorDrawable(Color.TRANSPARENT), a.dpf(20f))
         star.setOnClickListener { a.starOrStop() }
+        Motion.pressable(star, 0.88f)
         pill.addView(star, LinearLayout.LayoutParams(a.dp(40), a.dp(40)))
         row.addView(pill, LinearLayout.LayoutParams(0, a.dp(44), 1f).apply { leftMargin = a.dp(8); rightMargin = a.dp(4) })
 
@@ -88,11 +91,13 @@ class CommandBar(private val a: MainActivity) : FrameLayout(a) {
         spaces.background = ripple(ColorDrawable(Color.TRANSPARENT), a.dpf(10f))
         spaces.setOnClickListener { a.openWorkspaces() }
         spaces.setOnLongClickListener { a.openWorkspaceMenu(a.currentWorkspace()); true }
+        Motion.pressable(spaces, 0.9f)
         row.addView(spaces, LinearLayout.LayoutParams(a.dp(44), a.dp(44)))
         row.addView(more)
         addView(row, LayoutParams(-1, -2))
         progress.setBackgroundColor(T.text)
-        addView(progress, LayoutParams(0, a.dp(2), Gravity.TOP))
+        progress.pivotX = 0f
+        addView(progress, LayoutParams(-1, a.dp(2), Gravity.TOP))
         setBackgroundColor(T.surface)
     }
 
@@ -107,6 +112,8 @@ class CommandBar(private val a: MainActivity) : FrameLayout(a) {
         val changed = url != p.url
         url = p.url
         if (!field.hasFocus() && (changed || field.text.isEmpty())) field.setText(AddressPolicy.label(url))
+        if (bookmarked && prevBookmarked == false && url == p.url) Motion.pop(star)
+        prevBookmarked = bookmarked
         loading = rt.loading
         val canStar = AddressPolicy.isWeb(url)
         star.setImageDrawable(IconDrawable(
@@ -120,8 +127,10 @@ class CommandBar(private val a: MainActivity) : FrameLayout(a) {
         spaces.contentDescription = "Workspace $workspace of $workspaces. Tap to switch or add workspaces"
         spaces.tooltipText = spaces.contentDescription
         val show = rt.loading && rt.progress in 1..99
-        progress.visibility = if (show) VISIBLE else GONE
-        if (show) post { progress.layoutParams = (progress.layoutParams as LayoutParams).apply { width = this@CommandBar.width * rt.progress / 100 } }
+        if (show) {
+            if (progress.visibility != VISIBLE) { progress.scaleX = 0f; progress.visibility = VISIBLE }
+            progress.animate().scaleX(rt.progress / 100f).setDuration(Motion.PROGRESS_MS).start()
+        } else progress.visibility = GONE
     }
 
     fun focusAddress() {
@@ -195,6 +204,7 @@ class FilterChips(private val a: MainActivity) : HorizontalScrollView(a) {
             addView(a.label(text, 13f), LinearLayout.LayoutParams(-2, -2).apply { leftMargin = a.dp(6) })
             addView(a.iconButton(Icon.CLOSE, "Remove $desc", 34) { onRemove() })
             setOnClickListener { a.openFilterSheet() }
+            Motion.pressable(this, 0.96f)
             layoutParams = LinearLayout.LayoutParams(-2, a.dp(34)).apply { rightMargin = a.dp(6) }
         }
 

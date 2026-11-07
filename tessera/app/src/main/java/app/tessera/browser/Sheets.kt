@@ -61,7 +61,7 @@ class Sheet(private val a: MainActivity, title: String, subtitle: String? = null
             dialog.window?.apply {
                 setBackgroundDrawable(ColorDrawable(T.bg))
                 setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                setWindowAnimations(android.R.style.Animation_InputMethod)
+                setWindowAnimations(R.style.Tessera_PageAnimation)
             }
         } else {
             root.background = rounded(T.surface, a.dpf(22f))
@@ -81,6 +81,7 @@ class Sheet(private val a: MainActivity, title: String, subtitle: String? = null
                 setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
                 setLayout(w, ViewGroup.LayoutParams.WRAP_CONTENT)
                 setGravity(Gravity.CENTER)
+                setWindowAnimations(R.style.Tessera_CardAnimation)
                 addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 setDimAmount(0.55f)
             }
@@ -179,6 +180,7 @@ class Sheet(private val a: MainActivity, title: String, subtitle: String? = null
                     FrameLayout.LayoutParams(a.dp(18), a.dp(18), Gravity.CENTER))
                 contentDescription = if (c == null) "No colour" else T.colorName(index)
                 setOnClickListener { dialog.dismiss(); onPick(index) }
+                Motion.pressable(this, 0.88f)
                 layoutParams = LinearLayout.LayoutParams(size, size).apply { leftMargin = a.dp(6); rightMargin = a.dp(6) }
             }
             row.addView(v)
@@ -226,7 +228,7 @@ fun MainActivity.confirm(title: String, message: String, action: String, danger:
 class Snack(private val a: MainActivity) : LinearLayout(a) {
     private val text = a.label("", 14f, T.text)
     private val action = a.label("", 14f, T.accent, bold = true)
-    private val hide = Runnable { animate().alpha(0f).translationY(a.dpf(12f)).setDuration(160).withEndAction { visibility = GONE }.start() }
+    private val hide = Runnable { animate().alpha(0f).translationY(a.dpf(12f)).setDuration(Motion.EXIT_MS).setInterpolator(Motion.accelerate).withEndAction { visibility = GONE }.start() }
 
     init {
         orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -249,7 +251,7 @@ class Snack(private val a: MainActivity) : LinearLayout(a) {
         action.text = actionLabel ?: ""
         action.setOnClickListener { removeCallbacks(hide); hide.run(); onAction?.invoke() }
         visibility = VISIBLE; alpha = 0f; translationY = a.dpf(12f)
-        animate().alpha(1f).translationY(0f).setDuration(180).start()
+        animate().alpha(1f).translationY(0f).setDuration(Motion.ENTER_MS).setInterpolator(Motion.decelerate).start()
         postDelayed(hide, if (actionLabel != null) 6000 else 3200)
     }
 }

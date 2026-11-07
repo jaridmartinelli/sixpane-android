@@ -79,7 +79,11 @@ class PullHost(context: Context, private val canStart: () -> Boolean, private va
     private fun startRefresh() {
         refreshing = true
         indicator.translationY = threshold - context.dpf(28f); indicator.alpha = 1f
-        indicator.animate().rotationBy(3600f).setDuration(10_000).start()
+        // A status indicator, not a transition: it spins until the page finishes loading.
+        spin = android.animation.ObjectAnimator.ofFloat(indicator, ROTATION, indicator.rotation, indicator.rotation + 360f).apply {
+            duration = 800; repeatCount = android.animation.ValueAnimator.INFINITE
+            interpolator = android.view.animation.LinearInterpolator(); start()
+        }
         onRefresh()
     }
 
@@ -90,8 +94,12 @@ class PullHost(context: Context, private val canStart: () -> Boolean, private va
         hide()
     }
 
+    private var spin: android.animation.ObjectAnimator? = null
+
     private fun hide() {
+        spin?.cancel(); spin = null
         indicator.animate().cancel()
-        indicator.animate().alpha(0f).translationY(-context.dpf(28f)).setDuration(180).start()
+        indicator.animate().alpha(0f).translationY(-context.dpf(28f)).setDuration(Motion.EXIT_MS)
+            .setInterpolator(Motion.accelerate).start()
     }
 }

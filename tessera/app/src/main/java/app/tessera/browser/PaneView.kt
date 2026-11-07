@@ -39,6 +39,36 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
     }
 
     private var locked = false
+    private var prevLocked: Boolean? = null
+    private var prevSelected: Boolean? = null
+    private var shownTarget: Boolean? = null
+
+    /**
+     * Where this pane is and whether it is shown. Panes in other workspaces sit off
+     * screen (still attached and running). Arriving panes slide in a little and fade;
+     * filter changes fade. Idempotent: called on every layout pass.
+     */
+    fun setPresence(here: Boolean, visible: Boolean, offX: Float, enterDx: Float) {
+        if (!here) {
+            animate().cancel(); translationX = offX; alpha = 0f; shownTarget = null; interactive = false
+            return
+        }
+        interactive = visible
+        if (shownTarget == null && translationX != 0f) {
+            animate().cancel()
+            translationX = enterDx; alpha = 0f; shownTarget = visible
+            animate().translationX(0f).alpha(if (visible) 1f else 0f)
+                .setDuration(Motion.ENTER_MS).setInterpolator(Motion.standard).start()
+            return
+        }
+        if (shownTarget != visible) {
+            shownTarget = visible
+            animate().cancel()
+            if (translationX != 0f && translationX.let { kotlin.math.abs(it) } < width) translationX = 0f
+            animate().alpha(if (visible) 1f else 0f).setDuration(Motion.FADE_MS)
+                .setInterpolator(if (visible) Motion.decelerate else Motion.accelerate).start()
+        }
+    }
 
     /** False while hidden by a filter or in another workspace: no touches at all. */
     var interactive = true
@@ -94,7 +124,8 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         headerRow.addView(badge, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(4) })
         header.addView(headerRow, LayoutParams(-1, -1))
         progress.setBackgroundColor(0xD9FFFFFF.toInt())
-        header.addView(progress, LayoutParams(0, dp(2), Gravity.BOTTOM))
+        progress.pivotX = 0f
+        header.addView(progress, LayoutParams(-1, dp(2), Gravity.BOTTOM))
         addView(header, LayoutParams(-1, headerH))
 
         val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
@@ -219,30 +250,34 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
         // The header carries the pane's colour tag; untagged panes stay neutral.
         header.setBackgroundColor(color ?: if (active) T.surface3 else T.surface2)
         val showProgress = rt.loading && rt.progress in 1..99
-        progress.visibility = if (showProgress) VISIBLE else GONE
-        if (showProgress) post {
-            progress.layoutParams = (progress.layoutParams as LayoutParams).apply { width = (header.width * rt.progress / 100f).toInt() }
-        }
+        if (showProgress) {
+            if (progress.visibility != VISIBLE) { progress.scaleX = 0f; progress.visibility = VISIBLE }
+            progress.animate().scaleX(rt.progress / 100f).setDuration(Motion.PROGRESS_MS).start()
+        } else progress.visibility = GONE
 
-        blank.visibility = if (pane.url.isBlank() && rt.error == null && !rt.crashed && !isMini && !selecting) VISIBLE else GONE
+        if (pane.url.isBlank() && rt.error == null && !rt.crashed && !isMini && !selecting) Motion.fadeIn(blank) else blank.visibility = GONE
         when {
             rt.crashed -> {
-                error.visibility = VISIBLE
+                Motion.fadeIn(error)
                 errorTitle.text = "Page crashed"
                 errorText.text = "Restoring this session automatically. Logins and cookies are kept."
                 errorRetry.visibility = GONE
             }
             rt.error != null -> {
-                error.visibility = VISIBLE
+                Motion.fadeIn(error)
                 errorTitle.text = "Can't open this page"
                 errorText.text = rt.error
                 errorRetry.visibility = VISIBLE
             }
-            else -> error.visibility = GONE
+            else -> Motion.fadeOut(error)
         }
         mini.visibility = if (isMini && !selecting) VISIBLE else GONE
 
-        select.visibility = if (selecting) VISIBLE else GONE
+        if (selecting) Motion.fadeIn(select) else Motion.fadeOut(select)
+        if (selected && prevSelected == false) Motion.pop(check, 1.2f)
+        prevSelected = selected
+        if (pane.locked && prevLocked == false) Motion.pop(lockIcon, 1.35f)
+        prevLocked = pane.locked
         // Selection and the active outline use white, never a tag colour.
         select.setBackgroundColor(if (selected) 0x29FFFFFF else 0x40000000)
         check.setImageDrawable(IconDrawable(Icon.CHECK, if (selected) 0xFF0B0E13.toInt() else Color.TRANSPARENT))
@@ -262,9 +297,9 @@ class PaneView(context: Context, val paneId: String, private val cb: Callbacks) 
     /** Visible, physical feedback when a locked pane refuses an action. */
     fun shakeLock() {
         performHapticFeedback(if (android.os.Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS)
-        ObjectAnimator.ofFloat(lockIcon, "translationX", 0f, -6f, 6f, -5f, 5f, -2f, 0f).setDuration(380).start()
-        ObjectAnimator.ofFloat(lockIcon, "scaleX", 1f, 1.35f, 1f).setDuration(380).start()
-        ObjectAnimator.ofFloat(lockIcon, "scaleY", 1f, 1.35f, 1f).setDuration(380).start()
+        ObjectAnimator.ofFloat(lockIcon, "translationX", 0f, -6f, 6f, -5f, 5f, -2f, 0f).setDuration(Motion.SHAKE_MS).start()
+        ObjectAnimator.ofFloat(lockIcon, "scaleX", 1f, 1.35f, 1f).setDuration(Motion.SHAKE_MS).start()
+        ObjectAnimator.ofFloat(lockIcon, "scaleY", 1f, 1.35f, 1f).setDuration(Motion.SHAKE_MS).start()
     }
 
     private companion object {
