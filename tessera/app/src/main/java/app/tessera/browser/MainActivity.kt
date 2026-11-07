@@ -108,7 +108,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         if (!state.onboarded) handler.postDelayed({ showOnboarding() }, 600)
     }
 
-    private fun showUnsupported() {
+    internal fun showUnsupported() {
         val v = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
             setPadding(dp(32), dp(32), dp(32), dp(32)); setBackgroundColor(T.bg)
@@ -759,7 +759,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         s.show()
     }
 
-    private fun bulkOpen(targets: List<Pane>) {
+    internal fun bulkOpen(targets: List<Pane>) {
         val s = Sheet(this, "Open in ${targets.size} panes", "Each pane loads it independently, in its own session.")
         val field = EditText(this).apply {
             hint = "Search Google or type a URL"; setHintTextColor(T.text3); setTextColor(T.text); setSingleLine()
@@ -806,7 +806,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
         }
     }
 
-    private fun endSessions(panes: List<Pane>) {
+    internal fun endSessions(panes: List<Pane>) {
         val targets = panes.filter { !it.locked }
         val skipped = panes.filter { it.locked }
         if (targets.isEmpty()) { skipped.forEach { blocked(it) }; return }
@@ -979,7 +979,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
 
     private fun appVersion(): String = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: ""
 
-    private fun explainSessions() {
+    internal fun explainSessions() {
         Sheet(this, "How sessions work")
             .note("Every pane is its own private browser. It has its own cookies, logins, saved site data and history.")
             .note("Logging in on Pane 1 does not log you in on Pane 2 — so you can be signed in to the same site as different people in different panes.")
@@ -990,7 +990,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
             .show()
     }
 
-    private fun showOnboarding() {
+    internal fun showOnboarding() {
         if (isFinishing || state.onboarded) return
         val s = Sheet(this, "Welcome to Tessera", "42 private browsers — 7 workspaces of 6 panes.")
         s.note("Tap a page to make its pane active. The bar at the bottom always controls the active pane. Use Android's back gesture to go back.")
