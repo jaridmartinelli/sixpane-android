@@ -21,6 +21,10 @@ android {
     namespace = "com.sixpane.app"
     compileSdk = 35
     buildFeatures { buildConfig = true }
+    // Instrumentation defaults to established debug behavior. Only an explicit
+    // physical-device QA build selects the separate .qa.wvab package.
+    testBuildType = if (project.providers.gradleProperty("sixpaneQaInstrumentation").orNull == "true")
+        "qa" else "debug"
     defaultConfig {
         applicationId = "com.sixpane.app"
         minSdk = 29
