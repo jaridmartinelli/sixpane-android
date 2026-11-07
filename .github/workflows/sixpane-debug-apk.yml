@@ -70,12 +70,18 @@ jobs:
           fi
           grep -Fq 'setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}' "$PANE"
           grep -Fq 'contentDescription="Window controls: long press number"' "$PANE"
-      - name: Check genuine WebView UA is not overridden
+      - name: Verify approved UA configuration on every pane
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R --include='*.kt' -En 'DESKTOP_USER_AGENT|Windows NT 10\.0|userAgentString[[:space:]]*=' android/app/src/main/java; then
-            echo 'Unexpected Android WebView User-Agent override'; exit 1
+          PANE='android/app/src/main/java/com/sixpane/app/PaneCard.kt'
+          UA='android/app/src/main/java/com/sixpane/app/QaUaConfiguration.kt'
+          grep -Fq 'QaUaConfiguration.apply(this, QaUaConfiguration.Treatment.UA_WITH_METADATA)' "$PANE"
+          grep -Fq 'WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)' "$UA"
+          grep -Fq 'WebSettingsCompat.setUserAgentMetadata(settings, metadata)' "$UA"
+          grep -Fq 'settings.userAgentString = configured' "$UA"
+          if grep -R --include='*.kt' -En 'DESKTOP_USER_AGENT|Windows NT 10[.]0' android/app/src/main/java; then
+            echo 'Unexpected desktop User-Agent override'; exit 1
           fi
       - name: Confirm canonical identity and restored features
         shell: bash

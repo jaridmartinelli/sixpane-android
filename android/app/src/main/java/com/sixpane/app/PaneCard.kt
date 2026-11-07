@@ -187,6 +187,8 @@ class PaneCard(
                 setSupportZoom(true)
                 builtInZoomControls=true;displayZoomControls=false
                 useWideViewPort=true;loadWithOverviewMode=!state.desktop
+                // Production: full R8-verified UA + feature-gated metadata on every pane.
+                QaUaConfiguration.apply(this, QaUaConfiguration.Treatment.UA_WITH_METADATA)
                 mediaPlaybackRequiresUserGesture=true
             }
             WebViewCompat.getProfile(fresh).cookieManager.setAcceptThirdPartyCookies(fresh,true)
