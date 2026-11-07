@@ -89,9 +89,12 @@ internal object QaUaConfiguration {
             }
         }
 
+        // Read UA once more AFTER metadata setter and readback, rather than
+        // logging only the intended string before the setter was invoked.
+        val finalUa = settings.userAgentString.orEmpty()
         val diagnosis = Result(
-            treatment, original, configured,
-            " Mobile Safari/537.36" in configured, mobileInserted,
+            treatment, original, finalUa,
+            " Mobile Safari/537.36" in finalUa, mobileInserted,
             supported, result, readback
         )
         Log.i("SIXPANE_R8", diagnosis.logLine())
