@@ -140,3 +140,19 @@ stable HTTPS origin for synthetic WebView profile-storage checks. R18's future
 challenge observation remains scoped to the demo and must tolerate a genuine
 redirect to `queue-it.com` without treating it as a test failure. Neither
 R18 nor live R13/R14 provider behavior is implemented or proven here.
+
+## QA incident — R6 off-main-thread WebView URL reads (2026-11-07)
+
+Physical-device evidence supplied by the user: the R6 test installs successfully,
+but fails in `PhysicalStorageMatrixTest.probe()` with WebView's thread-check
+exception before storage assertions, because `web.url` was read on the
+instrumentation runner thread instead of the main Looper. The initial
+`withLivePage()` check already wrapped URL access with `runOnMainSync`, but
+`probe()` repeated the getter outside that wrapper, including its timeout
+message. The initial build's success was compilation only, not runtime QA.
+
+Prevention in the QA test: use `currentWebUrl(web)`, which obtains the URL via
+`instrumentation.runOnMainSync`, at all `probe()` read sites, including
+failure diagnostics. Confirm remaining `web.url` source occurrences are under
+`runOnMainSync`. Physical instrumentation must be rerun; until it passes,
+R6 storage isolation remains **unverified**, not failed or passed.
