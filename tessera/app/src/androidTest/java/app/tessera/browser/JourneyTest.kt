@@ -63,6 +63,8 @@ class JourneyTest {
         ActivityScenario.launch(MainActivity::class.java).use { sc ->
             lateinit var act: MainActivity; sc.onActivity { act = it }
             waitFor(30_000, "sessions") { main { act.hubRef().liveCount() } >= 6 }
+            // Close any emulator system dialog (e.g. "app isn't responding") that would swallow the taps.
+            inst.uiAutomation.executeShellCommand("am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS").close()
             main { Sheet.dismissAll(); act.stateRef().filter = PaneFilter(); act.stateRef().expandedPaneId = null
                 act.stateRef().current().panes.forEach { it.locked = false }; act.refreshAll() }
             Thread.sleep(800)

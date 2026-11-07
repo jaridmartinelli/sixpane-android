@@ -4,6 +4,12 @@
 set +e
 OUT="$GITHUB_WORKSPACE/tessera-evidence"; mkdir -p "$OUT"
 timeout 15s adb shell dumpsys webviewupdate > "$OUT/webview.txt" 2>&1
+# The emulator's own setup app sometimes hangs and Android shows an "isn't responding"
+# dialog over everything, which swallows the tests' taps. Disable it and hide system
+# error dialogs; this affects only the throwaway emulator, never the app under test.
+timeout 15s adb shell pm disable-user --user 0 com.google.android.googlesdksetup >/dev/null 2>&1
+timeout 15s adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1
+timeout 15s adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1
 gradle --project-dir "$GITHUB_WORKSPACE/tessera" --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
 status=$?
 timeout 20s adb logcat -d > "$OUT/logcat.txt" 2>&1
