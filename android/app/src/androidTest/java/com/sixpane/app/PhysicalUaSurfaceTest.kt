@@ -147,6 +147,12 @@ class PhysicalUaSurfaceTest {
             view.settings.useWideViewPort = true
             view.settings.loadWithOverviewMode = true
             val native = view.settings.userAgentString.orEmpty()
+            // Capture default metadata before a custom UA can reduce hints.
+            val originalMetadata =
+                if (sample.treatment == Treatment.STRIPPED_METADATA &&
+                    WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA))
+                    WebSettingsCompat.getUserAgentMetadata(view.settings)
+                else null
             configuredUa = native
             if (sample.treatment != Treatment.NATIVE) {
                 val stripped = native.replace("; wv)", ")")
@@ -160,13 +166,12 @@ class PhysicalUaSurfaceTest {
             if (sample.treatment == Treatment.STRIPPED_METADATA) {
                 // Second arm only; restore nothing to the first arm, which has
                 // already completed in separate WebView instances.
-                if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
-                    val original = WebSettingsCompat.getUserAgentMetadata(view.settings)
-                    val noWebView = original.brandVersionList.filterNot {
+                if (originalMetadata != null) {
+                    val noWebView = originalMetadata.brandVersionList.filterNot {
                         it.brand.contains("webview", ignoreCase = true)
                     }
                     if (noWebView.isNotEmpty()) {
-                        val metadata = UserAgentMetadata.Builder(original)
+                        val metadata = UserAgentMetadata.Builder(originalMetadata)
                             .setBrandVersionList(noWebView)
                             .build()
                         WebSettingsCompat.setUserAgentMetadata(view.settings, metadata)
@@ -306,7 +311,7 @@ class PhysicalUaSurfaceTest {
         val report = StringBuilder()
         report.appendLine("R8 OBSERVATION: physical QA | 12 matched pane settings, synthetic LocalStore.distinctSix | source WebKit 1.13.0")
         report.appendLine("PRIMARY: native vs UA stripped ONLY | SECONDARY: " + metadataStatus)
-        report.appendLine("pane | ws | treatment | viewport LocalStore W%xH% (group) | measured innerWxH / screen / layout px | sent User-Agent (httpbin) | echoed sec-ch-* | navigator.userAgent | navigator.userAgentData.brands | challenge | final host/path | notes")
+        report.appendLine("pane | ws | treatment | viewport LocalStore W%xH% (group) | measured innerWxH / screen / layout px | configured UA | sent User-Agent (httpbin) | echoed sec-ch-* | navigator.userAgent | navigator.userAgentData.brands | challenge | final host/path | notes")
         for (o in primary + metadata) {
             report.appendLine(listOf(
                 o.sample.pane.toString(),
@@ -315,6 +320,7 @@ class PhysicalUaSurfaceTest {
                 o.sample.widthPercent.toString() + "%x" +
                     o.sample.heightPercent + "% (g" + o.sample.viewportGroup + ")",
                 o.actualViewport,
+                cell(o.configuredUa),
                 cell(o.headerUa),
                 cell(o.clientHints),
                 cell(o.jsUa),
@@ -393,16 +399,21 @@ class PhysicalUaSurfaceTest {
               try {
                 const text = (document.body && document.body.innerText || '').slice(0,12000);
                 const title = document.title || '';
-                const cue = /captcha|verify you are human|proof.of.work|waiting room|you are now in line|security challenge|security check/i;
-                const challenge = cue.test(title) || cue.test(text) ||
-                  !!document.querySelector('iframe[src*="captcha"], [id*="challenge"], [class*="captcha"]');
                 const normalLanding = location.hostname === 'queue-it.com' &&
                   location.pathname.startsWith('/product');
+                const queueHost = location.hostname.endsWith('.queue-it.net');
+                const explicit = /captcha|verify you are human|proof.of.work|security challenge|security check/i;
+                const waiting = /you are now in line|estimated wait|queue paused|waiting room/i;
+                const challenge = !normalLanding && (
+                  explicit.test(title) || explicit.test(text) ||
+                  (queueHost && (waiting.test(title) || waiting.test(text))) ||
+                  !!document.querySelector('iframe[src*="captcha"], [class*="captcha"]')
+                );
                 return JSON.stringify({
-                  challenge: challenge ? 'YES' : normalLanding ? 'NO' : 'UNKNOWN',
+                  challenge: normalLanding ? 'NO' : challenge ? 'YES' : 'UNKNOWN',
                   path: location.hostname + location.pathname,
-                  observation: challenge ? 'visible challenge indicator'
-                    : normalLanding ? 'demo released to product landing'
+                  observation: normalLanding ? 'demo released to product landing'
+                    : challenge ? 'visible challenge indicator'
                     : 'no definitive challenge indicator'
                 });
               } catch (e) {
