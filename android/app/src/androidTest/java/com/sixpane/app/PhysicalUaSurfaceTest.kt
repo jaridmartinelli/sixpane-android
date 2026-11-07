@@ -3,12 +3,11 @@ package com.sixpane.app
 import android.app.Instrumentation
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.webkit.UserAgentMetadata
-import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import org.json.JSONObject
@@ -31,9 +30,10 @@ import kotlin.math.roundToInt
  * (LocalStore.kt:25-32), repeated as matched physical-size controls in workspace 2.
  * These are test-only viewport configurations, NOT the user's persisted panes.
  *
- * Arm 2: only after Arm 1, if WebView supports USER_AGENT_METADATA and the
- * stripped arm exposes WebView-branded Client Hints. The second label is
- * STRIPPED+METADATA and is NEVER included in Arm 1 comparisons.
+ * Arm 2: after Arm 1, run when USER_AGENT_METADATA is supported regardless
+ * of whether UA-only looked different. Uses the exact shared treatment called
+ * by real PaneCard, logs setter result/exception and metadata readback.
+ * The second label STRIPPED_METADATA is NEVER included in Arm 1 comparisons.
  *
  * Observe HTTP request headers from httpbin.org/headers in-page, plus browser JS
  * values and a read-only demo waiting-room/challenge indication. Demo redirects
@@ -59,8 +59,10 @@ class PhysicalUaSurfaceTest {
 
     private data class Observation(
         val sample: Sample,
-        val configuredUa: String,
+        val diagnosis: QaUaConfiguration.Result,
         val headerUa: String,
+        val sentMobileHint: String,
+        val sentBrandsHint: String,
         val clientHints: String,
         val brands: String,
         val jsUa: String,
@@ -86,13 +88,9 @@ class PhysicalUaSurfaceTest {
         }
         val arm1 = ordered.map { measure(it) }
 
-        val residue = arm1.any {
-            it.sample.treatment == Treatment.STRIPPED &&
-                (it.brands.contains("webview", ignoreCase = true) ||
-                    it.clientHints.contains("webview", ignoreCase = true))
-        }
         val supported = WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)
-        val arm2 = if (supported && residue) {
+        Log.i("SIXPANE_R8", "R8_FEATURE USER_AGENT_METADATA supported=" + supported)
+        val arm2 = if (supported) {
             // Only stripped-UA samples are eligible; matched viewport settings
             // are unchanged. Metadata is NEVER enabled for Arm 1.
             plan.filter { it.treatment == Treatment.STRIPPED }
@@ -101,8 +99,7 @@ class PhysicalUaSurfaceTest {
 
         val metadataStatus = when {
             !supported -> "NOT_RUN: USER_AGENT_METADATA unsupported by installed WebView"
-            !residue -> "NOT_RUN: UA-only had no observable WebView-branded Client Hints residue"
-            else -> "SECOND_ARM: stripped UA plus feature-gated metadata (excluded from UA-only comparison)"
+            else -> "SECOND_ARM: shared PaneCard stripped+mobile UA and metadata (excluded from UA-only comparison)"
         }
         val report = buildReport(arm1, arm2, metadataStatus)
         // One table and one-line read are sent directly to am instrument output.
@@ -136,7 +133,7 @@ class PhysicalUaSurfaceTest {
             .roundToInt().coerceAtLeast(1)
         val height = (baseH / WorkspacePolicy.normalViewScale(sample.heightPercent))
             .roundToInt().coerceAtLeast(1)
-        var configuredUa = ""
+        lateinit var diagnosis: QaUaConfiguration.Result
 
         instrumentation.runOnMainSync {
             view = WebView(context)
@@ -146,45 +143,19 @@ class PhysicalUaSurfaceTest {
             view.settings.domStorageEnabled = true
             view.settings.useWideViewPort = true
             view.settings.loadWithOverviewMode = true
-            val native = view.settings.userAgentString.orEmpty()
-            // Capture default metadata before a custom UA can reduce hints.
-            val originalMetadata =
-                if (sample.treatment == Treatment.STRIPPED_METADATA &&
-                    WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA))
-                    WebSettingsCompat.getUserAgentMetadata(view.settings)
-                else null
-            configuredUa = native
-            if (sample.treatment != Treatment.NATIVE) {
-                val stripped = native.replace("; wv)", ")")
-                if (stripped == native) {
-                    note.add("NO_WV_MARKER: UA string unchanged")
-                } else {
-                    configuredUa = stripped
-                    view.settings.userAgentString = stripped
-                }
+            // EXACT same function as the real PaneCard override, not a test-local
+            // recreation of its UA or metadata builder. Arm 1 deliberately asks
+            // that same function for UA_ONLY to preserve experiment separation.
+            val variant = when (sample.treatment) {
+                Treatment.NATIVE -> QaUaConfiguration.Treatment.NATIVE
+                Treatment.STRIPPED -> QaUaConfiguration.Treatment.UA_ONLY
+                Treatment.STRIPPED_METADATA ->
+                    QaUaConfiguration.Treatment.UA_WITH_METADATA
             }
-            if (sample.treatment == Treatment.STRIPPED_METADATA) {
-                // Second arm only; restore nothing to the first arm, which has
-                // already completed in separate WebView instances.
-                if (originalMetadata != null) {
-                    val noWebView = originalMetadata.brandVersionList.filterNot {
-                        it.brand.contains("webview", ignoreCase = true)
-                    }
-                    if (noWebView.isNotEmpty()) {
-                        val metadata = UserAgentMetadata.Builder(originalMetadata)
-                            .setBrandVersionList(noWebView)
-                            .build()
-                        WebSettingsCompat.setUserAgentMetadata(view.settings, metadata)
-                        note.add("METADATA_SET: removed WebView-branded UA-CH entries")
-                    } else {
-                        // An empty brand list would request system defaults;
-                        // never pretend it removes WebView branding.
-                        note.add("METADATA_NOT_SET: no non-WebView brands exposed")
-                    }
-                } else {
-                    note.add("METADATA_NOT_SET: feature unsupported")
-                }
-            }
+            diagnosis = QaUaConfiguration.apply(view.settings, variant)
+            note.add("SHARED_PANECARD_CONFIG=" + variant.name)
+            note.add("SETTER_RESULT=" + diagnosis.metadataResult)
+            note.add("READBACK=" + diagnosis.metadataReadback)
             // Mirror PaneCard.applyViewportDimensions(): real logical viewport
             // dimensions change inversely to the persisted percentage scale.
             // Detached test WebView is laid out explicitly; JS reports actual
@@ -204,6 +175,8 @@ class PhysicalUaSurfaceTest {
             val headers = parseHeaders(headersSnapshot)
             val headerUa = headers?.optString("user-agent", "")?.ifBlank { "NOT_RETURNED" }
                 ?: "UNAVAILABLE"
+            val sentMobile = headers?.optString("sec-ch-ua-mobile", "ABSENT") ?: "UNAVAILABLE"
+            val sentBrands = headers?.optString("sec-ch-ua", "ABSENT") ?: "UNAVAILABLE"
             val ch = if (headers == null) "UNAVAILABLE" else {
                 val entries = mutableListOf<String>()
                 val iterator = headers.keys()
@@ -244,8 +217,17 @@ class PhysicalUaSurfaceTest {
             val observation = challengeSnapshot.optString("observation", "")
             if (observation.isNotEmpty()) note.add("CHALLENGE:" + observation)
 
-            return Observation(sample, configuredUa, headerUa, ch, brands, jsUa,
-                viewport, challenge, path, note.joinToString("; "))
+            Log.i("SIXPANE_R8",
+                "R8_RUNTIME pane=" + sample.pane + " treatment=" + sample.treatment.name +
+                    " mobilePresent=" + diagnosis.mobilePresent +
+                    " metaSupported=" + diagnosis.metadataSupported +
+                    " setter=" + diagnosis.metadataResult +
+                    " sentSecChUaMobile=" + sentMobile +
+                    " sentSecChUa=" + sentBrands +
+                    " jsBrands=" + brands +
+                    " sentUa=" + headerUa)
+            return Observation(sample, diagnosis, headerUa, sentMobile, sentBrands,
+                ch, brands, jsUa, viewport, challenge, path, note.joinToString("; "))
         } finally {
             instrumentation.runOnMainSync {
                 view.stopLoading()
@@ -310,8 +292,11 @@ class PhysicalUaSurfaceTest {
     ): String {
         val report = StringBuilder()
         report.appendLine("R8 OBSERVATION: physical QA | 12 matched pane settings, synthetic LocalStore.distinctSix | source WebKit 1.13.0")
-        report.appendLine("PRIMARY: native vs UA stripped ONLY | SECONDARY: " + metadataStatus)
-        report.appendLine("pane | ws | treatment | viewport LocalStore W%xH% (group) | measured innerWxH / screen / layout px | configured UA | sent User-Agent (httpbin) | echoed sec-ch-* | navigator.userAgent | navigator.userAgentData.brands | challenge | final host/path | notes")
+        report.appendLine("PRIMARY: native vs UA stripped + Mobile (metadata OFF) | SECONDARY: " + metadataStatus)
+        report.appendLine("R8_FEATURE USER_AGENT_METADATA supported=" +
+            WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA) +
+            " | PaneCard treatment uses the exact QaUaConfiguration.apply implementation")
+        report.appendLine("pane | ws | treatment | viewport LocalStore W%xH% (group) | measured innerWxH / screen / layout px | configured UA | mobilePresent | metadataSupported | setterResult | metadataReadback | sent User-Agent (httpbin) | sent sec-ch-ua-mobile | sent sec-ch-ua | all echoed sec-ch-* | navigator.userAgent | navigator.userAgentData.brands | challenge | final host/path | notes")
         for (o in primary + metadata) {
             report.appendLine(listOf(
                 o.sample.pane.toString(),
@@ -320,8 +305,14 @@ class PhysicalUaSurfaceTest {
                 o.sample.widthPercent.toString() + "%x" +
                     o.sample.heightPercent + "% (g" + o.sample.viewportGroup + ")",
                 o.actualViewport,
-                cell(o.configuredUa),
+                cell(o.diagnosis.configuredUa),
+                o.diagnosis.mobilePresent.toString(),
+                o.diagnosis.metadataSupported.toString(),
+                cell(o.diagnosis.metadataResult),
+                cell(o.diagnosis.metadataReadback),
                 cell(o.headerUa),
+                cell(o.sentMobileHint),
+                cell(o.sentBrandsHint),
                 cell(o.clientHints),
                 cell(o.jsUa),
                 cell(o.brands),
