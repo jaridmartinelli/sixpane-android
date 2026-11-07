@@ -125,3 +125,18 @@ run 42187351141 reached the Android test runner and passed the 42-profile test;
 artifact `sixpane-42-profile-integrity-ci` (ID 13487734214) contains the XML.
 This was a CI workflow defect, not evidence for or against cookie isolation.
 
+## QA observation — public Queue-it demo redirect (2026-11-07)
+
+User-reported observation: navigating to
+`https://queueitcom.queue-it.net/?c=queueitcom&e=wrdemoproduct`
+can immediately leave that host for `https://queue-it.com/product/`.
+The observed landing URL carries `qitq`, `qitts`, and `qith` query keys,
+not a `~queueittoken` parameter. These are **event-specific observations**, not
+a general Queue-it token-format contract or an assertion of accepted-session
+state. No parser, token handling, or challenge logic is derived from them.
+
+For R6, `PhysicalStorageMatrixTest.kt` uses `https://example.com/` as the
+stable HTTPS origin for synthetic WebView profile-storage checks. R18's future
+challenge observation remains scoped to the demo and must tolerate a genuine
+redirect to `queue-it.com` without treating it as a test failure. Neither
+R18 nor live R13/R14 provider behavior is implemented or proven here.
