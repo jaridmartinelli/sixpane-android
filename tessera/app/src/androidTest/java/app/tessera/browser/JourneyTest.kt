@@ -118,6 +118,26 @@ class JourneyTest {
         main { lockedP.locked = false; act.refreshAll() }
     }
 
+    @Test fun typingInPageKeepsItsSendButtonAboveKeyboard() = launch { _, act ->
+        val p = main { act.stateRef().current().panes[2] }
+        load(act, p, "<style>body{margin:0;height:100vh}#bar{position:fixed;left:0;right:0;bottom:0;height:64px;display:flex}" +
+            "#box{flex:1;font-size:20px}#send{width:90px}</style><div id=ready>chat</div>" +
+            "<div id=bar><input id=box placeholder='Ask anything'><button id=send>Send</button></div>")
+        main { act.onPaneTouched(p.id); act.toggleExpandActive() }
+        Thread.sleep(1200)
+        val (x, bottom) = main { val v = act.cardRef(p.id)!!; val l = IntArray(2); v.getLocationOnScreen(l); (l[0] + v.width / 3f) to (l[1] + v.height.toFloat()) }
+        tap(x, bottom - 30f)
+        waitFor(15_000, "keyboard up while typing in the page") {
+            js(act, p, "document.activeElement&&document.activeElement.id") == "box" &&
+                main { act.window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true }
+        }
+        Thread.sleep(1500) // keyboard slide + pane resize settle
+        val visible = js(act, p, "(function(){var r=document.getElementById('send').getBoundingClientRect();return r.bottom<=innerHeight&&r.top>=0?'y':'n'})()")
+        Log.i("TesseraTest", "JOURNEY keyboard: sendVisible=$visible innerHeight=${js(act, p, "String(innerHeight)")}")
+        assertEquals("page's Send button must be visible above the keyboard", "y", visible)
+        main { act.toggleExpandActive() }
+    }
+
     /** With "Display over other apps" allowed, pages keep full speed after the task is swiped away. */
     @Test fun recentsSwipeKeepsFullSpeed() {
         inst.uiAutomation.executeShellCommand("appops set ${inst.targetContext.packageName} SYSTEM_ALERT_WINDOW allow").close()

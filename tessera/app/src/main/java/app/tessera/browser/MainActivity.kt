@@ -55,9 +55,33 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     private var imeAnimating = false
     private var navBottom = 0
 
-    private fun applyImeLift(ins: WindowInsets) {
+    private var autoExpanded: String? = null
+
+    /**
+     * Keyboard handling. The dock always rides on top of the keyboard. When the user is
+     * typing INTO A WEBSITE, the pane area also shrinks to the space above the dock, so the
+     * page can scroll its field and its own Send/Submit button into view, and the pane being
+     * typed in is enlarged until the keyboard closes. [final] is false during the keyboard's
+     * slide (only the dock moves then) and true once it settles.
+     */
+    private fun applyImeLift(ins: WindowInsets, final: Boolean = true) {
         val lift = if (Build.VERSION.SDK_INT >= 30) (ins.getInsets(WindowInsets.Type.ime()).bottom - navBottom).coerceAtLeast(0) else 0
         listOf<View>(dock, suggest, snack).forEach { it.translationY = -lift.toFloat() }
+        if (!final) return
+        val typingPage = (currentFocus as? PaneWebView)?.takeIf { lift > 0 }
+        val pad = if (typingPage != null) lift else 0
+        if (grid.paddingBottom != dp(4) + pad) grid.setPadding(grid.paddingLeft, grid.paddingTop, grid.paddingRight, dp(4) + pad)
+        if (typingPage != null && !selecting) {
+            val id = typingPage.paneId
+            if (state.expandedPaneId != id && state.pane(id) != null && state.workspaceOf(id)?.id == state.currentId) {
+                autoExpanded = id
+                state.activePaneId = id; state.expandedPaneId = id
+                refreshAll(animate = true)
+            }
+        } else if (lift == 0 && autoExpanded != null) {
+            if (state.expandedPaneId == autoExpanded) { state.expandedPaneId = null; refreshAll(animate = true) }
+            autoExpanded = null
+        }
     }
 
     private var selecting = false
@@ -156,7 +180,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
                     if (animation.typeMask and WindowInsets.Type.ime() != 0) imeAnimating = true
                 }
                 override fun onProgress(insets: WindowInsets, running: MutableList<android.view.WindowInsetsAnimation>): WindowInsets {
-                    if (imeAnimating) applyImeLift(insets); return insets
+                    if (imeAnimating) applyImeLift(insets, final = false); return insets
                 }
                 override fun onEnd(animation: android.view.WindowInsetsAnimation) {
                     if (animation.typeMask and WindowInsets.Type.ime() != 0) { imeAnimating = false; root.requestApplyInsets() }
@@ -390,6 +414,7 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
 
     private fun toggleExpand(id: String) {
         if (selecting) { toast("Finish selecting first (tap ✕)"); return }
+        autoExpanded = null // the user's own choice wins over the typing auto-enlarge
         state.activePaneId = id
         state.expandedPaneId = if (state.expandedPaneId == id) null else id
         refreshAll(animate = true)
