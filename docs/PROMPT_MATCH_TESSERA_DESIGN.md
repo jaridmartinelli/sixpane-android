@@ -10,7 +10,7 @@ You are working on my Android app SIXPANE (native Kotlin, WebView, 7 workspaces 
 - Keep everything under the hood unchanged: package ID, signing key, profile-per-pane isolation, saved workspaces, cookies, keep-alive service, crash recovery. This is a UI/flow change only. Existing sessions must survive the update.
 - Where this spec removes a SIXPANE control, remove it. Where SIXPANE has a feature not in this spec, list it for me before deleting it.
 - Do not add per-session fingerprint or identity spoofing of any kind.
-- After building: list each section below as done / partly done / not done, with the file and line numbers.
+- After building: list each numbered section (1–18) as done / partly done / not done, with the file and line numbers. Every row, snack message and data rule listed counts; nothing is optional unless I approve dropping it.
 
 ## 1. Screen structure
 - Edge-to-edge dark UI. From top to bottom: the **pane grid**, then **filter chips** (shown only while a filter is on), then the **command bar**.
@@ -149,3 +149,100 @@ When opened from ⋮, add a section **"All panes"** with: Filter panes · Check 
 - **Keep sessions alive:** Keep CPU awake (switch) · Keep Wi-Fi awake (switch; "Android 14+ may ignore this request") · Battery optimisation (✓ or Fix) · Keep-alive notification (✓ or Allow) · Full speed after closing from Recents (✓ or Allow, opens "Display over other apps") · App info (OnePlus background settings).
 - **Layout:** Full-size pages in small panes (switch) · Automatic / Always 2×3 / Always 3×2 (✓ on the current choice).
 - **About:** How sessions work.
+
+## 13. What a lock does (all of it)
+A locked pane:
+- **Cannot:** be ended, switch desktop mode, or have its cookies edited (the cookie editor becomes view-only with a red banner).
+- **Ignores:** pull-to-refresh, and is skipped by bulk "open address" and bulk desktop on/off.
+- **Opens new-tab links in the pop-up**, so its own page is never replaced.
+- **Can still:** browse normally (typing an address), go back, zoom and be recoloured.
+- **Feedback:** every refused action shakes the pane's lock (380ms), plays a reject haptic, and shows the reason in the snack bar.
+
+## 14. Remaining screens
+- **Workspace menu** (page; hold a workspace card or the workspace button). Title "Workspace N", subtitle "X of 6 panes open · Y locked". Rows:
+  1. Lock all 6 panes, "Only this workspace" (shown unless all are locked)
+  2. Unlock all panes, "N locked in this workspace" (shown if any are locked)
+  3. New workspace to the right (disabled with the reason when at 7, or while filtering)
+  4. **Close workspace**, red, "Ends all 6 sessions. Reopening starts fresh." (disabled while any pane is locked; tapping it then shakes those locks)
+- **Cookie editor** (full screen; the header shows a back arrow and "Pane N · Workspace W · host"):
+  - One explanatory line: "These belong only to this pane's session (profile …xxxxxx). No other pane can see or change them."
+  - When the pane is locked: a red view-only banner.
+  - A search field, then cookie rows (name in bold, value in monospace, 2 lines max); tap a row to edit.
+  - "Add cookie" and "Delete all for this site" buttons.
+  - Edit/add is a compact card with Name and Value fields and Save / Delete / Cancel. Input is validated, and the result is checked by re-reading the cookie, with honest messages when a save or delete doesn't fully work.
+  - A "Storage on this page" section: local storage key count, session storage key count, IndexedDB database names, and the origin.
+  - A footer note that Android doesn't reveal cookie paths, expiry dates or HttpOnly flags.
+  - With no site open: "Open a website in this pane to see its cookies."
+- **Copy diagnostics** puts text on the clipboard: app and device versions, WebView version, workspace and pane, pane ID, profile name, which profile the WebView is actually bound to (flagged if it doesn't match), URL, title, lock/desktop/zoom/colour, loading/error state, crash count, last JS heartbeat and page visibility, session age, cookie **names only** (never values), storage counts, user agent, keep-alive status, and live/responding counts. Then a snack: "Diagnostics for pane N copied".
+- **Check isolation & health** (page). Writes a different random cookie into every pane's cookie jar, reads them all back, then deletes them. The title is "N of N sessions isolated" or "Isolation problem found". Rows, each with ✓ or ⚠:
+  - Cookie jars are separate
+  - Unique profiles (none shared, none the default)
+  - Each browser uses its own profile
+  - Sessions awake: a live JS ping to every page right now, with how many report themselves as visible
+  - Keep-alive service, CPU wake lock, Wi-Fi lock ("requested, Android 14+ may ignore it"), battery optimisation, and closing from Recents (full speed or SLOWED)
+  
+  Buttons: Copy report / Done.
+- **Welcome page** on first launch, shown only once. Title "Welcome to …", subtitle "42 private browsers — 7 workspaces of 6 panes."
+  - Two short how-to lines: the bar controls the active pane and back is the system gesture; the pane header is the app's (double-tap enlarges, hold opens the menu).
+  - A section "So sessions never drop" with rows, each shown only if still needed: allow the keep-alive notification · allow running in the background · keep full speed after closing from Recents.
+  - A "Got it" button.
+- **How sessions work** (page), in plain sentences:
+  - Each pane is its own private browser.
+  - A login in one pane is not shared with any other pane.
+  - Ending a session or closing a workspace erases it for good; profiles are never reused.
+  - Bookmarks are just addresses.
+  - How keep-alive works.
+  - Point to the isolation & health check.
+- **No filter matches:** centred filter icon, "No panes match these filters", "Your sessions are still running." and a **Clear filters** button.
+- **Unsupported WebView:** if the WebView can't give each pane its own profile, the app refuses to start and shows a full screen with a shield icon, "Update Android System WebView", a plain explanation, and an **Open Play Store** button. Never fall back to a shared profile.
+
+## 15. Data rules behind the buttons
+- **End session:** the pane's WebView is destroyed and its profile retired. A fresh pane with a new, never-used profile takes the **same slot**, and selection, active and enlarged state carry over to it. Profile deletion is retried on the next launch if Android refuses; Settings shows "Finish erasing ended sessions (N waiting)" while any are pending.
+- **Close workspace:** all 6 profiles are retired, and the neighbouring workspace becomes current. Closing the last workspace immediately creates a fresh one.
+- **Bookmarks are ONE shared list** of addresses, not per pane (opening one uses the session of the pane you open it in). This is a deliberate change from SIXPANE's per-pane bookmarks: keep existing bookmarks by merging them into the shared list, and tell me before changing anything.
+- **Survives a restart:** workspaces and their order, pane URLs and titles, tags, locks, desktop mode, the active and enlarged pane, the current workspace, filters, layout choice, bookmarks, the keep-awake switches, and whether the welcome page has been seen. Save atomically (write a temp file, then rename), debounced by 400ms, and immediately when the app goes to the background.
+- **Desktop site:** a desktop user agent made from the WebView's own one with "Android …" replaced by "X11; Linux x86_64" and "Mobile" and "; wv" removed, plus overview mode. It reloads the page.
+
+## 16. Browser behaviour
+- **"Leave this page?" warnings** from websites are shown to the user, never auto-answered.
+- **File-upload buttons** open the Android file picker. If no picker is available: "No app available to pick files".
+- **Camera, microphone and location requests** are refused, with a snack saying which site asked.
+- **Downloads** go through Android's DownloadManager, sending the pane's own cookies, saved to Downloads, with a "Downloading <file>" snack.
+- **`intent:`, `mailto:` and other app links** open the matching app only after a tap; an `intent:` link falls back to its `browser_fallback_url`.
+- **Certificate errors** block the page with "This site's security certificate isn't trusted, so it was blocked."
+- **JS alerts/confirms** while the app has no screen are cancelled safely.
+- **Renderer crash:** rebuild on the same profile after 1s, 2s, 4s … up to 30s.
+- **Heartbeat:** a JS ping to every page every 30s, which also flushes cookies.
+
+## 17. Background and notifications
+- **Keep-alive foreground service:** low importance, ongoing. Title "Keeping N sessions running", text "Pages stay connected while the screen is off. Tap to open." Holds a CPU wake lock and a Wi-Fi lock while the matching switches are on.
+- **If Android killed the app:** the notification becomes "Sessions were stopped by Android / Tap to restore them. Logins are kept; open pages reload."
+- **Swiped away from Recents:**
+  - With "Display over other apps" allowed: move every WebView into an invisible, untouchable overlay window (alpha 0, laid out at its last size, translated off screen) so pages stay attached and visible to the page. Move them back when the app reopens.
+  - Without the permission: post "Sessions slowed down / Tessera was closed from Recents. Tap to resume full speed."
+- **After a phone restart or app update:** post "Phone restarted" or "… was updated" with "Tap to restore your sessions. Logins are kept; pages reload."
+- **WebViews:**
+  - Override window/view visibility so pages always report "visible".
+  - Use important renderer priority, not waived when hidden.
+  - Never call `onPause` or `pauseTimers`.
+  - Keep panes in other workspaces attached, translated off screen, and VISIBLE.
+
+## 18. Small things that must match
+- **Snack bar:** radius 14dp, minimum height 48dp, surface3 with a 1dp stroke, 8dp elevation, sits 10dp above the dock and rides up with the keyboard. Shows for 3.2s, or 6s when it has an action.
+- **Filter chips:** 34dp tall, radius 16dp, surface2 with a 1dp stroke, each ✕ a 34dp target.
+- **Suggestions panel:** the top edge has a 18dp radius, 6dp elevation, and it sits directly above the dock.
+- **Workspace screen card previews:** 72dp tall tiles (64dp with 3 columns), radius 6dp.
+- **Every snack message to copy word-for-word:**
+  - "Nothing to go forward to"
+  - "7 is the maximum. Close a workspace to add one."
+  - "Clear filters to add a workspace" (with a Clear action)
+  - "Finish selecting first (tap ✕)"
+  - "Open a page first, then bookmark it"
+  - "Bookmarked <host>" (with Undo)
+  - "Bookmark removed" (with Undo)
+  - "Locked N panes" / "Unlocked N panes" (with Undo)
+  - "Coloured <name>: N panes" (with Undo)
+  - "Ended N sessions — fresh panes are ready"
+  - "Filters cleared — all panes shown"
+- **Selection mode:** tapping anywhere on a pane (overlay or header) toggles it. Entering selection shrinks any enlarged pane and closes the address field. "All" turns into "None" when every visible pane in the workspace is selected.
+- **Address field:** touching any page, entering selection or opening any menu closes the field and hides the keyboard.
