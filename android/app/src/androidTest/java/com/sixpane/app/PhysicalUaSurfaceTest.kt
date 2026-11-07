@@ -321,6 +321,34 @@ class PhysicalUaSurfaceTest {
                 cell(o.notes)
             ).joinToString(" | "))
         }
+        // Counts derive ONLY from echoed HTTP headers and JS in the physical
+        // device run, never from intended settings or the setter's return value.
+        // This line is NOT a success claim unless every measured condition holds.
+        val n = metadata.size
+        val mobileInUa = metadata.count {
+            it.diagnosis.mobilePresent &&
+                it.headerUa.contains(" Mobile Safari/537.36")
+        }
+        val mobileHint = metadata.count { it.sentMobileHint.trim() == "?1" }
+        val chromeHeader = metadata.count {
+            it.sentBrandsHint.contains("Google Chrome", ignoreCase = true)
+        }
+        val chromeJs = metadata.count {
+            it.brands.contains("Google Chrome", ignoreCase = true)
+        }
+        val returned = metadata.count { it.diagnosis.metadataResult == "SET_RETURNED" }
+        val proven = n > 0 && mobileInUa == n && mobileHint == n &&
+            chromeHeader == n && chromeJs == n && returned == n
+        report.appendLine(
+            "R8_FIELDS_RUNTIME: treatment=STRIPPED_METADATA samples=" + n +
+                " configured+sentMobileUA=" + mobileInUa + "/" + n +
+                " sentSecChUaMobile1=" + mobileHint + "/" + n +
+                " sentGoogleChromeBrand=" + chromeHeader + "/" + n +
+                " jsGoogleChromeBrand=" + chromeJs + "/" + n +
+                " setterReturned=" + returned + "/" + n +
+                " verdict=" + if (proven) "ALL_THREE_OBSERVED_ON_DEVICE"
+                    else "NOT_PROVEN_ON_DEVICE"
+        )
         report.appendLine(readPrimary(primary))
         return report.toString()
     }
