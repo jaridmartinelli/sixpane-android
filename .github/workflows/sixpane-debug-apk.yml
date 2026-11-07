@@ -149,3 +149,68 @@ jobs:
             android/app/build/outputs/apk/debug/*.apk
             android/app/build/reports/**
             android/app/build/test-results/**
+
+# Instrumentation runs independently of the canonical APK signing/publishing job.
+  # Use macOS hardware virtualization to avoid root/sudo KVM setup.
+  instrumentation:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: macos-15-intel
+    timeout-minutes: 55
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK 35 and build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKM="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -n "$SDKM"
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compile debug app and instrumentation APK
+        working-directory: android
+        run: gradle --no-daemon --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Verify generated instrumentation APK manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p emulator-evidence
+          TEST_APK='android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'
+          test -s "$TEST_APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$TEST_APK" > emulator-evidence/instrumentation-manifest.txt
+          grep -E '^(package|instrumentation):' emulator-evidence/instrumentation-manifest.txt
+          grep -Fq "package: name='com.sixpane.app.preview.filterview.test'" emulator-evidence/instrumentation-manifest.txt
+          grep -Fq "instrumentation: name='androidx.test.runner.AndroidJUnitRunner'" emulator-evidence/instrumentation-manifest.txt
+          grep -Fq "targetPackage='com.sixpane.app.preview.filterview'" emulator-evidence/instrumentation-manifest.txt
+      - name: Run Android instrumentation on disposable API 35 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: gradle --project-dir "$GITHUB_WORKSPACE/android" --no-daemon --stacktrace :app:connectedDebugAndroidTest
+      - name: Upload Android instrumentation test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SIXPANE-INSTRUMENTATION-API35
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            emulator-evidence/
+            android/app/build/outputs/androidTest-results/**
+            android/app/build/reports/androidTests/**
