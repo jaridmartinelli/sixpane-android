@@ -13,7 +13,6 @@ import androidx.webkit.WebViewFeature
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.junit.Assert.*
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.UUID
@@ -22,15 +21,15 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Disposable emulator only: never run this test on a user's installed app.
+ * Physical-device instrumentation for the separate QA package ONLY.
  *
- * Exercises REAL WebViews with 42 distinct QA-only profiles. It never navigates
- * an actual Queue-it event, accesses existing SIXPANE pane profiles, spoofs
- * fingerprints or reads real queue tokens.
+ * Exercises real WebViews with 42 distinct, randomly named test profiles.
+ * Never navigates an actual Queue-it event or reads existing SIXPANE pane
+ * profiles, live session cookies, or Queue-it tokens.
  *
- * This verifies sequential profile isolation and data continuity on WebView
- * reconstruction, NOT 42 concurrent background renderers or server-side
- * visitor classification.
+ * Serves the packaged asset through WebViewAssetLoader's HTTPS origin.
+ * This verifies sequential profile isolation and data continuity after
+ * WebView reconstruction, NOT 42 simultaneous renderers or Queue-it identity.
  */
 @RunWith(AndroidJUnit4::class)
 class SessionIntegrityInstrumentedTest {
@@ -46,10 +45,12 @@ class SessionIntegrityInstrumentedTest {
     private fun newCase(): ProfileCase =
         ProfileCase("qa-integrity-" + UUID.randomUUID(), UUID.randomUUID().toString())
 
-    private fun isDisposableEmulator(): Boolean =
+    private fun isEmulator(): Boolean =
         Build.FINGERPRINT.contains("generic", true) ||
             Build.MODEL.contains("sdk_gphone", true) ||
-            Build.PRODUCT.contains("sdk", true)
+            Build.PRODUCT.contains("sdk", true) ||
+            Build.HARDWARE.contains("ranchu", true) ||
+            Build.HARDWARE.contains("goldfish", true)
 
     private fun inspect(profile: ProfileCase, returning: Boolean) {
         lateinit var view: WebView
@@ -139,9 +140,12 @@ class SessionIntegrityInstrumentedTest {
     }
 
     @Test fun fortyTwoQaProfilesKeepCookiesLocalStorageAndIndexedDbAcrossRecreation() {
-        // These profiles are written to a throwaway emulator installation ONLY.
-        // Never run automatically on the user's OnePlus Open or installed package.
-        assumeTrue("Disposable emulator required", isDisposableEmulator())
+        // Fail loudly instead of silently skipping: physical QA app only.
+        assertEquals("Instrumentation must target the separate QA package",
+            "com.sixpane.app.qa.wvab", context.packageName)
+        assertTrue("QA_WV_AB must be enabled", BuildConfig.QA_WV_AB)
+        assertFalse("Run the 42-profile sequence on a physical device, not an emulator",
+            isEmulator())
         assertTrue("MULTI_PROFILE is mandatory; shared-cookie fallback is forbidden",
             WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE))
         val cases = List(42) { newCase() }
