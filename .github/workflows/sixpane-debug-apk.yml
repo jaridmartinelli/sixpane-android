@@ -155,7 +155,7 @@ jobs:
   instrumentation:
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: macos-15-intel
-    timeout-minutes: 55
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -219,17 +219,21 @@ jobs:
           check_manifest "Instrumentation element" "$INSTRUMENTATION" 'E: instrumentation'
           check_manifest "JUnit runner" "$INSTRUMENTATION" 'android:name(0x01010003)="androidx.test.runner.AndroidJUnitRunner"'
           check_manifest "Target application" "$INSTRUMENTATION" 'android:targetPackage(0x01010021)="com.sixpane.app.preview.filterview"'
-      - name: Run Android instrumentation on disposable API 35 emulator
+      - name: Run Android instrumentation on disposable API 34 emulator
         # The manifest guard is diagnostic; a failing guard must not skip real device tests.
         if: ${{ always() && steps.instrumentation_apks.outcome == 'success' }}
-        uses: reactivecircus/android-emulator-runner@v2
+        # Pinned upstream v2.36.0 release (rather than mutable @v2).
+        uses: reactivecircus/android-emulator-runner@5d6e86df22ab11632167a1a6b0c9ab0dc3469586
         with:
-          api-level: 35
+          # Android 14 Google APIs x86_64 image is native to macOS Intel's architecture.
+          # Avoid API 35 image while investigating offline boots; real-device parity is unverified.
+          api-level: 34
           arch: x86_64
           target: google_apis
-          profile: pixel_7
+          profile: pixel_5
+          emulator-boot-timeout: 240
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: gradle --project-dir "$GITHUB_WORKSPACE/android" --no-daemon --stacktrace :app:connectedDebugAndroidTest
       - name: Upload Android instrumentation test reports
         if: always()
