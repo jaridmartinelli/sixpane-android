@@ -179,6 +179,7 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Compile debug app and instrumentation APK
+        id: instrumentation_apks
         working-directory: android
         run: gradle --no-daemon --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Verify generated instrumentation APK manifest
@@ -187,13 +188,40 @@ jobs:
           set -euo pipefail
           mkdir -p emulator-evidence
           TEST_APK='android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'
-          test -s "$TEST_APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$TEST_APK" > emulator-evidence/instrumentation-manifest.txt
-          grep -E '^(package|instrumentation):' emulator-evidence/instrumentation-manifest.txt
-          grep -Fq "package: name='com.sixpane.app.preview.filterview.test'" emulator-evidence/instrumentation-manifest.txt
-          grep -Fq "instrumentation: name='androidx.test.runner.AndroidJUnitRunner'" emulator-evidence/instrumentation-manifest.txt
-          grep -Fq "targetPackage='com.sixpane.app.preview.filterview'" emulator-evidence/instrumentation-manifest.txt
+          BADGING='emulator-evidence/instrumentation-manifest.txt'
+          XMLTREE='emulator-evidence/instrumentation-manifest-xmltree.txt'
+          INSTRUMENTATION='emulator-evidence/instrumentation-declaration.txt'
+          test -s "$TEST_APK" || { echo "::error::Instrumentation APK missing or empty: $TEST_APK"; exit 1; }
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$AAPT" dump badging "$TEST_APK" > "$BADGING"
+          "$AAPT" dump xmltree "$TEST_APK" AndroidManifest.xml > "$XMLTREE"
+          # aapt badging includes the package but not necessarily the instrumentation element.
+          # Extract that element and its attributes from the compiled manifest tree.
+          awk '
+            /^[[:space:]]*E: instrumentation([[:space:]]|$)/ { inside=1; print; next }
+            inside && /^[[:space:]]*E: / { exit }
+            inside { print }
+          ' "$XMLTREE" > "$INSTRUMENTATION"
+          check_manifest() {
+            local description="$1" source="$2" expected="$3"
+            if grep -Fq -- "$expected" "$source"; then
+              echo "PASS: $description"
+            else
+              echo "::error title=Instrumentation manifest mismatch::FAIL: $description (expected: $expected)"
+              echo "APK package record:"
+              grep '^package:' "$BADGING" || true
+              echo "Instrumentation manifest element:"
+              cat "$INSTRUMENTATION"
+              return 1
+            fi
+          }
+          check_manifest "Test APK package" "$BADGING" "package: name='com.sixpane.app.preview.filterview.test'"
+          check_manifest "Instrumentation element" "$INSTRUMENTATION" 'E: instrumentation'
+          check_manifest "JUnit runner" "$INSTRUMENTATION" 'android:name(0x01010003)="androidx.test.runner.AndroidJUnitRunner"'
+          check_manifest "Target application" "$INSTRUMENTATION" 'android:targetPackage(0x01010021)="com.sixpane.app.preview.filterview"'
       - name: Run Android instrumentation on disposable API 35 emulator
+        # The manifest guard is diagnostic; a failing guard must not skip real device tests.
+        if: ${{ always() && steps.instrumentation_apks.outcome == 'success' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
