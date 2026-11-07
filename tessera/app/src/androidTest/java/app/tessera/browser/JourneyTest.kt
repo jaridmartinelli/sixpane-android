@@ -120,18 +120,19 @@ class JourneyTest {
 
     @Test fun typingInPageKeepsItsSendButtonAboveKeyboard() = launch { _, act ->
         val p = main { act.stateRef().current().panes[2] }
-        load(act, p, "<style>body{margin:0;height:100vh}#bar{position:fixed;left:0;right:0;bottom:0;height:64px;display:flex}" +
+        load(act, p, "<meta name=viewport content='width=device-width,initial-scale=1'><style>body{margin:0;height:100vh}#bar{position:fixed;left:0;right:0;bottom:0;height:64px;display:flex}" +
             "#box{flex:1;font-size:20px}#send{width:90px}</style><div id=ready>chat</div>" +
             "<div id=bar><input id=box placeholder='Ask anything'><button id=send>Send</button></div>")
         main { act.onPaneTouched(p.id); act.toggleExpandActive() }
         Thread.sleep(1200)
         // Tap exactly where the page reports its text box is (CSS px -> screen px).
-        val rect = js(act, p, "(function(){var r=document.getElementById('box').getBoundingClientRect();return (r.left+r.width/2)+','+(r.top+r.height/2)})()")
-        val (cx, cy) = rect.split(',').map { it.toFloat() }
+        val rect = js(act, p, "(function(){var r=document.getElementById('box').getBoundingClientRect();return (r.left+r.width/2)+','+(r.top+r.height/2)+','+innerWidth})()")
+        val (cx, cy, iw) = rect.split(',').map { it.toFloat() }
         val (x, y) = main {
+            // Page CSS px -> screen px using the page's real width on screen.
             val wv = act.hubRef().view(p.id)!!; val l = IntArray(2); wv.getLocationOnScreen(l)
-            @Suppress("DEPRECATION") val sc = wv.scale
-            (l[0] + cx * sc) to (l[1] + cy * sc)
+            val ratio = wv.width * (wv.parent as? android.view.View)?.scaleX.let { it ?: 1f } / iw
+            (l[0] + cx * ratio) to (l[1] + cy * ratio)
         }
         Log.i("TesseraTest", "JOURNEY keyboard: tapping css=($cx,$cy) screen=($x,$y)")
         tap(x, y)
