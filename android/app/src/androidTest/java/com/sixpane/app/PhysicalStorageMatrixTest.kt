@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * R6 physical-device QA test. Loads the public demo as an HTTPS document, then
+ * R6 physical-device QA test. Loads https://example.com as an HTTPS document, then
  * evaluates synthetic storage probes in that WebView's real JavaScript context.
  * No file:///android_asset loads and no service-worker registration/assertions.
  * This checks cookies, localStorage, sessionStorage and IndexedDB separately.
@@ -105,11 +105,11 @@ class PhysicalStorageMatrixTest {
             web.loadUrl(DEMO_URL)
         }
         try {
-            assertTrue("Demo did not finish loading within 25s; last URL: " + lastUrl.get(),
+            assertTrue("Example.com did not finish loading within 25s; last URL: " + lastUrl.get(),
                 pageFinished.await(25, TimeUnit.SECONDS))
             val actual = AtomicReference<String>()
             instrumentation.runOnMainSync { actual.set(web.url) }
-            assertEquals("Demo left its HTTPS origin; do not inject into another site: " + actual.get(),
+            assertEquals("Example.com left its HTTPS origin; do not inject into another site: " + actual.get(),
                 DEMO_HOST, Uri.parse(actual.get()).host)
             block(web)
         } finally {
@@ -122,7 +122,7 @@ class PhysicalStorageMatrixTest {
     }
 
     private fun probe(web: WebView, mine: Case, other: Case, operation: String): JSONObject {
-        assertEquals("QA test must remain on demo origin",
+        assertEquals("QA test must remain on example.com origin",
             DEMO_HOST, Uri.parse(web.url).host)
         val injected = PROBE_JS
             .replace("__MINE__", JSONObject.quote(mine.key))
@@ -204,9 +204,9 @@ class PhysicalStorageMatrixTest {
 
     companion object {
         private const val QA_PACKAGE = "com.sixpane.app.qa.wvab"
-        private const val DEMO_HOST = "queueitcom.queue-it.net"
-        private const val DEMO_ORIGIN = "https://queueitcom.queue-it.net/"
-        private const val DEMO_URL = "https://queueitcom.queue-it.net/?c=queueitcom&e=wrdemoproduct"
+        private const val DEMO_HOST = "example.com"
+        private const val DEMO_ORIGIN = "https://example.com/"
+        private const val DEMO_URL = "https://example.com/"
 
         // Executed by evaluateJavascript AFTER HTTPS navigation. This is not a
         // script resource and does not register a service worker on a third-party
@@ -224,7 +224,7 @@ class PhysicalStorageMatrixTest {
                 return item ? item.slice(name.length + 1) : null;
               };
               (async () => {
-                if (location.protocol !== 'https:' || location.hostname !== 'queueitcom.queue-it.net')
+                if (location.protocol !== 'https:' || location.hostname !== 'example.com')
                   throw Error('Not on requested live HTTPS origin');
                 const db = await new Promise((resolve, reject) => {
                   const request = indexedDB.open('sixpane-physical-r6-qa', 1);
