@@ -1107,6 +1107,8 @@ class MainActivity : Activity(), SessionHub.Listener, PaneView.Callbacks {
     internal fun hubRef() = hub
     internal fun stateRef() = state
     internal fun cardRef(id: String): View? = grid.card(id)
+    /** Top edge of the bottom dock on screen, including its keyboard lift (for tests). */
+    internal fun dockTopOnScreen(): Int { val l = IntArray(2); dock.getLocationOnScreen(l); return l[1] }
 
     companion object {
         /** Width (dp) websites see in small panes when "Full-size pages" is on. */

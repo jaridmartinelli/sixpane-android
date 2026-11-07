@@ -147,9 +147,18 @@ class JourneyTest {
             throw e
         }
         Thread.sleep(1500) // keyboard slide + pane resize settle
-        val visible = js(act, p, "(function(){var r=document.getElementById('send').getBoundingClientRect();return r.bottom<=innerHeight&&r.top>=0?'y':'n'})()")
-        Log.i("TesseraTest", "JOURNEY keyboard: sendVisible=$visible innerHeight=${js(act, p, "String(innerHeight)")}")
-        assertEquals("page's Send button must be visible above the keyboard", "y", visible)
+        // On screen: the Send button's bottom edge must sit at or above the dock (which rides
+        // on the keyboard). CSS px -> screen px with the page's real on-screen width.
+        val m = js(act, p, "(function(){var r=document.getElementById('send').getBoundingClientRect();return r.top+','+r.bottom+','+innerWidth+','+innerHeight})()")
+            .split(',').map { it.toFloat() }
+        val (sendTop, sendBottom, dockTop) = main {
+            val wv = act.hubRef().view(p.id)!!; val l = IntArray(2); wv.getLocationOnScreen(l)
+            val ratio = wv.width * ((wv.parent as? android.view.View)?.scaleX ?: 1f) / m[2]
+            Triple(l[1] + m[0] * ratio, l[1] + m[1] * ratio, act.dockTopOnScreen().toFloat())
+        }
+        Log.i("TesseraTest", "JOURNEY keyboard: sendTop=$sendTop sendBottom=$sendBottom dockTop=$dockTop innerHeight=${m[3]}")
+        assertTrue("page's Send button is hidden behind the dock/keyboard (bottom $sendBottom > dock $dockTop)", sendBottom <= dockTop + 1f)
+        assertTrue("page's Send button is off the top of the pane", sendTop >= 0f)
         main { act.toggleExpandActive() }
     }
 
