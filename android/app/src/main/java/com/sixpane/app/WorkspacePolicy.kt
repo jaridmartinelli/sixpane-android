@@ -24,6 +24,9 @@ object WorkspacePolicy {
     fun crossesWorkspace(activeIds:Set<String>,selectedIds:Set<String>,filtering:Boolean):Boolean =
         filtering || selectedIds.any{it !in activeIds}
     fun selectionActionEnabled(count:Int):Boolean=count>0
+    /** Render changes when members or active workspace changes, even at the same count. */
+    fun selectionBarKey(workspaceId:String,selected:Set<String>):String =
+        workspaceId+":"+selected.sorted().joinToString(",")
     /** All/None applies only to the current workspace; leave other workspaces selected. */
     fun toggleVisibleSelection(selected:Set<String>,visible:Set<String>):Set<String> =
         if(visible.isNotEmpty() && visible.all{it in selected})selected-visible
