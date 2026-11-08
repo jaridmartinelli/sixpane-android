@@ -807,9 +807,11 @@ class MainActivity:Activity(){
     fun tesseraSelected():Set<String> =selectedPanes.toSet()
     fun tesseraSelecting():Boolean =selecting
     fun tesseraSelectAll(){
-        if(selectedPanes.size==store.active().panes.size){
-            selectedPanes.clear();updateSelection()
-        }else selectVisiblePanes()
+        val visible=store.active().panes.map{it.id}.toSet()
+        val next=WorkspacePolicy.toggleVisibleSelection(selectedPanes,visible)
+        selectedPanes.clear()
+        selectedPanes.addAll(next)
+        updateSelection()
     }
     fun tesseraExitSelection(){exitSelection()}
     fun tesseraSetFilter(query:String,colors:Set<String>){
