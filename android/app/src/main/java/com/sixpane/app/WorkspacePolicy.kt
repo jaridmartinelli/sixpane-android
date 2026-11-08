@@ -46,6 +46,11 @@ object WorkspacePolicy {
                           visible:Set<String>,alreadySelecting:Boolean):Set<String> =
         (if(alreadySelecting)existing else emptySet()) +
             (if(initial!=null && initial in visible)setOf(initial) else emptySet())
+    /** A fresh session owns a new ID, but the UI's selection/focus follows its slot. */
+    fun remapSelectedIds(selected:Set<String>,replacements:Map<String,String>):Set<String> =
+        selected.mapTo(linkedSetOf()){replacements[it]?:it}
+    fun remapPaneId(id:String?,replacements:Map<String,String>):String? =
+        id?.let{replacements[it]?:it}
     fun selectionActionEnabled(count:Int):Boolean=count>0
     /** Render changes when members or active workspace changes, even at the same count. */
     fun selectionBarKey(workspaceId:String,selected:Set<String>,
