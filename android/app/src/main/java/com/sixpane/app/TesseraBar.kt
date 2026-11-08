@@ -455,9 +455,36 @@ internal class TesseraBar(private val host:MainActivity) {
                         tile.addView(View(host).apply{
                             setBackgroundColor(host.store.frameColor(p.id))
                         },LinearLayout.LayoutParams(-1,dp(4)))
-                        tile.addView(txt((runCatching{URI(p.url).host}.getOrNull()?:"Empty")+
-                            if(p.locked)" ♢" else "",9f).apply{maxLines=2},
-                            LinearLayout.LayoutParams(-1,dp(58)))
+                        val live=host.windowCard(p.id)?.webView
+                        val tileWidth=(width-dp(22))/2
+                        val tileHeight=dp(if(cols==3)64 else 72)-dp(4)
+                        if(live!=null&&live.width>0&&live.height>0){
+                            try {
+                                val bitmap=android.graphics.Bitmap.createBitmap(
+                                    tileWidth.coerceAtLeast(1),tileHeight.coerceAtLeast(1),
+                                    android.graphics.Bitmap.Config.RGB_565)
+                                val canvas=android.graphics.Canvas(bitmap)
+                                canvas.drawColor(Color.WHITE)
+                                canvas.save()
+                                canvas.scale(tileWidth.toFloat()/live.width,
+                                    tileHeight.toFloat()/live.height)
+                                live.draw(canvas)
+                                canvas.restore()
+                                tile.addView(android.widget.ImageView(host).apply{
+                                    setImageBitmap(bitmap)
+                                    scaleType=android.widget.ImageView.ScaleType.FIT_XY
+                                    contentDescription="Snapshot of pane "+host.paneIndex(p.id)
+                                },LinearLayout.LayoutParams(-1,tileHeight))
+                            }catch(_:RuntimeException){
+                                tile.addView(txt(runCatching{URI(p.url).host}.getOrNull()?:"Empty",9f)
+                                    .apply{maxLines=2},
+                                    LinearLayout.LayoutParams(-1,tileHeight))
+                            }
+                        }else{
+                            tile.addView(txt((runCatching{URI(p.url).host}.getOrNull()?:"Empty")+
+                                if(p.locked)" ♢" else "",9f).apply{maxLines=2},
+                                LinearLayout.LayoutParams(-1,tileHeight))
+                        }
                         previews.addView(tile,android.widget.GridLayout.LayoutParams().apply{
                             this.width=(width-dp(22))/2
                             height=dp(if(cols==3)64 else 72)
