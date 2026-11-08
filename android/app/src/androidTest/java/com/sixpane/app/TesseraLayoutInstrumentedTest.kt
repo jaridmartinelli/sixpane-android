@@ -96,6 +96,44 @@ class TesseraLayoutInstrumentedTest {
         }finally{scenario.close()}
     }
 
+    @Test fun touchingACompactPaneSwitchesExpandedFocusWithoutProfileReplacement(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try {
+            dismissWelcome()
+            lateinit var initial:String
+            lateinit var profileIds:Map<String,String>
+            var ready=false
+            for(i in 0 until 30){
+                scenario.onActivity{host->
+                    ready=host.auditPanes().take(6).all{it.second!=null}
+                }
+                if(ready)break
+                Thread.sleep(300)
+            }
+            assertTrue("Six visible panes must exist before focus test",ready)
+            scenario.onActivity{host->
+                initial=host.store.active().panes.first().id
+                profileIds=host.store.spaces.flatMap{it.panes}
+                    .associate{it.id to it.profile}
+                host.tesseraActivate(initial,true)
+                assertEquals(initial,host.store.focusId)
+            }
+            val target=device.wait(Until.findObject(
+                By.desc("Switch window into expanded view")),8_000L)
+            assertNotNull("Compact pane needs a dedicated clickable thumbnail",target)
+            assertTrue("Thumbnail overlay must accept click",target.isClickable)
+            target.click()
+            device.waitForIdle()
+            scenario.onActivity{host->
+                assertNotNull("Expanded mode should remain active",host.store.focusId)
+                assertNotEquals("Tap on miniature should switch focus",initial,host.store.focusId)
+                assertEquals("Focus switch must not replace cookie profile identities",
+                    profileIds,host.store.spaces.flatMap{it.panes}
+                        .associate{it.id to it.profile})
+            }
+        }finally{scenario.close()}
+    }
+
     @Test fun filteredCrossWorkspacePanesFillOnlyMatchingSixSlotPositions(){
         val scenario=ActivityScenario.launch(MainActivity::class.java)
         try{
