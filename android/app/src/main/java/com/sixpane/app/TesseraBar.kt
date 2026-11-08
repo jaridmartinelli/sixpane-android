@@ -153,14 +153,17 @@ internal class TesseraBar(private val host:MainActivity) {
         val view=host.tesseraActiveCard()?.webView
         if(view!=null&&view.canGoForward())view.goForward()
         else host.notice("Nothing to go forward to")
-    }
+    }.apply{contentDescription="Forward in the active pane"}
     private val workspace=button("□"){workspaceScreen()}.apply{
+        contentDescription="Workspaces; tap to browse, hold for workspace menu"
         setOnLongClickListener{
             workspaceMenu(host.store.active())
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);true
         }
     }
-    private val more=button("⋮"){host.tesseraMenuAll()}
+    private val more=button("⋮"){host.tesseraMenuAll()}.apply{
+        contentDescription="Pane menu and all panes actions"
+    }
     private var selectingRendered:Boolean?=null
     private var lastSelectionKey:String?=null
     private var suggestions:PopupWindow?=null
@@ -184,10 +187,11 @@ internal class TesseraBar(private val host:MainActivity) {
         items.removeAllViews()
         val scroll=HorizontalScrollView(host).apply{isHorizontalScrollBarEnabled=false}
         val controls=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
-        fun add(title:String,w:Int,action:()->Unit){
-            controls.addView(button(title,action),LinearLayout.LayoutParams(dp(w),dp(44)))
+        fun add(title:String,w:Int,description:String,action:()->Unit){
+            controls.addView(button(title,action).apply{contentDescription=description},
+                LinearLayout.LayoutParams(dp(w),dp(44)))
         }
-        add("×",44){host.tesseraExitSelection()}
+        add("×",44,"Exit selection"){host.tesseraExitSelection()}
         val selectionCount=host.tesseraSelected().size
         val workspaceCount=host.store.spaces.count{ws->
             ws.panes.any{it.id in host.tesseraSelected()}
@@ -205,14 +209,18 @@ internal class TesseraBar(private val host:MainActivity) {
         val narrow=host.resources.displayMetrics.widthPixels<dp(400)
         controls.addView(status,LinearLayout.LayoutParams(dp(if(narrow)76 else 100),dp(44)))
         val currentIds=host.tesseraVisibleSelectionIds()
-        add(if(currentIds.all{it in host.tesseraSelected()})"None" else "All",
-            if(narrow)44 else 56){
+        val allVisible=currentIds.isNotEmpty() &&
+            currentIds.all{it in host.tesseraSelected()}
+        add(if(allVisible)"None" else "All",if(narrow)44 else 56,
+            if(allVisible)"Deselect all visible panes" else "Select all visible panes"){
             host.tesseraSelectAll()
         }
-        add("⌑",44){host.tesseraLockSelected(true)}
-        add("♢",44){host.tesseraLockSelected(false)}
-        add("●",44){colorDialog(host.tesseraSelected())}
-        add("⋮",44){selectionScreen()}
+        add("⌑",44,"Lock selected panes"){host.tesseraLockSelected(true)}
+        add("♢",44,"Unlock selected panes"){host.tesseraLockSelected(false)}
+        add("●",44,"Change colour of selected panes"){
+            colorDialog(host.tesseraSelected())
+        }
+        add("⋮",44,"More actions for selected panes"){selectionScreen()}
         scroll.addView(controls)
         items.addView(scroll,LinearLayout.LayoutParams(-1,dp(44)))
     }
@@ -251,7 +259,12 @@ internal class TesseraBar(private val host:MainActivity) {
                 )
                 chipFill=fill
             }
-            workspace.text="▣"+(host.store.spaces.indexOfFirst{it.id==host.store.currentId}+1)
+            val currentWorkspaceNumber=host.store.spaces.indexOfFirst{
+                it.id==host.store.currentId
+            }+1
+            workspace.text="▣"+currentWorkspaceNumber
+            workspace.contentDescription="Workspaces; current "+currentWorkspaceNumber+
+                "; tap to browse, hold for workspace menu"
             workspace.textSize=15f
             lead.text=if(pane?.locked==true)"♢" else "⌕"
             lead.setTextColor(if(pane?.locked==true)0xffff4d57.toInt() else secondary)
