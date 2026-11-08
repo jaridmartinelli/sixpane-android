@@ -376,11 +376,24 @@ internal class TesseraBar(private val host:MainActivity) {
             orientation=LinearLayout.VERTICAL;setBackgroundColor(0xff0b0e13.toInt())
         }
         val header=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
-        header.addView(button(closeGlyph){dialog.dismiss()},LinearLayout.LayoutParams(dp(48),dp(48)))
-        val heading=LinearLayout(host).apply{orientation=LinearLayout.VERTICAL}
+        val closeControl=button(closeGlyph){dialog.dismiss()}.apply{
+            contentDescription=if(closeGlyph=="×")"Close $title" else "Back from $title"
+        }
+        // Close icons for top-level screens belong on the right; nested pages
+        // retain the back affordance at the left, as in the reference layouts.
+        if(closeGlyph!="×"){
+            header.addView(closeControl,LinearLayout.LayoutParams(dp(48),dp(48)))
+        }
+        val heading=LinearLayout(host).apply{
+            orientation=LinearLayout.VERTICAL
+            if(closeGlyph=="×")setPadding(dp(12),0,0,0)
+        }
         heading.addView(txt(title,21f).apply{setTypeface(null,Typeface.BOLD)})
         if(subtitle.isNotBlank())heading.addView(txt(subtitle,13f).apply{setTextColor(secondary)})
         header.addView(heading,LinearLayout.LayoutParams(0,dp(60),1f))
+        if(closeGlyph=="×"){
+            header.addView(closeControl,LinearLayout.LayoutParams(dp(48),dp(48)))
+        }
         outer.addView(header,LinearLayout.LayoutParams(-1,dp(60)))
         val scroll=ScrollView(host).apply{isFillViewport=true}
         val body=LinearLayout(host).apply{
@@ -691,8 +704,17 @@ internal class TesseraBar(private val host:MainActivity) {
                         val live=host.windowCard(p.id)?.webView
                         val tileWidth=(width-dp(22))/2
                         val tileHeight=dp(if(cols==3)64 else 72)-dp(4)
-                        if(live!=null&&live.width>0&&live.height>0){
-                            try {
+                        fun fallbackPreview(){
+                            val label=if(p.url=="about:blank")"New"
+                                else runCatching{URI(p.url).host}.getOrNull()?:"Empty"
+                            tile.addView(txt(label+(if(p.locked)" ♢" else ""),9f).apply{
+                                gravity=Gravity.CENTER;maxLines=2
+                            },LinearLayout.LayoutParams(-1,tileHeight))
+                        }
+                        if(p.url=="about:blank"){
+                            fallbackPreview()
+                        }else if(live!=null&&live.width>0&&live.height>0){
+                            try{
                                 val bitmap=android.graphics.Bitmap.createBitmap(
                                     tileWidth.coerceAtLeast(1),tileHeight.coerceAtLeast(1),
                                     android.graphics.Bitmap.Config.RGB_565)
@@ -703,21 +725,28 @@ internal class TesseraBar(private val host:MainActivity) {
                                     tileHeight.toFloat()/live.height)
                                 live.draw(canvas)
                                 canvas.restore()
-                                tile.addView(android.widget.ImageView(host).apply{
+                                // WebView.draw may produce an empty/solid bitmap even
+                                // when the page has a URL. Avoid misleading blank previews.
+                                val samples=listOf(
+                                    bitmap.getPixel(0,0),
+                                    bitmap.getPixel(bitmap.width/2,bitmap.height/2),
+                                    bitmap.getPixel(bitmap.width-1,0),
+                                    bitmap.getPixel(0,bitmap.height-1),
+                                    bitmap.getPixel(bitmap.width-1,bitmap.height-1))
+                                val first=samples.first()
+                                val featureless=samples.all{value->
+                                    kotlin.math.abs(Color.red(value)-Color.red(first))<=8 &&
+                                    kotlin.math.abs(Color.green(value)-Color.green(first))<=8 &&
+                                    kotlin.math.abs(Color.blue(value)-Color.blue(first))<=8
+                                }
+                                if(featureless)fallbackPreview()
+                                else tile.addView(android.widget.ImageView(host).apply{
                                     setImageBitmap(bitmap)
                                     scaleType=android.widget.ImageView.ScaleType.FIT_XY
                                     contentDescription="Snapshot of pane "+host.paneIndex(p.id)
                                 },LinearLayout.LayoutParams(-1,tileHeight))
-                            }catch(_:RuntimeException){
-                                tile.addView(txt(runCatching{URI(p.url).host}.getOrNull()?:"Empty",9f)
-                                    .apply{maxLines=2},
-                                    LinearLayout.LayoutParams(-1,tileHeight))
-                            }
-                        }else{
-                            tile.addView(txt((runCatching{URI(p.url).host}.getOrNull()?:"Empty")+
-                                if(p.locked)" ♢" else "",9f).apply{maxLines=2},
-                                LinearLayout.LayoutParams(-1,tileHeight))
-                        }
+                            }catch(_:RuntimeException){fallbackPreview()}
+                        }else fallbackPreview()
                         previews.addView(tile,android.widget.GridLayout.LayoutParams().apply{
                             this.width=(width-dp(22))/2
                             height=dp(if(cols==3)64 else 72)
