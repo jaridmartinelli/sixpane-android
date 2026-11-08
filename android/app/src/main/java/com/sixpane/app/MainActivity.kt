@@ -69,6 +69,7 @@ class MainActivity:Activity(){
     private var lastLayoutHeight=0
     private var layoutGeneration=0
     private var textNotice:Toast?=null
+    private var pendingUpload:android.webkit.ValueCallback<Array<Uri>>?=null
     fun dp(value:Int):Int=(value*resources.displayMetrics.density).roundToInt()
     fun paneIndex(id:String):Int=store.spaces.flatMap{it.panes}.indexOfFirst{it.id==id}+1
     fun auditPanes():List<Pair<PaneState,PaneCard?>> = store.spaces.flatMap{it.panes}.map{it to cards[it.id]}
@@ -847,6 +848,35 @@ class MainActivity:Activity(){
     fun tesseraOpenSettings(){AppSettings(this).open()}
     fun tesseraMenuAll(){tesseraActiveCard()?.let{tessera.paneMenu(it,true)}}
     fun tesseraRefreshDock(){if(::tessera.isInitialized)tessera.render()}
+    fun tesseraChooseFile(callback:android.webkit.ValueCallback<Array<Uri>>){
+        pendingUpload?.onReceiveValue(null)
+        pendingUpload=callback
+        val chooser=Intent(Intent.ACTION_OPEN_DOCUMENT).apply{
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type="*/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try{startActivityForResult(chooser,REQUEST_PICK_FILE)}
+        catch(_:android.content.ActivityNotFoundException){
+            pendingUpload=null;callback.onReceiveValue(null)
+            notice("No app available to pick files")
+        }
+    }
+    @Deprecated("Android callback")
+    override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){
+        super.onActivityResult(requestCode,resultCode,data)
+        if(requestCode!=REQUEST_PICK_FILE)return
+        val callback=pendingUpload?:return
+        pendingUpload=null
+        if(resultCode!=RESULT_OK){callback.onReceiveValue(null);return}
+        val uris=mutableListOf<Uri>()
+        data?.data?.let{uris.add(it)}
+        data?.clipData?.let{clip->
+            for(i in 0 until clip.itemCount)clip.getItemAt(i).uri?.let{uris.add(it)}
+        }
+        callback.onReceiveValue(uris.distinct().toTypedArray().takeIf{it.isNotEmpty()})
+    }
     fun tesseraSetGrid(value:String){
         if(value !in listOf("automatic","2x3","3x2"))return
         store.gridPreference=value;store.save();positionCards(true)
@@ -982,5 +1012,8 @@ class MainActivity:Activity(){
         if(started)stopService(Intent(this,PaneKeepAliveService::class.java))
         super.onDestroy()
     }
-    companion object {private const val NOTIFICATION_REQUEST=42}
+    companion object {
+        private const val NOTIFICATION_REQUEST=42
+        private const val REQUEST_PICK_FILE=4586
+    }
 }

@@ -1,6 +1,11 @@
 package com.sixpane.app
 
 import android.content.Context
+import android.content.Intent
+import android.app.AlertDialog
+import android.app.DownloadManager
+import android.net.Uri
+import android.os.Environment
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.RippleDrawable
@@ -72,6 +77,28 @@ class PaneCard(
     var focused=false
         set(value){field=value; expand.expanded=value;updateControls()}
     private val onPageChanged=object:WebViewClient(){
+        override fun shouldOverrideUrlLoading(view:WebView,request:WebResourceRequest):Boolean{
+            val destination=request.url
+            val scheme=destination.scheme?.lowercase().orEmpty()
+            if(scheme in listOf("http","https","about","data","blob"))return false
+            if(!request.hasGesture())return true
+            try {
+                val external=if(scheme=="intent")
+                    Intent.parseUri(destination.toString(),Intent.URI_INTENT_SCHEME)
+                else Intent(Intent.ACTION_VIEW,destination)
+                external.addCategory(Intent.CATEGORY_BROWSABLE)
+                host.startActivity(external)
+            }catch(_:Exception){
+                val fallback=runCatching{
+                    Intent.parseUri(destination.toString(),Intent.URI_INTENT_SCHEME)
+                        .getStringExtra("browser_fallback_url")
+                }.getOrNull()
+                if(fallback!=null && BrowserPolicy.normalizeAddress(fallback)==fallback)
+                    loadAddress(fallback)
+                else host.notice("No app can open this link")
+            }
+            return true
+        }
         override fun shouldInterceptRequest(view:WebView, request:WebResourceRequest):WebResourceResponse? {
             BrowserPolicy.assetRegion(request.url.toString())?.let{(region,evidence)->
                 host.runOnUiThread {
@@ -155,6 +182,9 @@ class PaneCard(
         }
         override fun onReceivedSslError(view:WebView,handler:SslErrorHandler,error:android.net.http.SslError){
             handler.cancel()
+            if(view===webView && !interrupted){
+                showLoadError("This site's security certificate isn't trusted, so it was blocked.")
+            }
             if(view===webView&&interrupted&&error.url==view.url)recoveryLoadFailed()
         }
         override fun onRenderProcessGone(view:WebView?, detail:RenderProcessGoneDetail?):Boolean {
@@ -329,12 +359,88 @@ class PaneCard(
             WebViewCompat.getProfile(fresh).cookieManager.setAcceptThirdPartyCookies(fresh,true)
             fresh.webViewClient=onPageChanged
             fresh.webChromeClient=object:WebChromeClient(){
+                override fun onShowFileChooser(webView:WebView?,
+                    filePathCallback:ValueCallback<Array<Uri>>?,
+                    fileChooserParams:FileChooserParams?):Boolean {
+                    if(filePathCallback==null)return false
+                    host.tesseraChooseFile(filePathCallback)
+                    return true
+                }
+                override fun onPermissionRequest(request:PermissionRequest?){
+                    if(request==null)return
+                    request.deny()
+                    val resources=request.resources.joinToString(", ") {
+                        when {
+                            it.contains("AUDIO_CAPTURE")->"microphone"
+                            it.contains("VIDEO_CAPTURE")->"camera"
+                            else->"device permission"
+                        }
+                    }
+                    host.notice((request.origin?.host?:"This site")+
+                        " asked for "+resources+"; blocked")
+                }
+                override fun onGeolocationPermissionsShowPrompt(
+                    origin:String?,callback:GeolocationPermissions.Callback?
+                ){
+                    callback?.invoke(origin,false,false)
+                    host.notice((runCatching{Uri.parse(origin).host}.getOrNull()?:"This site")+
+                        " requested location; blocked")
+                }
+                override fun onJsAlert(view:WebView?,url:String?,
+                    message:String?,result:JsResult?):Boolean {
+                    if(result==null)return false
+                    if(host.isFinishing||host.isDestroyed){
+                        result.cancel();return true
+                    }
+                    AlertDialog.Builder(host).setMessage(message.orEmpty())
+                        .setPositiveButton("OK"){_,_->result.confirm()}
+                        .setOnCancelListener{result.cancel()}.show()
+                    return true
+                }
+                override fun onJsConfirm(view:WebView?,url:String?,
+                    message:String?,result:JsResult?):Boolean{
+                    if(result==null)return false
+                    if(host.isFinishing||host.isDestroyed){
+                        result.cancel();return true
+                    }
+                    AlertDialog.Builder(host).setMessage(message.orEmpty())
+                        .setPositiveButton("OK"){_,_->result.confirm()}
+                        .setNegativeButton("Cancel"){_,_->result.cancel()}
+                        .setOnCancelListener{result.cancel()}.show()
+                    return true
+                }
                 override fun onProgressChanged(view:WebView?,newProgress:Int){
                     if(view!==webView||!webViewAlive)return
                     loading=newProgress<100
                     headerProgress.visibility=if(loading)View.VISIBLE else View.GONE
                     if(newProgress<100)indicator.text="·" else updateZoomIndicator()
                     host.tesseraRefreshDock()
+                }
+            }
+            fresh.setDownloadListener{url,userAgent,disposition,mimeType,_->
+                if(!url.startsWith("http://")&&!url.startsWith("https://")){
+                    host.notice("This download cannot be handled by Android DownloadManager")
+                }else{
+                    try {
+                        val file=URLUtil.guessFileName(url,disposition,mimeType)
+                            .replace(Regex("[\\\\/:*?\"<>|]"),"_")
+                        val request=DownloadManager.Request(Uri.parse(url)).apply{
+                            setTitle(file)
+                            setMimeType(mimeType)
+                            setNotificationVisibility(
+                                DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS,file)
+                            addRequestHeader("User-Agent",userAgent.orEmpty())
+                            val cookies=WebViewCompat.getProfile(fresh).cookieManager
+                                .getCookie(url).orEmpty()
+                            if(cookies.isNotBlank())addRequestHeader("Cookie",cookies)
+                        }
+                        val manager=host.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                        manager.enqueue(request)
+                        host.notice("Downloading "+file)
+                    }catch(e:Exception){
+                        host.notice("Download failed: "+e.javaClass.simpleName)
+                    }
                 }
             }
             fresh.setBackgroundColor(Color.WHITE)
