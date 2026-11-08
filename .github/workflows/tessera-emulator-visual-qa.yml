@@ -4,6 +4,11 @@ on:
     branches: ['feature/tessera-ui-20261107']
     paths:
       - '.github/workflows/tessera-emulator-visual-qa.yml'
+      - 'tests/tessera_emulator_visual_capture.sh'
+      - 'android/app/src/androidTest/java/com/sixpane/app/TesseraSelectionInstrumentedTest.kt'
+      - 'android/app/src/main/java/com/sixpane/app/MainActivity.kt'
+      - 'android/app/src/main/java/com/sixpane/app/TesseraBar.kt'
+      - 'android/app/src/main/java/com/sixpane/app/WorkspacePolicy.kt'
   workflow_dispatch:
 permissions:
   contents: read
