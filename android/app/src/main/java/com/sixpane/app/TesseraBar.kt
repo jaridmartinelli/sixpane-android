@@ -145,9 +145,19 @@ internal class TesseraBar(private val host:MainActivity) {
             controls.addView(button(title,action),LinearLayout.LayoutParams(dp(w),dp(44)))
         }
         add("×",44){host.tesseraExitSelection()}
-        controls.addView(txt(host.tesseraSelected().size.toString()+" selected",14f).apply{
+        val selectionCount=host.tesseraSelected().size
+        val workspaceCount=host.store.spaces.count{ws->
+            ws.panes.any{it.id in host.tesseraSelected()}
+        }
+        val status=LinearLayout(host).apply{orientation=LinearLayout.VERTICAL}
+        status.addView(txt(selectionCount.toString()+" selected",14f).apply{
             setTypeface(null,Typeface.BOLD)
-        },LinearLayout.LayoutParams(dp(84),dp(44)))
+        })
+        status.addView(txt(if(workspaceCount<=1)"In this workspace" else
+            "Across "+workspaceCount+" workspaces",10f).apply{
+            setTextColor(secondary)
+        })
+        controls.addView(status,LinearLayout.LayoutParams(dp(100),dp(44)))
         add(if(host.tesseraSelected().size==6)"None" else "All",56){host.tesseraSelectAll()}
         add("⌑",44){host.tesseraLockSelected(true)}
         add("♢",44){host.tesseraLockSelected(false)}
@@ -252,10 +262,12 @@ internal class TesseraBar(private val host:MainActivity) {
         if(colors.isEmpty()&&query.isBlank()){
             filterChips.visibility=View.GONE
             filterChips.layoutParams?.height=0
+            filterChips.requestLayout()
             return
         }
         filterChips.visibility=View.VISIBLE
         filterChips.layoutParams?.height=dp(42)
+        filterChips.requestLayout()
         filterContents.addView(button("⌕"){filterScreen()},LinearLayout.LayoutParams(dp(40),dp(34)))
         colors.forEach{name->
             filterContents.addView(txt(name+" ×",12f).apply{
@@ -269,6 +281,12 @@ internal class TesseraBar(private val host:MainActivity) {
                 setOnClickListener{host.tesseraSetFilter("",colors)}
             },LinearLayout.LayoutParams(dp(150),dp(34)))
         }
+        val count=host.store.spaces.flatMap{it.panes}.count{p->
+            FramePalette.matches(p.url,host.store.frameColor(p.id),query,colors)
+        }
+        filterContents.addView(txt(count.toString()+" matches",12f).apply{
+            gravity=Gravity.CENTER
+        },LinearLayout.LayoutParams(dp(85),dp(34)))
         filterContents.addView(button("Clear all"){host.tesseraClearFilters()},
             LinearLayout.LayoutParams(dp(88),dp(34)))
     }

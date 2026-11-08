@@ -335,7 +335,9 @@ class LocalStore(ctx:Context){
 
     fun create():WorkspaceState {
         require(WorkspacePolicy.canCreate(spaces.size))
-        val w=WorkspaceState();spaces.add(w)
+        val w=WorkspaceState()
+        val insertion=(spaces.indexOfFirst{it.id==currentId}+1).coerceIn(0,spaces.size)
+        spaces.add(insertion,w)
         allocateViewportRatios(w.panes)
         currentId=w.id;focusId=null;activePaneId=w.panes.firstOrNull()?.id;save();return w
     }

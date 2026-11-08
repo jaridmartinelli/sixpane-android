@@ -292,8 +292,9 @@ class MainActivity:Activity(){
     }
     private fun selectVisiblePanes(){
         if(!selecting)enterSelection()
-        selectedPanes.clear()
-        selectedPanes.addAll(currentFilteredPanes().map{it.id})
+        // Selection can span workspaces; All adds the current six without
+        // discarding selections already made in another workspace.
+        selectedPanes.addAll(store.active().panes.map{it.id})
         updateSelection()
     }
     private fun universalMenu() {

@@ -58,6 +58,9 @@ class CornerIcon(context:Context, val kind:Kind):View(context){
     fun pressedFeedback(){animate().scaleX(.76f).scaleY(.76f).alpha(1f).setDuration(90).withEndAction{animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(180).start()}.start()}
     fun blockedFeedback(){
         if(kind!=Kind.LOCK)return
-        ObjectAnimator.ofFloat(this,"translationX",0f,-3f,3f,-2f,2f,0f).apply{duration=400}.start()
+        performHapticFeedback(android.view.HapticFeedbackConstants.REJECT)
+        ObjectAnimator.ofFloat(this,"translationX",0f,-3f,3f,-2f,2f,0f).apply{
+            duration=TesseraMotion.LOCK_SHAKE_MS
+        }.start()
     }
 }
