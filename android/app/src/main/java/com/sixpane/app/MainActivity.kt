@@ -786,8 +786,11 @@ class MainActivity:Activity(){
     fun focus(card:PaneCard){tesseraActivate(card.state.id,true)}
     fun tesseraActivate(id:String,expand:Boolean=false){
         if(expand)imeAutoExpandedId=null
-        if(selecting){toggleWindowSelection(id);return}
         if(store.active().panes.none{it.id==id})return
+        // A page/header touch must end address editing before the active pane
+        // can change. This also covers tapping the already-active pane.
+        if(::tessera.isInitialized&&tessera.addressFocused())tessera.closeAddress()
+        if(selecting){toggleWindowSelection(id);return}
         if(!expand&&store.activePaneId==id&&
             (store.focusId==null||store.focusId==id))return
         store.activePaneId=id
@@ -848,7 +851,12 @@ class MainActivity:Activity(){
         return true
     }
     fun tesseraOpenSettings(){AppSettings(this).open()}
-    fun tesseraMenuAll(){tesseraActiveCard()?.let{tessera.paneMenu(it,true)}}
+    fun tesseraMenuActivePane(withAll:Boolean){
+        val card=tesseraActiveCard()
+        if(card!=null)tessera.paneMenu(card,withAll)
+        else tessera.paneUnavailableMenu()
+    }
+    fun tesseraMenuAll(){tesseraMenuActivePane(true)}
     fun tesseraRefreshDock(){if(::tessera.isInitialized)tessera.render()}
     fun tesseraChooseFile(callback:android.webkit.ValueCallback<Array<Uri>>){
         pendingUpload?.onReceiveValue(null)

@@ -69,12 +69,34 @@ internal class TesseraBar(private val host:MainActivity) {
         gravity=Gravity.CENTER_VERTICAL
         setPadding(dp(8),dp(6),dp(4),dp(6))
     }
-    private val paneChip=button("1"){host.tesseraActivePane()?.let{host.tesseraActivate(it.id,true)}}.apply{
+    private val chipNumber=txt("1",14f).apply{
+        gravity=Gravity.CENTER
+        setTypeface(null,Typeface.BOLD)
+        importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+    private val chipExpand=txt("↗",11f).apply{
+        gravity=Gravity.CENTER
+        includeFontPadding=false
+        setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,11f)
+        importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+    private val paneChip=FrameLayout(host).apply{
+        isClickable=true;isFocusable=true
+        minimumWidth=dp(44);minimumHeight=dp(44)
+        addView(chipNumber,FrameLayout.LayoutParams(-1,-1))
+        addView(chipExpand,FrameLayout.LayoutParams(dp(13),dp(13),
+            Gravity.END or Gravity.BOTTOM).apply{
+            rightMargin=dp(3);bottomMargin=dp(3)
+        })
+        setOnClickListener{
+            host.tesseraActivePane()?.let{host.tesseraActivate(it.id,true)}
+        }
         setOnLongClickListener{
-            host.tesseraActiveCard()?.let{paneMenu(it,false)}
+            host.tesseraMenuActivePane(false)
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);true
         }
     }
+    private var chipFill:Int?=null
     private val lead=txt("⌕",16f)
     private val address=EditText(host).apply{
         textSize=15f;setTextColor(this@TesseraBar.text)
@@ -84,9 +106,13 @@ internal class TesseraBar(private val host:MainActivity) {
         setPadding(0,0,0,0);background=null;setSelectAllOnFocus(true)
         setOnFocusChangeListener{_,focus->
             if(focus){
+                editingPaneId=host.tesseraActivePane()?.id
                 setText(host.tesseraActivePane()?.url?.takeUnless{it=="about:blank"}.orEmpty())
                 selectAll();showSuggestions()
-            }else suggestions?.dismiss()
+            }else{
+                editingPaneId=null
+                suggestions?.dismiss()
+            }
         }
         setOnEditorActionListener{_,action,event->
             val hardware=event?.keyCode==KeyEvent.KEYCODE_ENTER && event.action==KeyEvent.ACTION_DOWN
@@ -138,6 +164,7 @@ internal class TesseraBar(private val host:MainActivity) {
     private var selectingRendered:Boolean?=null
     private var lastSelectionCount:Int=-1
     private var suggestions:PopupWindow?=null
+    private var editingPaneId:String?=null
     private var lastSnack:PopupWindow?=null
     init {
         filterChips.addView(filterContents)
@@ -201,11 +228,23 @@ internal class TesseraBar(private val host:MainActivity) {
         }else {
             val pane=host.tesseraActivePane()
             val card=host.tesseraActiveCard()
-            paneChip.text=(pane?.let{host.paneIndex(it.id)}?:0).toString()+" ↗"
-            paneChip.textSize=14f
-            paneChip.setTypeface(null,Typeface.BOLD)
+            val number=pane?.let{host.paneIndex(it.id)}?:0
+            chipNumber.text=number.toString()
+            chipExpand.text=if(pane!=null&&host.store.focusId==pane.id)"↙" else "↗"
+            paneChip.contentDescription="Pane $number; tap to expand or shrink; hold for pane menu"
             val color=pane?.let{host.store.frameColor(it.id)}?:surface3
-            paneChip.background=round(if(color==0xff51606e.toInt())surface3 else color,12,1,Color.WHITE)
+            val fill=if(color==0xff51606e.toInt())surface3 else color
+            val ink=FramePalette.textOnTag(fill)
+            chipNumber.setTextColor(ink);chipExpand.setTextColor(ink)
+            // Replacing a pressed RippleDrawable on every render cancels feedback.
+            // Recreate it only when its colour actually changes.
+            if(chipFill!=fill){
+                paneChip.background=RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x50ffffff),
+                    round(fill,12,1,Color.WHITE),round(Color.WHITE,12)
+                )
+                chipFill=fill
+            }
             workspace.text="▣"+(host.store.spaces.indexOfFirst{it.id==host.store.currentId}+1)
             workspace.textSize=15f
             lead.text=if(pane?.locked==true)"♢" else "⌕"
@@ -223,6 +262,12 @@ internal class TesseraBar(private val host:MainActivity) {
         updateChips()
     }
     private fun submit(raw:String){
+        // Never send text entered for Pane A to a subsequently selected Pane B.
+        if(address.hasFocus()&&editingPaneId!=host.tesseraActivePane()?.id){
+            closeAddress()
+            host.notice("Active pane changed; reopen the address")
+            return
+        }
         if(!host.tesseraGo(raw)){address.error="Enter an address or search";return}
         closeAddress()
         render()
@@ -376,6 +421,31 @@ internal class TesseraBar(private val host:MainActivity) {
         },LinearLayout.LayoutParams(0,dp(52),1f).apply{
             leftMargin=dp(4);rightMargin=dp(4)
         })
+    }
+    /** UI-only fallback: opening ⋮ or holding the chip must never do nothing.
+     * No WebView is created, reloaded or reconfigured by this menu.
+     */
+    fun paneUnavailableMenu(){
+        val n=host.tesseraActivePane()?.let{host.paneIndex(it.id)}?:0
+        page("Pane $n · Browser unavailable","The browser view is not ready"){body,_,dialog->
+            body.addView(txt("Pane controls are unavailable until its browser view is ready.",14f)
+                .apply{setPadding(dp(8),dp(10),dp(8),dp(12))})
+            row(body,"Check pane again","Opens the pane menu when its view is ready",icon="↻"){
+                dialog.dismiss()
+                val card=host.tesseraActiveCard()
+                if(card!=null)paneMenu(card,true)
+                else host.notice("Pane $n is still unavailable")
+            }
+            row(body,"Workspaces",icon="▣"){dialog.dismiss();workspaceScreen()}
+            body.addView(txt("All panes",17f).apply{
+                setPadding(dp(12),dp(20),0,dp(8))
+            })
+            row(body,"Filter panes",icon="⌕"){dialog.dismiss();filterScreen()}
+            row(body,"Check isolation & health",icon="♧"){
+                dialog.dismiss();SessionIntegrityReport(host).open()
+            }
+            row(body,"Settings",icon="⚙"){dialog.dismiss();settingsScreen()}
+        }
     }
     fun paneMenu(card:PaneCard,withAll:Boolean){
         val pane=card.state
