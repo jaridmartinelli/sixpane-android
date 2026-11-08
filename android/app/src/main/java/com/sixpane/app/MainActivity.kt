@@ -166,7 +166,7 @@ class MainActivity:Activity(){
         if(store.focusId!=null)store.focusId=null
         handler.removeCallbacks(saveFilter)
         handler.postDelayed(saveFilter, 250L)
-        if(selecting){selectedPanes.clear();updateSelection()}
+        if(selecting)updateSelection()
         renderTabs()
         updateUniversalBar()
         positionCards(false)
@@ -248,10 +248,7 @@ class MainActivity:Activity(){
             if(store.focusId!=null && currentFilteredPanes().none{it.id==store.focusId}){
                 store.focusId=null;store.save()
             }
-            if(selecting){
-                selectedPanes.retainAll(currentFilteredPanes().map{it.id}.toSet())
-                updateSelection()
-            }
+            if(selecting)updateSelection()
             renderTabs()
             positionCards(false)
         }
@@ -264,7 +261,7 @@ class MainActivity:Activity(){
         store.focusId=null
         store.save()
         universalBar.setFilterText("")
-        if(selecting){selectedPanes.clear();updateSelection()}
+        if(selecting)updateSelection()
         renderTabs()
         updateUniversalBar();positionCards(true)
         notice("Filters cleared — all panes shown")
@@ -290,7 +287,7 @@ class MainActivity:Activity(){
                 store.focusId=null
                 store.save()
                 universalBar.setFilterText("")
-                if(selecting){selectedPanes.clear();updateSelection()}
+                if(selecting)updateSelection()
                 renderTabs()
                 updateUniversalBar();positionCards(true)
             }.create()
@@ -394,7 +391,7 @@ class MainActivity:Activity(){
                     if(index!=filteredPageIndex){
                         filteredPageIndex=index
                         store.focusId=null;store.save()
-                        if(selecting){selectedPanes.clear();updateSelection()}
+                        if(selecting)updateSelection()
                         renderTabs();updateUniversalBar();positionCards(true)
                     }
                 }
@@ -574,13 +571,14 @@ class MainActivity:Activity(){
             notice("Six sessions closed. Their profiles are retired; on-disk cleanup is pending a clean restart.")
         }
     }
-    /** Selection is scoped to the six panes shown on the current workspace/filter tab. */
+    /** Selection spans workspaces; opening a pane menu again must not reset prior choices. */
     fun enterSelection(initial:String?=null){
         if(::tessera.isInitialized)tessera.closeAddress()
+        val next=WorkspacePolicy.enteringSelection(
+            selectedPanes,initial,currentFilteredPanes().map{it.id}.toSet(),selecting)
         selecting=true
-        selectedPanes.clear()
-        if(initial!=null && currentFilteredPanes().any{it.id==initial}) selectedPanes.add(initial)
-        // Select from the full six-pane grid rather than tiny Right Stack thumbnails.
+        selectedPanes.clear();selectedPanes.addAll(next)
+        // Select from the full six-pane grid rather than tiny thumbnails.
         if(store.focusId!=null){store.focusId=null;store.save()}
         updateSelection()
         positionCards(true)
@@ -620,7 +618,7 @@ class MainActivity:Activity(){
             clampFilteredPage()
             if(store.focusId!=null && currentFilteredPanes().none{it.id==store.focusId})
                 store.focusId=null
-            if(selecting)selectedPanes.retainAll(currentFilteredPanes().map{it.id}.toSet())
+            if(selecting)updateSelection()
             renderTabs();updateUniversalBar()
         }
         positionCards(false)
@@ -637,59 +635,113 @@ class MainActivity:Activity(){
     }
     private fun selectionMenu()=universalMenu()
     private fun confirmCloseSelected()=confirmCloseWindows(selectedPanes.toSet())
+    /** Include every selected source workspace, skip protected panes and fail closed on missing IDs. */
+    private fun selectionLockMap():Map<String,Boolean> =
+        store.spaces.flatMap{ws->ws.panes.map{p->p.id to (p.locked||ws.locked)}}.toMap()
+
+    private fun selectedActionPlan(requested:Set<String>):WorkspacePolicy.SelectionPlan =
+        WorkspacePolicy.planSelection(requested,selectionLockMap())
+
+    /** Bulk page actions must never silently act on locked panes or forget hidden selections. */
+    private fun bulkEligible(requested:Set<String>,verb:String):WorkspacePolicy.SelectionPlan? {
+        val plan=selectedActionPlan(requested)
+        if(plan.missing.isNotEmpty()){
+            notice("Selection changed; "+verb+" cancelled");return null
+        }
+        if(plan.eligible.isEmpty()){
+            notice(if(plan.skippedLocked.isNotEmpty())
+                "Skipped "+plan.skippedLocked.size+" locked panes — none available to "+verb
+                else "Select panes to "+verb)
+            return null
+        }
+        return plan
+    }
+    private fun bulkNotice(verb:String,count:Int,skippedLocked:Int,unavailable:Int=0){
+        notice(verb+" "+count+" pane"+if(count==1)"" else "s"+
+            (if(skippedLocked>0)"; skipped "+skippedLocked+" locked" else "")+
+            (if(unavailable>0)"; "+unavailable+" not loaded" else ""))
+    }
+    fun tesseraBulkReload(){
+        val plan=bulkEligible(selectedPanes.toSet(),"reload")?:return
+        var reloaded=0;var unavailable=0
+        plan.eligible.forEach{id->
+            val card=cards[id]
+            if(card==null)unavailable++ else{card.refresh();reloaded++}
+        }
+        bulkNotice("Reloaded",reloaded,plan.skippedLocked.size,unavailable)
+    }
+    fun tesseraBulkDesktop(value:Boolean){
+        val plan=bulkEligible(selectedPanes.toSet(),"change desktop mode")?:return
+        var deferred=0
+        for(ws in store.spaces)for(pane in ws.panes)if(pane.id in plan.eligible){
+            val card=cards[pane.id]
+            if(card!=null)card.setDesktopMode(value)
+            else {pane.desktop=value;deferred++}
+        }
+        store.save()
+        bulkNotice(if(value)"Enabled desktop mode on" else "Disabled desktop mode on",
+            plan.eligible.size,plan.skippedLocked.size,deferred)
+        updateUniversalBar()
+    }
+    fun tesseraBulkOpenAddress(resolved:String){
+        val plan=bulkEligible(selectedPanes.toSet(),"open an address")?:return
+        var deferred=0
+        for(ws in store.spaces)for(pane in ws.panes)if(pane.id in plan.eligible){
+            val card=cards[pane.id]
+            if(card!=null)card.loadAddress(resolved)
+            else {pane.url=resolved;deferred++}
+        }
+        store.save()
+        if(filtering()){clampFilteredPage();renderTabs();positionCards(false)}
+        updateUniversalBar()
+        bulkNotice("Opened address in",plan.eligible.size,plan.skippedLocked.size,deferred)
+    }
     /** Preserve the original source workspaces even when selecting virtual filter pages. */
     private fun confirmCloseWindows(requested:Set<String>){
+        val plan=bulkEligible(requested,"end sessions")?:return
         val wasFiltering=filtering()
-        val crossWorkspace=WorkspacePolicy.crossesWorkspace(
-            store.active().panes.map{it.id}.toSet(),requested,wasFiltering)
+        val filterText=store.filterQuery
+        val colorFilters=store.selectedFrameColors.toSet()
         val originalWorkspace=store.currentId
-        val available=if(crossWorkspace)allPanes() else store.active().panes
-        val selected=available.filter{it.id in requested}
-        if(selected.size!=requested.size){notice("Selection changed; end cancelled");return}
-        if(selected.isEmpty())return
-        val ids=selected.map{it.id}.toSet()
-        if(selected.any{it.locked}){
-            selected.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
-            notice("Unlock selected browsers before closing them");return
-        }
-        if(crossWorkspace && store.spaces.any{ws->ws.locked&&ws.panes.any{it.id in ids}}){
-            notice("Unlock the original workspace tabs before closing filtered browsers")
-            return
-        }
-        confirm("Close "+selected.size+" window"+(if(selected.size==1)"" else "s")+"?",
-            "These sessions and their saved browser data will be retired for deletion. "+
-            "Fresh isolated profiles replace them in their ORIGINAL workspaces. "+
-            "Disk cleanup may require a clean restart.",
-            "Close & Replace"){
-            if(wasFiltering!=filtering()||store.currentId!=originalWorkspace){
-                notice("The active view changed; close cancelled");return@confirm
+        val originalSelection=if(selecting)selectedPanes.toSet() else null
+        val crossWorkspace=WorkspacePolicy.crossesWorkspace(
+            store.active().panes.map{it.id}.toSet(),plan.eligible,wasFiltering)
+        val ids=plan.eligible
+        val skippedAtOpen=plan.skippedLocked.size
+        val count=ids.size
+        confirm("End "+count+" session"+(if(count==1)"" else "s")+"?",
+            "Fresh isolated profiles replace these panes in their original workspaces. "+
+            "Ended profile data is retired for deletion after a clean restart. "+
+            (if(skippedAtOpen>0)"Skipped "+skippedAtOpen+" locked pane"+
+                (if(skippedAtOpen==1)"." else "s.") else ""),
+            "End sessions"){
+            if(wasFiltering!=filtering()||store.currentId!=originalWorkspace||
+                store.filterQuery!=filterText||store.selectedFrameColors!=colorFilters||
+                (originalSelection!=null && selectedPanes.toSet()!=originalSelection)){
+                notice("The selected view changed; end cancelled");return@confirm
             }
-            val live=allPanes().filter{it.id in ids}
-            if(live.size!=ids.size||live.any{it.locked}){
-                live.filter{it.locked}.forEach{cards[it.id]?.lock?.blockedFeedback()}
-                notice("A selected browser changed or was locked; close cancelled")
-                return@confirm
+            val current=selectedActionPlan(ids)
+            if(current.missing.isNotEmpty()){
+                notice("Selection changed; end cancelled");return@confirm
             }
-            if(crossWorkspace&&store.spaces.any{ws->
-                ws.locked&&ws.panes.any{it.id in ids}
-            }){
-                notice("Source workspace became locked; close cancelled");return@confirm
+            if(current.eligible.isEmpty()){
+                notice("All targeted panes are locked; end cancelled");return@confirm
             }
+            val finalIds=current.eligible
             val replacements=try{
-                if(crossWorkspace)store.replacePanesAcrossWorkspaces(ids)
-                else store.replacePanes(ids)
+                if(crossWorkspace)store.replacePanesAcrossWorkspaces(finalIds)
+                else store.replacePanes(finalIds)
             }catch(e:IllegalArgumentException){
-                notice("Close cancelled: "+e.message);return@confirm
+                notice("End cancelled: "+e.message);return@confirm
             }
             replacements.forEach{(old,_)->
                 cards.remove(old.id)?.let{stage.removeView(it);it.destroyExplicitly()}
             }
             exitSelection()
-            // Replacement profiles remain durable; active panes allocate on demand.
-            clampFilteredPage()
-            renderTabs()
-            positionCards(false)
-            notice("Ended "+replacements.size+" sessions — fresh panes are ready")
+            clampFilteredPage();renderTabs();positionCards(false)
+            val skipped=skippedAtOpen+current.skippedLocked.size
+            notice("Ended "+replacements.size+" sessions — fresh panes are ready"+
+                (if(skipped>0)"; skipped "+skipped+" locked" else ""))
         }
     }
     private fun showBookmarksForPane(id:String){
