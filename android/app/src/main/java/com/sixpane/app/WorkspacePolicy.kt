@@ -29,10 +29,29 @@ object WorkspacePolicy {
     /** Destructive selected-pane actions must include every selected source workspace. */
     fun crossesWorkspace(activeIds:Set<String>,selectedIds:Set<String>,filtering:Boolean):Boolean =
         filtering || selectedIds.any{it !in activeIds}
+    /** Evaluate all selected IDs once; locked panes/workspaces are protected, missing IDs fail closed. */
+    data class SelectionPlan(
+        val eligible:Set<String>,
+        val skippedLocked:Set<String>,
+        val missing:Set<String>
+    )
+    fun planSelection(requested:Set<String>, liveLocked:Map<String,Boolean>):SelectionPlan =
+        SelectionPlan(
+            requested.filterTo(linkedSetOf()){liveLocked[it]==false},
+            requested.filterTo(linkedSetOf()){liveLocked[it]==true},
+            requested.filterTo(linkedSetOf()){!liveLocked.containsKey(it)}
+        )
+    /** Re-entering selection from a menu cannot discard selections in other workspaces. */
+    fun enteringSelection(existing:Set<String>,initial:String?,
+                          visible:Set<String>,alreadySelecting:Boolean):Set<String> =
+        (if(alreadySelecting)existing else emptySet()) +
+            (if(initial!=null && initial in visible)setOf(initial) else emptySet())
     fun selectionActionEnabled(count:Int):Boolean=count>0
     /** Render changes when members or active workspace changes, even at the same count. */
-    fun selectionBarKey(workspaceId:String,selected:Set<String>):String =
-        workspaceId+":"+selected.sorted().joinToString(",")
+    fun selectionBarKey(workspaceId:String,selected:Set<String>,
+                        visible:Set<String> = emptySet()):String =
+        workspaceId+":"+selected.sorted().joinToString(",")+
+            "|shown:"+visible.sorted().joinToString(",")
     /** All/None applies only to the current workspace; leave other workspaces selected. */
     fun toggleVisibleSelection(selected:Set<String>,visible:Set<String>):Set<String> =
         if(visible.isNotEmpty() && visible.all{it in selected})selected-visible
