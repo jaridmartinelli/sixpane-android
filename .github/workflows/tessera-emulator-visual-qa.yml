@@ -10,6 +10,9 @@ on:
       - 'android/app/src/main/java/com/sixpane/app/TesseraBar.kt'
       - 'android/app/src/main/java/com/sixpane/app/WorkspacePolicy.kt'
   workflow_dispatch:
+concurrency:
+  group: tessera-emulator-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
