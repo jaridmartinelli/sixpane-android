@@ -89,6 +89,16 @@ class WorkspacePolicyTest {
         assertEquals(first,WorkspacePolicy.selectionBarKey("w",selection,setOf("a2","a1")))
     }
 
+    @Test fun newSessionIdsKeepSelectionAndFocusWithoutRestoringOldProfile(){
+        val mapped=mapOf("ended-a" to "fresh-a","ended-b" to "fresh-b")
+        assertEquals(setOf("fresh-a","locked-c"),
+            WorkspacePolicy.remapSelectedIds(setOf("ended-a","locked-c"),mapped))
+        assertEquals("fresh-b",WorkspacePolicy.remapPaneId("ended-b",mapped))
+        assertEquals("locked-c",WorkspacePolicy.remapPaneId("locked-c",mapped))
+        assertNull(WorkspacePolicy.remapPaneId(null,mapped))
+        assertTrue("ended-a" !in WorkspacePolicy.remapSelectedIds(setOf("ended-a"),mapped))
+    }
+
     @org.junit.Test fun selectionCloseRequiresUnlockedNonempty(){
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(0,false))
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(2,true))
