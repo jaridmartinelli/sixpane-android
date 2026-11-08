@@ -57,6 +57,38 @@ class WorkspacePolicyTest {
         assertEquals("fresh",WorkspacePolicy.workspaceAfterClose(listOf("fresh"),0,"w1"))
     }
 
+    @Test fun reenteringSelectionPreservesOtherWorkspacesAndIgnoresHiddenIds(){
+        val existing=setOf("work-a-pane-2","work-b-pane-3")
+        val visible=setOf("work-b-pane-2","work-b-pane-3")
+        assertEquals(existing+setOf("work-b-pane-2"),
+            WorkspacePolicy.enteringSelection(existing,"work-b-pane-2",visible,true))
+        assertEquals(existing,
+            WorkspacePolicy.enteringSelection(existing,"work-a-pane-1",visible,true))
+        assertEquals(setOf("work-b-pane-2"),
+            WorkspacePolicy.enteringSelection(existing,"work-b-pane-2",visible,false))
+    }
+
+    @Test fun planningBulkActionsSkipsProtectedPanesAndRejectsStaleSelection(){
+        val state=mapOf("a1" to false,"a2" to true,"b1" to false,"b2" to true)
+        val plan=WorkspacePolicy.planSelection(
+            setOf("a1","a2","b1","b2","deleted"),state)
+        assertEquals(setOf("a1","b1"),plan.eligible)
+        assertEquals(setOf("a2","b2"),plan.skippedLocked)
+        assertEquals(setOf("deleted"),plan.missing)
+        val allLocked=WorkspacePolicy.planSelection(setOf("a2","b2"),state)
+        assertTrue(allLocked.eligible.isEmpty())
+        assertEquals(2,allLocked.skippedLocked.size)
+        assertTrue(WorkspacePolicy.planSelection(emptySet(),state).eligible.isEmpty())
+    }
+
+    @Test fun selectionBarRefreshesOnFilterVisibilityEvenWithSameSelection(){
+        val selection=setOf("a1","b2")
+        val first=WorkspacePolicy.selectionBarKey("w",selection,setOf("a1","a2"))
+        val other=WorkspacePolicy.selectionBarKey("w",selection,setOf("b1","b2"))
+        assertNotEquals(first,other)
+        assertEquals(first,WorkspacePolicy.selectionBarKey("w",selection,setOf("a2","a1")))
+    }
+
     @org.junit.Test fun selectionCloseRequiresUnlockedNonempty(){
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(0,false))
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(2,true))
