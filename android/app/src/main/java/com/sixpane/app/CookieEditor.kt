@@ -3,6 +3,10 @@ package com.sixpane.app
 import android.app.*
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import org.json.JSONTokener
+import org.json.JSONObject
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -28,7 +32,7 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
     private lateinit var editButton:TextView
     private lateinit var deleteButton:TextView
     private var filtered=linkedMapOf<String,String>()
-    private val bg=Color.rgb(44,46,51)
+    private val bg=0xff0b0e13.toInt()
     private fun label(text:String,size:Float,color:Int=Color.WHITE)=TextView(activity).apply {
         this.text=text;textSize=size;setTextColor(color);gravity=Gravity.CENTER_VERTICAL
     }
@@ -47,28 +51,56 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
         if(card.interrupted){activity.notice("Browser renderer interrupted. Cookies cannot be inspected until recovery.");return}
         manager=WebViewCompat.getProfile(card.webView).cookieManager
         val root=LinearLayout(activity).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(bg)}
-        val bar=row().apply{setBackgroundColor(Color.rgb(28,27,33));setPadding(activity.dp(10),0,activity.dp(12),0)}
+        val bar=row().apply{setBackgroundColor(0xff141920.toInt());setPadding(activity.dp(10),0,activity.dp(12),0)}
         bar.addView(action("‹"){dialog.dismiss()},LinearLayout.LayoutParams(activity.dp(44),activity.dp(52)))
-        bar.addView(label("Cookie-Editor",17f),LinearLayout.LayoutParams(0,activity.dp(52),1f))
+        val workspace=activity.store.spaces.indexOfFirst{space->
+            space.panes.any{it.id==card.state.id}
+        }+1
+        bar.addView(label("Pane "+activity.paneIndex(card.state.id)+
+            " · Workspace "+workspace+" · "+currentHost(),17f).apply{
+                setTypeface(null,Typeface.BOLD)
+        },LinearLayout.LayoutParams(0,activity.dp(52),1f))
         root.addView(bar)
         val identity=LinearLayout(activity).apply{orientation=LinearLayout.VERTICAL;setPadding(activity.dp(17),activity.dp(10),activity.dp(12),activity.dp(10))}
-        identity.addView(label(currentHost(),14f),LinearLayout.LayoutParams(-1,activity.dp(24)))
-        identity.addView(label("Browser profile · ${card.state.id.takeLast(7)}",11f,Color.LTGRAY))
+        identity.addView(label("These belong only to this pane's session (profile …"+
+            card.state.profile.takeLast(6)+"). No other pane can see or change them.",
+            12f,0xb3ffffff.toInt()))
+        if(card.state.locked){
+            identity.addView(label("VIEW ONLY — unlock this pane to change cookies",
+                13f,0xffff4d57.toInt()).apply{
+                setPadding(activity.dp(8),activity.dp(8),activity.dp(8),activity.dp(8))
+                setBackgroundColor(0xff252c37.toInt())
+            })
+        }
         root.addView(identity)
         search=EditText(activity).apply {
             hint="Search cookies";setSingleLine(true);textSize=14f
             setPadding(activity.dp(16),0,activity.dp(12),0)
-            setBackgroundColor(Color.rgb(56,59,66));setTextColor(Color.WHITE);setHintTextColor(Color.LTGRAY)
+            background=GradientDrawable().apply{
+                setColor(0xff1c222b.toInt());cornerRadius=activity.dp(12).toFloat()
+                setStroke(activity.dp(1),0xff2b3340.toInt())
+            }
+            setTextColor(0xffeef2f7.toInt());setHintTextColor(0xb3ffffff.toInt())
         }
         root.addView(search,LinearLayout.LayoutParams(-1,activity.dp(53)))
         val scroll=ScrollView(activity).apply{isFillViewport=true}
         list=LinearLayout(activity).apply{orientation=LinearLayout.VERTICAL}
         scroll.addView(list);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-        val footer=row().apply{setBackgroundColor(Color.rgb(36,38,44))}
-        editButton=action("✎   Edit"){editSelected()}
-        deleteButton=action("⌫   Delete"){deleteSelected()}
-        footer.addView(editButton,LinearLayout.LayoutParams(0,activity.dp(67),1f))
-        footer.addView(deleteButton,LinearLayout.LayoutParams(0,activity.dp(67),1f))
+        val footer=LinearLayout(activity).apply{
+            orientation=LinearLayout.VERTICAL;setBackgroundColor(0xff141920.toInt())
+        }
+        val selectedActions=row()
+        editButton=action("✎ Edit"){editSelected()}
+        deleteButton=action("⌫ Delete"){deleteSelected()}
+        selectedActions.addView(editButton,LinearLayout.LayoutParams(0,activity.dp(44),1f))
+        selectedActions.addView(deleteButton,LinearLayout.LayoutParams(0,activity.dp(44),1f))
+        footer.addView(selectedActions)
+        val siteActions=row()
+        siteActions.addView(action("Add cookie"){addCookie()},
+            LinearLayout.LayoutParams(0,activity.dp(48),1f))
+        siteActions.addView(action("Delete all for this site"){deleteAllForSite()},
+            LinearLayout.LayoutParams(0,activity.dp(48),1f))
+        footer.addView(siteActions)
         root.addView(footer)
         search.addTextChangedListener(object:TextWatcher{
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
@@ -89,15 +121,19 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
         if(selected !in filtered.keys)selected=null
         for((name,value)in filtered){
             val item=LinearLayout(activity).apply{orientation=LinearLayout.VERTICAL}
-            val itemName=label("${if(selected==name)"⌄" else "›"}   $name",12f)
+            val itemName=label(name,14f).apply{setTypeface(null,Typeface.BOLD)}
             itemName.setPadding(activity.dp(17),activity.dp(6),activity.dp(10),activity.dp(6))
-            item.addView(itemName,LinearLayout.LayoutParams(-1,activity.dp(55)))
-            if(selected==name){
-                val details=label("Value: ${"•".repeat(value.length.coerceIn(6,18))}\nDomain: ${currentHost()}\nPath / HttpOnly / expiration: unavailable",11f,Color.LTGRAY)
-                details.setPadding(activity.dp(35),0,activity.dp(12),activity.dp(10))
-                item.addView(details)
+            item.addView(itemName,LinearLayout.LayoutParams(-1,activity.dp(27)))
+            val valueLabel=label(value,12f,0xb3ffffff.toInt()).apply{
+                typeface=Typeface.MONOSPACE;maxLines=2
+                ellipsize=android.text.TextUtils.TruncateAt.END
+                setPadding(activity.dp(17),0,activity.dp(10),activity.dp(6))
             }
-            item.setOnClickListener {selected=if(selected==name)null else name;render()}
+            item.addView(valueLabel)
+            item.setOnClickListener {
+                selected=name
+                if(!card.state.locked)editSelected() else render()
+            }
             val line=View(activity).apply{setBackgroundColor(Color.rgb(63,66,72))}
             list.addView(item);list.addView(line,LinearLayout.LayoutParams(-1,activity.dp(1)))
         }
@@ -108,11 +144,104 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
             list.addView(empty)
         }
         // Honest limitation: getCookie() may not expose every cookie attribute or every origin.
-        val limitations=label("Current site only. WebView does not expose full cookie attributes or all stored domains; editing or deletion may fail for cookies using another path.",11f,Color.LTGRAY)
+        val storage=label("Storage on this page: loading…",12f,Color.LTGRAY)
+        storage.setPadding(activity.dp(18),activity.dp(18),activity.dp(18),activity.dp(10))
+        list.addView(storage)
+        if(!card.interrupted){
+            val script="(function(){try{return JSON.stringify({origin:location.origin,"+
+                "local:localStorage.length,session:sessionStorage.length});}"+
+                "catch(e){return JSON.stringify({error:'unavailable'});}})()"
+            card.webView.evaluateJavascript(script){raw->
+                val decoded=runCatching{JSONTokener(raw).nextValue() as? String}.getOrNull()
+                val j=runCatching{JSONObject(decoded?:"{}")}.getOrNull()
+                storage.text="Storage on this page\nOrigin: "+(j?.optString("origin")?:"unavailable")+
+                    "\nLocal storage keys: "+(j?.optString("local")?:"unknown")+
+                    "\nSession storage keys: "+(j?.optString("session")?:"unknown")+
+                    "\nIndexedDB names: not exposed synchronously"
+            }
+        }
+        val limitations=label("Android WebView does not reveal the complete cookie path, expiry or HttpOnly attributes. Unknown scope is never overwritten.",11f,Color.LTGRAY)
         limitations.setPadding(activity.dp(18),activity.dp(19),activity.dp(18),activity.dp(14))
         list.addView(limitations)
-        editButton.alpha=if(selected==null).35f else 1f;deleteButton.alpha=if(selected==null).35f else 1f
+        editButton.alpha=if(selected==null||card.state.locked).35f else 1f
+        deleteButton.alpha=if(selected==null||card.state.locked).35f else 1f
     }
+
+    private fun addCookie(){
+        if(blocked())return
+        if(!url.startsWith("https://")&&!url.startsWith("http://")){
+            activity.notice("Open a website in this pane to add a cookie");return
+        }
+        val form=LinearLayout(activity).apply{
+            orientation=LinearLayout.VERTICAL
+            setPadding(activity.dp(15),activity.dp(8),activity.dp(15),activity.dp(8))
+        }
+        val name=EditText(activity).apply{hint="Name";setSingleLine(true)}
+        val value=EditText(activity).apply{hint="Value";setSingleLine(true)}
+        val path=EditText(activity).apply{hint="Path";setText("/");setSingleLine(true)}
+        form.addView(name);form.addView(value);form.addView(path)
+        AlertDialog.Builder(activity).setTitle("Add cookie")
+            .setView(form).setNegativeButton("Cancel",null)
+            .setPositiveButton("Save"){_,_->
+                val key=name.text.toString().trim()
+                val valText=value.text.toString()
+                val scope=path.text.toString()
+                if(!key.matches(Regex("[A-Za-z0-9!#$%&'*+.^_`|~-]+")) ||
+                    valText.any{it==';'||it=='\r'||it=='\n'} ||
+                    !scope.startsWith("/")||scope.any{it==';'||it=='\r'||it=='\n'}){
+                    activity.notice("Invalid cookie name, value or path");return@setPositiveButton
+                }
+                val secure=url.startsWith("https://")
+                if((key.startsWith("__Host-")&&(!secure||scope!="/"))||
+                    (key.startsWith("__Secure-")&&!secure)){
+                    activity.notice("Cookie prefix requires a secure HTTPS scope");return@setPositiveButton
+                }
+                val attrs="; Path="+scope+(if(secure)"; Secure" else "")+"; SameSite=Lax"
+                manager.setCookie(url,key+"="+valText+attrs){success->
+                    manager.flush()
+                    activity.runOnUiThread{
+                        if(success && cookies()[key]==valText)
+                            activity.notice("Cookie saved in this pane")
+                        else activity.notice("Cookie save not verified")
+                        render()
+                    }
+                }
+            }.show()
+    }
+    private fun deleteAllForSite(){
+        if(blocked())return
+        val current=cookies()
+        if(current.isEmpty())return
+        val scopes=current.keys.map{key->key to observedScope(key)}
+        if(scopes.any{it.second==null||observedAttributes(it.second!!)==null}){
+            activity.notice("Some cookie scopes are unknown; deleting all is refused to protect other paths")
+            return
+        }
+        AlertDialog.Builder(activity).setTitle("Delete all cookies for this site?")
+            .setMessage("Delete "+scopes.size+" cookies with verified domain/path scopes?")
+            .setNegativeButton("Cancel",null).setPositiveButton("Delete"){_,_->
+                var remaining=scopes.size
+                var allAccepted=true
+                scopes.forEach{(name,scope)->
+                    val attr=observedAttributes(scope!!)!!
+                    manager.setCookie(url,name+"=; Max-Age=0"+attr){ok->
+                        if(!ok)allAccepted=false
+                        remaining--
+                        if(remaining==0){
+                            manager.flush()
+                            activity.runOnUiThread{
+                                val gone=current.keys.none{it in cookies()}
+                                activity.notice(if(allAccepted&&gone)
+                                    "Deletion verified for this site" else
+                                    "Deletion NOT verified; original scope may remain")
+                                selected=null;render()
+                            }
+                        }
+                    }
+                }
+            }.show()
+    }
+
     private fun blocked():Boolean{
         if(!card.state.locked)return false
         card.blocked("Unlock browser to modify cookies")
