@@ -107,12 +107,17 @@ class TesseraLayoutInstrumentedTest {
                 val a=first.panes[1]
                 host.tesseraNewWorkspace()
                 val b=host.store.active().panes[4]
-                a.url="https://qa-filter-fixture.invalid/a"
-                b.url="https://qa-filter-fixture.invalid/b"
+                // Navigate any allocated WebViews rather than mutating their
+                // saved URLs while about:blank completion callbacks are pending.
+                // A real local asset URL avoids external network variability.
+                val urlA="https://appassets.androidplatform.net/assets/isolation_test.html?qa-filter-fixture=a"
+                val urlB="https://appassets.androidplatform.net/assets/isolation_test.html?qa-filter-fixture=b"
+                host.windowCard(a.id)?.loadAddress(urlA)?:run{a.url=urlA}
+                host.windowCard(b.id)?.loadAddress(urlB)?:run{b.url=urlB}
                 host.persist()
                 expected=setOf(a.id,b.id)
                 profiles=host.store.spaces.flatMap{it.panes}.associate{it.id to it.profile}
-                host.tesseraSetFilter("qa-filter-fixture.invalid",emptySet())
+                host.tesseraSetFilter("qa-filter-fixture",emptySet())
             }
             var actual:Set<String> = emptySet()
             for(i in 0 until 30){
@@ -129,6 +134,9 @@ class TesseraLayoutInstrumentedTest {
             assertEquals("Only matching source panes may occupy visible result slots",expected,actual)
             scenario.onActivity{host->
                 assertEquals(2,host.store.spaces.size)
+                assertEquals(2,host.store.spaces.flatMap{it.panes}.count{
+                    it.url.contains("qa-filter-fixture")
+                })
                 assertTrue(host.tesseraActivePane()?.id in expected)
                 assertEquals(profiles,host.store.spaces.flatMap{it.panes}
                     .associate{it.id to it.profile})
