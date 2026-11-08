@@ -158,6 +158,53 @@ class TesseraLayoutInstrumentedTest {
         }finally{scenario.close()}
     }
 
+    @Test fun defaultFilterDimsUnmatchedPanesWithoutMovingTheirSlots(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            lateinit var paneIds:Set<String>
+            lateinit var highlight:String
+            lateinit var profiles:Map<String,String>
+            lateinit var original:Map<String,Pair<Int,Int>>
+            scenario.onActivity{host->
+                assertFalse("The reference filter layout is the default",
+                    host.store.compactFilterResults)
+                val panes=host.store.active().panes
+                paneIds=panes.map{it.id}.toSet()
+                highlight=panes[2].id
+                profiles=panes.associate{it.id to it.profile}
+                original=host.auditPanes().filter{it.first.id in paneIds}
+                    .mapNotNull{(pane,card)->
+                        val lp=card?.layoutParams as? FrameLayout.LayoutParams
+                        if(lp!=null)pane.id to (lp.leftMargin to lp.topMargin) else null
+                    }.toMap()
+                host.store.setFrameColor(setOf(highlight),FramePalette.tesseraColors[0])
+                host.tesseraSetFilter("",setOf("Blue"))
+            }
+            assertEquals(6,original.size)
+            scenario.onActivity{host->
+                val slots=host.auditPanes().filter{it.first.id in paneIds}
+                    .mapNotNull{(pane,card)->
+                        val lp=card?.layoutParams as? FrameLayout.LayoutParams
+                        if(lp!=null)pane.id to (lp.leftMargin to lp.topMargin) else null
+                    }.toMap()
+                assertEquals("Filtering must preserve six original workspace slots",
+                    original,slots)
+                assertEquals("Filtering must retain session identities",
+                    profiles,host.store.active().panes.associate{it.id to it.profile})
+                host.auditPanes().filter{it.first.id in paneIds}.forEach{(pane,card)->
+                    assertNotNull(card)
+                    if(pane.id==highlight){
+                        assertEquals("Matched pane remains fully opaque",1f,card!!.alpha,0.01f)
+                    }else{
+                        assertEquals("Non-matches must fade in place",.16f,card!!.alpha,.01f)
+                    }
+                }
+                assertEquals(setOf(highlight),host.tesseraVisibleSelectionIds())
+            }
+        }finally{scenario.close()}
+    }
+
     @Test fun filteredCrossWorkspacePanesFillOnlyMatchingSixSlotPositions(){
         val scenario=ActivityScenario.launch(MainActivity::class.java)
         try{
@@ -179,6 +226,8 @@ class TesseraLayoutInstrumentedTest {
                 host.persist()
                 expected=setOf(a.id,b.id)
                 profiles=host.store.spaces.flatMap{it.panes}.associate{it.id to it.profile}
+                // Preserve and explicitly exercise the older condensed result mode.
+                host.tesseraSetCompactFilterResults(true)
                 host.tesseraSetFilter("qa-filter-fixture",emptySet())
             }
             var actual:Set<String> = emptySet()
