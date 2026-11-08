@@ -227,3 +227,38 @@ not the interaction; **I** = source implementation changed;
 
 No changes from this record promote the feature branch to `main`, install
 on the user's phone, erase live sessions, or approve a bookmarks migration.
+
+
+## Source-linked 18-section release gate (current feature branch)
+
+The following is a **conservative source audit** tied to the canonical
+18-section handoff. **PARTIAL** means both implemented and unverified/missing
+atomic clauses remain. The working 100 checks above **do not replace** the
+228 atomic acceptance checks or 32 JM journeys. File line ranges below
+refer to the current feature-branch source after the menu/selection changes.
+
+| Handoff section | Status | Current source anchors | Outstanding JM requirement |
+|---|---|---|---|
+| 1. Screen structure | PARTIAL | MainActivity.kt:108–160; 980–1075 | Grid/dock source present; exact insets and screenshot states remain unaccepted |
+| 2. Theme tokens | PARTIAL | TesseraBar.kt:38–58; FramePalette.kt:6–26 | Legacy saved colours preserved; exact all-screen visual style not retested |
+| 3. Command bar | PARTIAL | TesseraBar.kt:60–368; MainActivity.kt:1077–1086 | Core dock/back policy present; suggestion metadata and complete gesture checks open |
+| 4. Pane and overlays | PARTIAL | PaneCard.kt:206–293; 638–770 | Open a site now distinct; touch/accessibility/lock and nested refresh need QA |
+| 5. Enlarged pane | PARTIAL | PaneLayout.kt:1–58; MainActivity.kt:980–1075 | Rectangles and resize exist; screenshot and thumbnail interactions pending |
+| 6. Full-screen menus | PARTIAL | TesseraBar.kt:371–632; 784–834 | Inline palette, desktop switch, row order changed; emulator/photo pass pending |
+| 7. Workspaces | PARTIAL | TesseraBar.kt:633–783; LocalStore.kt:338–375 | Card controls now in header; preview live/fallback and layout need screenshot QA |
+| 8. Multi-select | PARTIAL | MainActivity.kt:575–626; 701–756; TesseraBar.kt:183–229; 784–834 | Selected IDs persist, bulk skips locks; end-to-end emulator checks pending |
+| 9. Filters | PARTIAL | MainActivity.kt:220–265; 887–899; 980–1068; TesseraBar.kt:835–868 | Cross-workspace result geometry corrected; virtual page behavior needs confirmed regression |
+| 10. Links/popups/keyboard | NOT MET | PaneCard.kt:322–475; MainActivity.kt:980–999 | Locked new-tab/sign-in popup still disabled; IME and intent behavior need tests |
+| 11. Feedback/motion | PARTIAL | TesseraMotion.kt:1–22; TesseraBar.kt:969–991 | Snack/undo exist; keyboard, modal and reduced-animation parity unverified |
+| 12. Settings | NOT MET | TesseraBar.kt:869–920; PaneKeepAliveService.kt:1–41 | Specified wake/Wi-Fi/overlay switches and platform behaviors absent |
+| 13. Lock behavior | PARTIAL | PaneCard.kt:445–486; 686–765; TesseraBar.kt:559–632 | Lock guards and disable explanations exist; new-tab popup missing |
+| 14. Other screens | PARTIAL | CookieEditor.kt:1–328; SessionIntegrityReport.kt:1–130; TesseraBar.kt:920–968 | IndexDB names/health test/unsupported-screen parity incomplete |
+| 15. Saved data rules | NOT MET | LocalStore.kt:133–375; MainActivity.kt:537–575; 701–756 | Fresh profiles and focus remap present; shared bookmarks migration explicitly gated |
+| 16. Browser behavior | PARTIAL | PaneCard.kt:55–201; 304–475 | Many browser callbacks present; beforeunload and heartbeat incomplete |
+| 17. Background/notifications | NOT MET | PaneKeepAliveService.kt:1–41; MainActivity.kt:1088–1136 | No credible all-42 live/visible guarantees; overlay/restore behavior absent |
+| 18. Small interface rules | PARTIAL | TesseraBar.kt:183–368; 969–991; MainActivity.kt:575–626 | Selection, snacks and chips present; exact all-state layout/copy still unverified |
+
+**Source changes pass the latest completed debug build and JVM unit suite;
+individual UI actions are not automatically passed by compilation.**
+Keep production promotion, session migration and user-device testing gated
+until required evidence has been collected.
