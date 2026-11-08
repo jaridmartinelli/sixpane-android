@@ -735,10 +735,16 @@ class MainActivity:Activity(){
             }catch(e:IllegalArgumentException){
                 notice("End cancelled: "+e.message);return@confirm
             }
+            val newIds=replacements.associate{it.first.id to it.second.id}
             replacements.forEach{(old,_)->
                 cards.remove(old.id)?.let{stage.removeView(it);it.destroyExplicitly()}
             }
-            exitSelection()
+            if(imeAutoExpandedId in newIds)imeAutoExpandedId=null
+            if(selecting){
+                val retained=WorkspacePolicy.remapSelectedIds(selectedPanes,newIds)
+                selectedPanes.clear();selectedPanes.addAll(retained)
+                updateSelection()
+            }
             clampFilteredPage();renderTabs();positionCards(false)
             val skipped=skippedAtOpen+current.skippedLocked.size
             notice("Ended "+replacements.size+" sessions — fresh panes are ready"+
