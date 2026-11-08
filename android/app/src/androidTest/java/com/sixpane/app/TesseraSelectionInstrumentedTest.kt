@@ -114,7 +114,9 @@ class TesseraSelectionInstrumentedTest {
                 assertNotEquals(endedId,current[1].id)
                 assertNotEquals(endedProfile,current[1].profile)
                 assertEquals("about:blank",current[1].url)
-                assertFalse(host.tesseraSelecting())
+                assertTrue("Selection must follow the fresh pane, not disappear",host.tesseraSelecting())
+                assertEquals(setOf(lockedId,current[1].id),host.tesseraSelected())
+                assertFalse(endedId in host.tesseraSelected())
             }
         } finally {scenario.close()}
     }
