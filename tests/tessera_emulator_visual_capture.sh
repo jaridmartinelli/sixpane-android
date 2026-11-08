@@ -78,6 +78,6 @@ fi
 # Instrumentation runs against disposable emulator, independently of visual screenshots.
 # Only tests valid for the preview package. Legacy toolbar and QA-only tests target
 # different app contracts and must not be mislabeled as Tessera failures.
-gradle --project-dir "$ROOT/android" --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.sixpane.app.ProfileIsolationInstrumentedTest,com.sixpane.app.TesseraSelectionInstrumentedTest,com.sixpane.app.TesseraLayoutInstrumentedTest > "$OUT/instrumentation.log" 2>&1 || result=1
+gradle --project-dir "$ROOT/android" --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.sixpane.app.ProfileIsolationInstrumentedTest,com.sixpane.app.TesseraSelectionInstrumentedTest,com.sixpane.app.TesseraLayoutInstrumentedTest,com.sixpane.app.TesseraPopupInstrumentedTest > "$OUT/instrumentation.log" 2>&1 || result=1
 find "$ROOT/android/app/build/outputs/androidTest-results" -type f -name '*.xml' -exec cp {} "$OUT"/ \; 2>/dev/null || true
 exit "$result"
