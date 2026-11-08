@@ -21,6 +21,17 @@ class WorkspacePolicyTest {
         assertEquals("",WorkspacePolicy.displayZoom(100)); assertEquals("90%",WorkspacePolicy.displayZoom(90))
     }
 
+    @Test fun allNoneIsScopedToTheCurrentWorkspace(){
+        val selected=setOf("workspace-a-1", "workspace-b-1")
+        val visible=setOf("workspace-b-1", "workspace-b-2")
+        val all=WorkspacePolicy.toggleVisibleSelection(selected,visible)
+        assertEquals(setOf("workspace-a-1","workspace-b-1","workspace-b-2"),all)
+        val none=WorkspacePolicy.toggleVisibleSelection(all,visible)
+        assertEquals(setOf("workspace-a-1"),none)
+        assertEquals(6,WorkspacePolicy.toggleVisibleSelection(emptySet(),
+            (1..6).map{it.toString()}.toSet()).size)
+    }
+
     @org.junit.Test fun selectionCloseRequiresUnlockedNonempty(){
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(0,false))
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(2,true))
