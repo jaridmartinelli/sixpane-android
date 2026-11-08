@@ -152,6 +152,13 @@ class LocalStore(ctx:Context){
     var lightMode:Boolean
         get()=prefs.getBoolean("light-chrome",false)
         set(value){check(prefs.edit().putBoolean("light-chrome",value).commit())}
+    // Default follows the handoff: filtering dims matching/non-matching panes
+    // in their original source workspace slots without moving them.
+    // The previous condensed cross-workspace result paging remains available
+    // as a reversible option and never changes a WebView profile ID.
+    var compactFilterResults:Boolean
+        get()=prefs.getBoolean("compact-filter-results",false)
+        set(value){check(prefs.edit().putBoolean("compact-filter-results",value).commit())}
     // Separate preference: the established workspace manifest format stays unchanged.
     var desktopUserAgent:Boolean
         get()=prefs.getBoolean("desktop-user-agent",true)
