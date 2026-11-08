@@ -134,6 +134,30 @@ class TesseraLayoutInstrumentedTest {
         }finally{scenario.close()}
     }
 
+    @Test fun newWorkspaceDisabledByFilterShowsReasonBelowFooter(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            scenario.onActivity{host->
+                host.tesseraSetFilter("unmatched-fixture.example",emptySet())
+            }
+            val workspaces=device.wait(Until.findObject(
+                By.descContains("Workspaces; current")),8_000L)
+            assertNotNull("Workspace screen should remain reachable while filtering",workspaces)
+            workspaces.click()
+            assertNotNull(device.wait(Until.findObject(By.text("Workspaces")),8_000L))
+            val reason=device.findObject(By.text("Clear filters to add a workspace"))
+            assertNotNull("Reference displays disabled reason below new workspace button",reason)
+            val create=device.findObject(By.descContains("New workspace unavailable:"))
+            assertNotNull("Disabled footer needs an accessible reason",create)
+            create.click()
+            device.waitForIdle()
+            scenario.onActivity{host->assertEquals(1,host.store.spaces.size)}
+            assertNotNull("Blocked action should leave workspace menu open",
+                device.findObject(By.text("Workspaces")))
+        }finally{scenario.close()}
+    }
+
     @Test fun filteredCrossWorkspacePanesFillOnlyMatchingSixSlotPositions(){
         val scenario=ActivityScenario.launch(MainActivity::class.java)
         try{
