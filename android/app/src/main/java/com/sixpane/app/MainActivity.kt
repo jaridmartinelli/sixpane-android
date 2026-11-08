@@ -267,6 +267,7 @@ class MainActivity:Activity(){
         if(selecting){selectedPanes.clear();updateSelection()}
         renderTabs()
         updateUniversalBar();positionCards(true)
+        notice("Filters cleared — all panes shown")
     }
     private fun pickFilterColors(){
         val names=FramePalette.names.toTypedArray()
@@ -537,6 +538,7 @@ class MainActivity:Activity(){
         renderTabs()
     }
     private fun createWorkspace(){
+        if(selecting){notice("Finish selecting first (tap ✕)");return}
         if(filtering()){notice("Clear the filter to add a workspace");return}
         if(!WorkspacePolicy.canCreate(store.spaces.size))return
         try{
@@ -571,6 +573,7 @@ class MainActivity:Activity(){
     }
     /** Selection is scoped to the six panes shown on the current workspace/filter tab. */
     fun enterSelection(initial:String?=null){
+        if(::tessera.isInitialized)tessera.closeAddress()
         selecting=true
         selectedPanes.clear()
         if(initial!=null && currentFilteredPanes().any{it.id==initial}) selectedPanes.add(initial)
@@ -683,8 +686,7 @@ class MainActivity:Activity(){
             clampFilteredPage()
             renderTabs()
             positionCards(false)
-            notice(replacements.size.toString()+
-                " sessions retired; new profiles created in their original workspaces.")
+            notice("Ended "+replacements.size+" sessions — fresh panes are ready")
         }
     }
     private fun showBookmarksForPane(id:String){
