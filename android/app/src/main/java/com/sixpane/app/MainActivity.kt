@@ -561,6 +561,8 @@ class MainActivity:Activity(){
             }
             // Don't mark cleanup complete while WebKit still has references to the profiles.
             store.close(ws.id) // durable tombstone FIRST: even a crash cannot restore these profiles
+            // Retired IDs must not remain actionable in a cross-workspace selection.
+            selectedPanes.removeAll(ws.panes.map{it.id}.toSet())
             for(p in ws.panes){
                 cards.remove(p.id)?.let{stage.removeView(it);it.destroyExplicitly()}
             }
@@ -568,6 +570,7 @@ class MainActivity:Activity(){
             // Can't safely call deleteProfile after a profile has been loaded in this process.
             // Pending tombstones are retired at the next cold start; UI never claims disk deletion is complete.
             renderTabs();positionCards(false)
+            if(selecting)updateSelection()
             notice("Six sessions closed. Their profiles are retired; on-disk cleanup is pending a clean restart.")
         }
     }
