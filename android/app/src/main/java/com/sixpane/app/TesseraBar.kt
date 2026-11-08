@@ -494,7 +494,7 @@ internal class TesseraBar(private val host:MainActivity) {
             }
             val dot=txt(if(index==0)"×" else "",17f).apply{
                 gravity=Gravity.CENTER
-                setTextColor(text)
+                setTextColor(this@TesseraBar.text)
                 importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
             dots.add(value to dot)
