@@ -31,7 +31,8 @@ class BrowserPolicyTest {
         assertEquals("https://www.youtube.com",BrowserPolicy.resolveAddressOrSearch("www.youtube.com"))
         assertEquals("https://example.com/page?a=1",BrowserPolicy.resolveAddressOrSearch("https://example.com/page?a=1"))
         assertEquals("http://localhost:8080/",BrowserPolicy.resolveAddressOrSearch("http://localhost:8080/"))
-        assertEquals("https://localhost:8080",BrowserPolicy.resolveAddressOrSearch("localhost:8080"))
+        assertEquals("http://localhost:8080",BrowserPolicy.resolveAddressOrSearch("localhost:8080"))
+        assertEquals("http://127.0.0.1:8080",BrowserPolicy.resolveAddressOrSearch("127.0.0.1:8080"))
         assertEquals("about:blank",BrowserPolicy.resolveAddressOrSearch("about:blank"))
         assertEquals("https://example.com/a%20b",BrowserPolicy.resolveAddressOrSearch("https://example.com/a b"))
     }

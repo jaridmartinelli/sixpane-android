@@ -555,6 +555,33 @@ class PaneCard(
         })
         header.setOnTouchListener{_,event->detector.onTouchEvent(event);true}
         header.contentDescription="Pane header; make active, double tap to expand, hold for pane menu"
+        header.accessibilityDelegate=object:View.AccessibilityDelegate(){
+            override fun onInitializeAccessibilityNodeInfo(
+                hostView:View,info:android.view.accessibility.AccessibilityNodeInfo
+            ){
+                super.onInitializeAccessibilityNodeInfo(hostView,info)
+                info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(
+                    android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK,"Make active"))
+                info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(
+                    android.view.accessibility.AccessibilityNodeInfo.ACTION_EXPAND,"Expand or shrink"))
+                info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(
+                    android.view.accessibility.AccessibilityNodeInfo.ACTION_LONG_CLICK,"Pane menu"))
+            }
+            override fun performAccessibilityAction(view:View,action:Int,args:android.os.Bundle?):Boolean{
+                when(action){
+                    android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK->{
+                        host.tesseraActivate(state.id);return true
+                    }
+                    android.view.accessibility.AccessibilityNodeInfo.ACTION_EXPAND->{
+                        host.tesseraActivate(state.id,true);return true
+                    }
+                    android.view.accessibility.AccessibilityNodeInfo.ACTION_LONG_CLICK->{
+                        host.windowContextMenu(this@PaneCard);return true
+                    }
+                }
+                return super.performAccessibilityAction(view,action,args)
+            }
+        }
         updateHeader()
     }
     private fun updateHeader(){

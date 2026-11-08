@@ -95,10 +95,25 @@ internal class TesseraBar(private val host:MainActivity) {
             }else false
         }
     }
-    private val star=button("☆"){val card=host.tesseraActiveCard()
-        if(card?.loading==true)card.webView.stopLoading()
-        else host.tesseraToggleBookmark()
-        render()
+    private val star=button("☆"){
+        val card=host.tesseraActiveCard()
+        if(card?.loading==true){
+            card.webView.stopLoading();render()
+        }else{
+            val pane=host.tesseraActivePane()
+            if(pane==null||pane.url=="about:blank"){
+                host.notice("Open a page first, then bookmark it")
+            }else{
+                val bookmarked=host.store.toggleBookmarkForPane(pane.id,pane.url)
+                val url=pane.url
+                render()
+                val site=runCatching{URI(url).host}.getOrNull()?:"site"
+                if(bookmarked!=null)snack(if(bookmarked)"Bookmarked "+site else "Bookmark removed"){
+                    host.store.toggleBookmarkForPane(pane.id,url)
+                    render()
+                }
+            }
+        }
     }
     private val addressPill=LinearLayout(host).apply{
         gravity=Gravity.CENTER_VERTICAL
@@ -159,7 +174,10 @@ internal class TesseraBar(private val host:MainActivity) {
             setTextColor(secondary)
         })
         controls.addView(status,LinearLayout.LayoutParams(dp(100),dp(44)))
-        add(if(host.tesseraSelected().size==6)"None" else "All",56){host.tesseraSelectAll()}
+        val currentIds=host.store.active().panes.map{it.id}.toSet()
+        add(if(currentIds.all{it in host.tesseraSelected()})"None" else "All",56){
+            host.tesseraSelectAll()
+        }
         add("⌑",44){host.tesseraLockSelected(true)}
         add("♢",44){host.tesseraLockSelected(false)}
         add("●",44){colorDialog(host.tesseraSelected())}
@@ -340,7 +358,15 @@ internal class TesseraBar(private val host:MainActivity) {
             setTextColor(if(enabled)secondary else 0xffff6b6b.toInt())
         })
         r.addView(bodyText,LinearLayout.LayoutParams(0,-2,1f))
-        r.setOnClickListener{if(enabled)action()else host.notice(description)}
+        r.setOnClickListener{
+            if(enabled)action()
+            else {
+                if(description.contains("lock",ignoreCase=true)){
+                    host.tesseraActiveCard()?.lock?.blockedFeedback()
+                }
+                host.notice(description)
+            }
+        }
         body.addView(r,LinearLayout.LayoutParams(-1,-2))
     }
     private fun footerButton(footer:LinearLayout,value:String,action:()->Unit){

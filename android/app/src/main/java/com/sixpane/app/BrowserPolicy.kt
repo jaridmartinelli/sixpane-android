@@ -64,8 +64,14 @@ object BrowserPolicy {
             .matches(text)
         val localhost=Regex("""^localhost(?::[0-9]{1,5})?(?:[/#?].*)?$""",RegexOption.IGNORE_CASE)
             .matches(text)
-        if(explicitHttp||hostWithDomain||localhost){
-            val candidate=if(explicitHttp)text.replace(" ","%20") else text
+        val ipAddress=Regex("""^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?::[0-9]{1,5})?(?:[/#?].*)?$""")
+            .matches(text)
+        if(explicitHttp||hostWithDomain||localhost||ipAddress){
+            val candidate=when {
+                explicitHttp->text.replace(" ","%20")
+                localhost||ipAddress->"http://"+text
+                else->text
+            }
             normalizeAddress(candidate)?.let{return it}
         }
         return "https://www.google.com/search?q=" + java.net.URLEncoder.encode(text,"UTF-8")
