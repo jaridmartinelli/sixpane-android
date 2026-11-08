@@ -27,6 +27,7 @@ class MainActivity:Activity(){
     private lateinit var tabStrip:LinearLayout
     private val tabLockIcons=mutableMapOf<String,CornerIcon>()
     private lateinit var universalBar: UniversalBar
+    private lateinit var tessera:TesseraBar
     private lateinit var filterEmpty:TextView
     private val saveFilter=Runnable{if(::store.isInitialized)store.save()}
     private var selecting=false
@@ -107,7 +108,7 @@ class MainActivity:Activity(){
     }
     private fun buildUI(){
         val bg=Color.rgb(15,21,31)
-        screen=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(bg)}
+        screen=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(Color.rgb(11,14,19))}
         if(Build.VERSION.SDK_INT>=30)screen.setOnApplyWindowInsetsListener{v,insets->
             val bars=insets.getInsets(WindowInsets.Type.systemBars())
             v.setPadding(bars.left,bars.top,bars.right,bars.bottom)
@@ -133,12 +134,16 @@ class MainActivity:Activity(){
             onClearFilters = ::clearAllFilters,
             onMenuClick = ::universalMenu,
         )
-        screen.addView(universalBar.view,LinearLayout.LayoutParams(-1,dp(48)))
         screen.addView(stage,LinearLayout.LayoutParams(-1,0,1f))
-        // Every workspace slot remains accessible without horizontal scrolling.
-        screen.addView(tabStrip,LinearLayout.LayoutParams(-1,dp(48)))
+        // Retain the original workspace and universal action models without
+        // rendering their obsolete top bar or tab row.
+        tessera=TesseraBar(this)
+        screen.addView(tessera.filterChips,LinearLayout.LayoutParams(-1,dp(0)))
+        screen.addView(tessera.dock,LinearLayout.LayoutParams(-1,dp(56)))
         filterEmpty=TextView(this).apply{
-            text="No windows match";gravity=Gravity.CENTER
+            text="No panes match these filters\nYour sessions are still running.\nClear filters"
+            gravity=Gravity.CENTER
+            setOnClickListener{clearAllFilters()}
             textSize=13f;setTextColor(Color.rgb(174,186,206));visibility=View.GONE
         }
         stage.addView(filterEmpty,FrameLayout.LayoutParams(-1,-1))
@@ -146,6 +151,7 @@ class MainActivity:Activity(){
         applyChromeTheme()
         renderTabs()
         updateUniversalBar()
+        tessera.render()
         if(pendingFailures>0)notice("${pendingFailures} retired profiles await deletion on a later clean start; no IDs will be reused")
     }
 
@@ -162,6 +168,7 @@ class MainActivity:Activity(){
     }
 
     private fun updateUniversalBar() {
+        if (::tessera.isInitialized)tessera.render()
         if (!::universalBar.isInitialized) return
         val focused = allPanes().firstOrNull { it.id == store.focusId }
         universalBar.render(
@@ -346,7 +353,10 @@ class MainActivity:Activity(){
             }.show()
     }
     fun persist(){store.save()}
-    fun notice(message:String){textNotice?.cancel();textNotice=Toast.makeText(this,message,Toast.LENGTH_LONG);textNotice?.show()}
+    fun notice(message:String){
+        if(::tessera.isInitialized){tessera.snack(message);return}
+        textNotice?.cancel();textNotice=Toast.makeText(this,message,Toast.LENGTH_LONG);textNotice?.show()
+    }
     fun confirm(title:String,message:String,yes:String="Continue",action:()->Unit){
         AlertDialog.Builder(this).setTitle(title).setMessage(message)
             .setNegativeButton("Cancel",null).setPositiveButton(yes){_,_->action()}.show()
@@ -510,7 +520,8 @@ class MainActivity:Activity(){
         if(!::screen.isInitialized||!::universalBar.isInitialized)return
         val light=store.lightMode
         val surface=if(light)Color.rgb(235,241,249) else Color.rgb(15,21,31)
-        screen.setBackgroundColor(surface);stage.setBackgroundColor(surface)
+        screen.setBackgroundColor(Color.rgb(11,14,19))
+        stage.setBackgroundColor(Color.rgb(11,14,19))
         tabStrip.setBackgroundColor(if(light)Color.rgb(225,233,242) else Color.rgb(17,23,29))
         filterEmpty.setTextColor(if(light)Color.rgb(65,78,96) else Color.rgb(174,186,206))
         universalBar.applyChromeTheme(light)
@@ -574,9 +585,11 @@ class MainActivity:Activity(){
         cards.forEach{(id,card)->
             card.updateSelection(selecting && id in visibleIds,selectedPanes.contains(id))
         }
+        if(::tessera.isInitialized)tessera.render()
     }
     /** Exactly seven pane actions. A workspace-tab hold owns workspace-wide tools. */
     fun windowContextMenu(card:PaneCard){
+        if(::tessera.isInitialized){tessera.paneMenu(card,false);return}
         if(selecting&&!selectedPanes.contains(card.state.id)){selectedPanes.add(card.state.id);updateSelection()}
         val targets=if(selecting&&selectedPanes.isNotEmpty())allPanes().filter{it.id in selectedPanes} else listOf(card.state)
         WindowActions(this,card,targets).open()
@@ -761,17 +774,78 @@ class MainActivity:Activity(){
     }
     fun cookieEditor(card:PaneCard){CookieEditor(this,card).open()}
     fun copyPanePageReport(card:PaneCard){PanePageReport(this).copy(card)}
-    fun focus(card:PaneCard){
-        if(currentFilteredPanes().none{it.id==card.state.id})return
-        store.focusId=if(store.focusId==card.state.id)null else card.state.id
-        store.save();updateUniversalBar();positionCards(true)
+    fun focus(card:PaneCard){tesseraActivate(card.state.id,true)}
+    fun tesseraActivate(id:String,expand:Boolean=false){
+        if(selecting){toggleWindowSelection(id);return}
+        if(store.active().panes.none{it.id==id})return
+        store.activePaneId=id
+        if(expand)store.focusId=if(store.focusId==id)null else id
+        else if(store.focusId!=null && store.focusId!=id)store.focusId=id
+        store.save();updateUniversalBar();positionCards(expand)
+    }
+    fun tesseraIsActive(id:String)=store.activePaneId==id
+    fun tesseraActivePane():PaneState?=store.active().panes.firstOrNull{
+        it.id==store.activePaneId
+    }?:store.active().panes.firstOrNull()
+    fun tesseraActiveCard():PaneCard?=tesseraActivePane()?.let{cards[it.id]}
+    fun tesseraSelected():Set<String> =selectedPanes.toSet()
+    fun tesseraSelecting():Boolean =selecting
+    fun tesseraSelectAll(){
+        if(selectedPanes.size==store.active().panes.size){
+            selectedPanes.clear();updateSelection()
+        }else selectVisiblePanes()
+    }
+    fun tesseraExitSelection(){exitSelection()}
+    fun tesseraSetFilter(query:String,colors:Set<String>){
+        store.filterQuery=query
+        store.selectedFrameColors.clear();store.selectedFrameColors.addAll(colors)
+        store.save();updateUniversalBar();positionCards(false)
+    }
+    fun tesseraClearFilters(){clearAllFilters()}
+    fun tesseraOpenWorkspace(id:String){
+        if(store.spaces.none{it.id==id})return
+        store.currentId=id
+        store.activePaneId=store.active().panes.firstOrNull()?.id
+        store.focusId=null;store.save();renderTabs();positionCards(true);updateUniversalBar()
+    }
+    fun tesseraNewWorkspace(){createWorkspace()}
+    fun tesseraCloseWorkspace(id:String){store.spaces.firstOrNull{it.id==id}?.let{closeWorkspace(it)}}
+    fun tesseraLockSelected(value:Boolean){
+        allPanes().filter{it.id in selectedPanes}.forEach{
+            it.locked=value;cards[it.id]?.updateLockStatus()
+        }
+        store.save();updateSelection()
+    }
+    fun tesseraRecolor(ids:Set<String>,color:Int){recolorWindows(ids,color)}
+    fun tesseraEnd(ids:Set<String>){closeWindows(ids)}
+    fun tesseraBookmarksForActive():List<String> =tesseraActivePane()?.let{
+        store.bookmarksForPane(it.id)
+    }.orEmpty()
+    fun tesseraToggleBookmark(){
+        val pane=tesseraActivePane()?:return
+        if(pane.url=="about:blank"){notice("Open a page first, then bookmark it");return}
+        store.toggleBookmarkForPane(pane.id,pane.url)
+        updateUniversalBar()
+    }
+    fun tesseraGo(raw:String):Boolean{
+        val pane=tesseraActivePane()?:return false
+        val resolved=BrowserPolicy.resolveAddressOrSearch(raw)?:return false
+        cards[pane.id]?.loadAddress(resolved)?:run{pane.url=resolved;store.save()}
+        updateUniversalBar()
+        return true
+    }
+    fun tesseraOpenSettings(){AppSettings(this).open()}
+    fun tesseraMenuAll(){tesseraActiveCard()?.let{tessera.paneMenu(it,true)}}
+    fun tesseraSetGrid(value:String){
+        if(value !in listOf("automatic","2x3","3x2"))return
+        store.gridPreference=value;store.save();positionCards(true)
     }
     private fun positionCards(animate:Boolean){
         if(!started||!::stage.isInitialized)return
         val width=stage.width;val height=stage.height
         if(width<10||height<10)return
         val layoutRun=++layoutGeneration
-        val gap=dp(2);val visible=currentFilteredPanes()
+        val gap=dp(4);val visible=store.active().panes.toList()
         syncVisibleWebViews(visible)
         if(store.focusId!=null && visible.none{it.id==store.focusId}){
             store.focusId=null
@@ -780,13 +854,24 @@ class MainActivity:Activity(){
         val f=store.focusId
         // Allocate full six-slot geometry even with only 1–5 filtered matches.
         // Unfilled cells stay the stage background, never stretched panes.
-        val rects=FilteredPanePages.bounds(width,height,gap,store.columns,visible.size,
+        val activeColumns=when(store.gridPreference){
+            "2x3"->2
+            "3x2"->3
+            else->if(width.toFloat()>=height.toFloat()*0.95f)3 else 2
+        }
+        val rects=FilteredPanePages.bounds(width,height,gap,activeColumns,visible.size,
             f?.let{id->visible.indexOfFirst{it.id==id}},dp(54),dp(80))
-        filterEmpty.visibility=if(visible.isEmpty())View.VISIBLE else View.GONE
+        filterEmpty.visibility=if(filtering()&&visible.none{p->
+            FramePalette.matches(p.url,store.frameColor(p.id),
+                store.filterQuery,store.selectedFrameColors)
+        })View.VISIBLE else View.GONE
         updateUniversalBar()
         val desired=visible.mapIndexed{i,p->val r=rects[i];p.id to intArrayOf(r.x,r.y,r.width,r.height)}.toMap()
         for((id,card) in cards){
             card.updatePaneNumber()
+            val matching=!filtering()||FramePalette.matches(card.state.url,
+                store.frameColor(id),store.filterQuery,store.selectedFrameColors)
+            card.alpha=if(matching)1f else .16f
             val r=desired[id]
             if(r==null){
                 // Hidden pages stay live and attached, without pauseTimers/stopLoading.
@@ -830,9 +915,14 @@ class MainActivity:Activity(){
     }
     @Deprecated("Android callback")
     override fun onBackPressed(){
+        if(::tessera.isInitialized&&tessera.closeAddress())return
         if(selecting){exitSelection();return}
-        if(::store.isInitialized&&store.focusId!=null){store.focusId=null;persist();updateUniversalBar();positionCards(true);return}
-        super.onBackPressed()
+        val card=tesseraActiveCard()
+        if(card!=null&&card.webView.canGoBack()){card.back();return}
+        if(::store.isInitialized&&store.focusId!=null){
+            store.focusId=null;persist();updateUniversalBar();positionCards(true);return
+        }
+        moveTaskToBack(true)
     }
     override fun onConfigurationChanged(newConfig:Configuration){super.onConfigurationChanged(newConfig);if(::stage.isInitialized)stage.post{positionCards(false)}}
     override fun onStart(){

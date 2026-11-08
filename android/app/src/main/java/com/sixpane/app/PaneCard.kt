@@ -3,6 +3,10 @@ package com.sixpane.app
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.RippleDrawable
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.text.TextUtils
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
@@ -23,6 +27,21 @@ class PaneCard(
     var webView:WebView
         private set
     private val body=FrameLayout(host)
+    private val header=LinearLayout(host)
+    private val headerNumber=TextView(host)
+    private val headerLock=TextView(host)
+    private val headerHost=TextView(host)
+    private val headerBadge=TextView(host)
+    private val headerProgress=View(host)
+    private val refreshIndicator=TextView(host)
+    private val errorOverlay=LinearLayout(host)
+    private var refreshAnimator:ObjectAnimator?=null
+    private var selectedOutline=false
+    var loading=false
+        private set
+    private var startY=0f
+    private var pullPermitted=false
+    private var pullTriggered=false
     private val thumbnailTap=FrameLayout(host)
     private val blankTap=FrameLayout(host)
     val lock=CornerIcon(host,CornerIcon.Kind.LOCK)
@@ -31,7 +50,7 @@ class PaneCard(
     private val recoveryIndicator=TextView(host)
     private val indicator=TextView(host)
     private val badge=LinearLayout(host)
-    val menuAnchor:View get()=badge
+    val menuAnchor:View get()=header
     private val selectionLayer=FrameLayout(host)
     private val selectionMark=TextView(host)
     private val assetLoader=WebViewAssetLoader.Builder().addPathHandler("/assets/",WebViewAssetLoader.AssetsPathHandler(host)).build()
@@ -94,10 +113,18 @@ class PaneCard(
                 }
                 entryCandidates=emptyList();activeEntry=null
             }
+            loading=false
+            stopPullIndicator()
+            headerProgress.visibility=View.GONE
+            updateHeader()
             updateSiteLabel();updateInteractionSurfaces();host.onPaneUrlChanged(state.id)
         }
         override fun onPageStarted(view:WebView?,url:String?,favicon:android.graphics.Bitmap?){
             if(view!==webView||!webViewAlive||disposed)return
+            loading=true
+            errorOverlay.visibility=View.GONE
+            headerProgress.visibility=View.VISIBLE
+            updateHeader();host.onPaneUrlChanged(state.id)
             // Capture redirects before completion as well as normal page finishes.
             if(!url.isNullOrEmpty()){
                 val entry=activeEntry
@@ -116,6 +143,9 @@ class PaneCard(
             if(!url.isNullOrEmpty()&&url!=state.url){state.url=url;host.persist();updateSiteLabel();updateInteractionSurfaces();host.onPaneUrlChanged(state.id)}
         }
         override fun onReceivedError(view:WebView,request:WebResourceRequest,error:WebResourceError){
+            if(view===webView&&request.isForMainFrame&&!interrupted){
+                showLoadError(error.description?.toString().orEmpty())
+            }
             if(view===webView&&interrupted&&request.isForMainFrame)recoveryLoadFailed()
         }
         override fun onReceivedHttpError(view:WebView,request:WebResourceRequest,response:WebResourceResponse){
@@ -130,6 +160,8 @@ class PaneCard(
         override fun onRenderProcessGone(view:WebView?, detail:RenderProcessGoneDetail?):Boolean {
             if(view===webView&&!disposed){
                 interrupted=true
+                recoveryIndicator.text="Page crashed — restoring this session…"
+                recoveryIndicator.visibility=View.VISIBLE
                 discardWebView()
                 scheduleRecovery()
             }
@@ -145,7 +177,9 @@ class PaneCard(
         webView=createWebView()
         webViewAlive=true
         // Only overlays occupy app chrome: no header, URL strip, cookie button or overflow bar.
-        addView(body,LayoutParams(-1,-1).apply{setMargins(host.dp(1),host.dp(1),host.dp(1),host.dp(1))})
+        addView(body,LayoutParams(-1,-1).apply{
+            setMargins(host.dp(1),host.dp(26),host.dp(1),host.dp(1))
+        })
         body.addView(webView,LayoutParams(-1,-1))
         // A miniaturized Right Stack window is a single tap target: it switches focus
         // without sending the tap to the loaded webpage or resetting its session.
@@ -165,10 +199,18 @@ class PaneCard(
             contentDescription="Empty window: tap to expand, hold for controls"
             background=android.graphics.drawable.RippleDrawable(
                 android.content.res.ColorStateList.valueOf(Color.argb(55,255,255,255)),null,null)
-            setOnClickListener{if(!focused)host.focus(this@PaneCard)}
+            setOnClickListener{host.tesseraFocusAddress(state.id)}
             setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}
         }
         body.addView(blankTap,LayoutParams(-1,-1))
+        blankTap.addView(TextView(host).apply{
+            text="New session\nOpen a site"
+            textSize=14f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
+            background=GradientDrawable().apply{
+                setColor(0xff252c37.toInt());cornerRadius=host.dp(12).toFloat()
+            }
+            setOnClickListener{host.tesseraFocusAddress(state.id)}
+        },LayoutParams(-2,host.dp(82),Gravity.CENTER))
         badge.apply{
             orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
             // Transparent 44x36dp touch target around the visible 24x22dp number badge.
@@ -215,6 +257,30 @@ class PaneCard(
             accessibilityLiveRegion=View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         body.addView(recoveryIndicator,LayoutParams(-2,-2,Gravity.CENTER))
+        errorOverlay.apply{
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER
+            setPadding(host.dp(14),host.dp(14),host.dp(14),host.dp(14))
+            setBackgroundColor(0xff141920.toInt())
+            visibility=View.GONE
+        }
+        body.addView(errorOverlay,LayoutParams(-1,-1))
+        refreshIndicator.apply{
+            text="↻";textSize=22f;gravity=Gravity.CENTER
+            setTextColor(0xff0b0e13.toInt())
+            background=GradientDrawable().apply{
+                setColor(Color.WHITE);shape=GradientDrawable.OVAL
+            }
+            visibility=View.GONE
+        }
+        body.addView(refreshIndicator,LayoutParams(host.dp(36),host.dp(36),
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply{topMargin=host.dp(12)})
+        configureHeader()
+        header.isClickable=true
+        addView(header,LayoutParams(-1,host.dp(26),Gravity.TOP))
+        addView(headerProgress,LayoutParams(-1,host.dp(2),Gravity.TOP).apply{
+            topMargin=host.dp(24)
+        })
         body.addOnLayoutChangeListener{_,l,t,r,b,_,_,_,_->
             val w=r-l;val h=b-t
             if(w>0&&h>0&&(w!=lastWidth||h!=lastHeight)){
@@ -265,10 +331,37 @@ class PaneCard(
             fresh.webChromeClient=object:WebChromeClient(){
                 override fun onProgressChanged(view:WebView?,newProgress:Int){
                     if(view!==webView||!webViewAlive)return
+                    loading=newProgress<100
+                    headerProgress.visibility=if(loading)View.VISIBLE else View.GONE
                     if(newProgress<100)indicator.text="·" else updateZoomIndicator()
+                    host.onPaneUrlChanged(state.id)
                 }
             }
-            fresh.setBackgroundColor(Color.rgb(23,32,39))
+            fresh.setBackgroundColor(Color.WHITE)
+            fresh.setOnTouchListener { view,event ->
+                if(event.actionMasked==MotionEvent.ACTION_DOWN){
+                    host.tesseraActivate(state.id)
+                    startY=event.y;pullPermitted=false;pullTriggered=false
+                    if(!state.locked && (view as WebView).scrollY==0){
+                        val density=host.resources.displayMetrics.density
+                        val x=(event.x/density).toInt()
+                        val y=(event.y/density).toInt()
+                        val js="(function(){let e=document.elementFromPoint("+x+","+y+");"+
+                            "while(e){if(e.scrollTop>0&&e.scrollHeight>e.clientHeight)return false;"+
+                            "e=e.parentElement;}return true;})()"
+                        fresh.evaluateJavascript(js){result->
+                            pullPermitted=result=="true"
+                        }
+                    }
+                }else if(event.actionMasked==MotionEvent.ACTION_MOVE){
+                    if(!pullTriggered&&!state.locked&&pullPermitted&&fresh.scrollY==0 &&
+                        event.y-startY>=host.dp(144)){
+                        pullTriggered=true;showPullIndicator();fresh.reload()
+                        return@setOnTouchListener true
+                    }
+                }
+                false
+            }
             fresh.setInitialScale(state.zoom)
             // Page drags belong to the page; no workspace gesture interceptor is installed.
             return fresh
@@ -307,14 +400,114 @@ class PaneCard(
             }catch(_:Exception){discardWebView();scheduleRecovery()}
         }.also{recoveryHandler.postDelayed(it,delay)}
     }
+
+    private fun configureHeader(){
+        header.orientation=LinearLayout.HORIZONTAL
+        header.gravity=Gravity.CENTER_VERTICAL
+        header.setPadding(host.dp(4),0,host.dp(4),0)
+        headerNumber.apply{
+            textSize=11f;setTypeface(null,Typeface.BOLD);gravity=Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background=GradientDrawable().apply{
+                setColor(0x66000000);cornerRadius=host.dp(5).toFloat()
+            }
+            minWidth=host.dp(20)
+        }
+        header.addView(headerNumber,LinearLayout.LayoutParams(host.dp(22),host.dp(18)))
+        headerLock.apply{
+            text="▣";textSize=12f;gravity=Gravity.CENTER
+            setTextColor(0xffff4d57.toInt())
+            background=GradientDrawable().apply{
+                setColor(0xff141920.toInt());cornerRadius=host.dp(5).toFloat()
+            }
+        }
+        header.addView(headerLock,LinearLayout.LayoutParams(host.dp(18),host.dp(18)))
+        headerHost.apply{
+            textSize=11.5f;setTextColor(Color.WHITE)
+            maxLines=1;ellipsize=TextUtils.TruncateAt.END
+            setPadding(host.dp(4),0,0,0)
+        }
+        header.addView(headerHost,LinearLayout.LayoutParams(0,-1,1f))
+        headerBadge.apply{
+            textSize=10f;setTextColor(Color.WHITE)
+            gravity=Gravity.CENTER
+        }
+        header.addView(headerBadge,LinearLayout.LayoutParams(-2,-1))
+        headerProgress.setBackgroundColor(Color.WHITE)
+        val detector=GestureDetector(host,object:GestureDetector.SimpleOnGestureListener(){
+            override fun onDown(e:MotionEvent):Boolean=true
+            override fun onSingleTapConfirmed(e:MotionEvent):Boolean{
+                host.tesseraActivate(state.id);return true
+            }
+            override fun onDoubleTap(e:MotionEvent):Boolean{
+                host.tesseraActivate(state.id,true);return true
+            }
+            override fun onLongPress(e:MotionEvent){
+                header.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                host.windowContextMenu(this@PaneCard)
+            }
+        })
+        header.setOnTouchListener{_,event->detector.onTouchEvent(event);true}
+        header.contentDescription="Pane header; make active, double tap to expand, hold for pane menu"
+        updateHeader()
+    }
+    private fun updateHeader(){
+        if(header.childCount==0)return
+        val tag=host.store.frameColor(state.id)
+        header.setBackgroundColor(
+            if(tag!=0xff51606e.toInt())tag else
+                if(host.tesseraIsActive(state.id))0xff252c37.toInt() else 0xff1c222b.toInt()
+        )
+        headerLock.visibility=if(state.locked)View.VISIBLE else View.GONE
+        headerHost.text=runCatching{java.net.URI(state.url).host}.getOrNull()?:"New session"
+        headerBadge.text=listOfNotNull(
+            "Desktop".takeIf{state.desktop},
+            (state.zoom.toString()+"%").takeIf{state.zoom!=100}
+        ).joinToString(" ")
+        headerProgress.visibility=if(loading)View.VISIBLE else View.GONE
+    }
+    private fun showLoadError(reason:String){
+        loading=false
+        errorOverlay.removeAllViews()
+        errorOverlay.addView(TextView(host).apply{
+            text="⚠\nCan't open this page\n"+reason
+            textSize=15f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
+        },LinearLayout.LayoutParams(-1,host.dp(110)))
+        errorOverlay.addView(TextView(host).apply{
+            text="Retry";gravity=Gravity.CENTER;textSize=16f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0xff252c37.toInt())
+            setOnClickListener{errorOverlay.visibility=View.GONE;refresh()}
+        },LinearLayout.LayoutParams(-1,host.dp(44)))
+        errorOverlay.visibility=View.VISIBLE
+        host.onPaneUrlChanged(state.id)
+    }
+    private fun showPullIndicator(){
+        refreshIndicator.visibility=View.VISIBLE
+        refreshAnimator?.cancel()
+        refreshAnimator=ObjectAnimator.ofFloat(refreshIndicator,View.ROTATION,0f,360f).apply{
+            duration=600L;repeatCount=ValueAnimator.INFINITE;start()
+        }
+    }
+    private fun stopPullIndicator(){
+        refreshAnimator?.cancel();refreshAnimator=null
+        refreshIndicator.visibility=View.GONE
+        refreshIndicator.rotation=0f
+    }
+
     fun updatePaneNumber(){
         val index=host.paneIndex(state.id)
         paneNumber.text=index.toString();paneNumber.contentDescription="Pane $index"
+        headerNumber.text=index.toString()
     }
     fun updateFrameColor(){
         background=GradientDrawable().apply{
-            setColor(Color.rgb(16,20,24));setStroke(host.dp(1).coerceAtLeast(1),host.store.frameColor(this@PaneCard.state.id));cornerRadius=host.dp(3).toFloat()
+            setColor(0xff0b0e13.toInt())
+            setStroke(host.dp(if(selectedOutline)3 else 1).coerceAtLeast(1),
+                if(selectedOutline||host.tesseraIsActive(state.id))Color.WHITE else 0xff2b3340.toInt())
+            cornerRadius=host.dp(8).toFloat()
         }
+        updateHeader()
     }
     private fun applyViewportDimensions(w:Int,h:Int){
         if(!webViewAlive)return
@@ -322,35 +515,52 @@ class PaneCard(
         // View transforms visually fit the independent surface into its aligned host cell.
         val sx=WorkspacePolicy.normalViewScale(state.widthPercent)
         val sy=WorkspacePolicy.normalViewScale(state.heightPercent)
-        val trueW=(w/sx).roundToInt().coerceAtLeast(1)
+        val trueW=(w/sx).roundToInt().coerceAtLeast(1).let{
+            if(host.store.fullSizeSmallPanes && w<host.dp(320))
+                maxOf(it,(host.dp(320)/sx).roundToInt())
+            else it
+        }
         val trueH=(h/sy).roundToInt().coerceAtLeast(1)
         val lp=webView.layoutParams
         if(lp.width!=trueW||lp.height!=trueH){lp.width=trueW;lp.height=trueH;webView.layoutParams=lp}
-        webView.pivotX=0f;webView.pivotY=0f;webView.scaleX=sx;webView.scaleY=sy
+        webView.pivotX=0f;webView.pivotY=0f
+        webView.scaleX=w.toFloat()/trueW
+        webView.scaleY=sy
     }
     fun updateLockStatus(){
         lock.locked=state.locked
         lock.visibility=if(state.locked)View.VISIBLE else View.GONE
         badge.contentDescription="Window ${host.paneIndex(state.id)} actions${if(state.locked)"; locked" else ""}"
+        updateHeader()
     }
     private fun updateSiteLabel(){
         paneNumber.contentDescription="Window ${host.paneIndex(state.id)} · ${state.url}"
+        updateHeader()
     }
     fun updateSelection(active:Boolean,selected:Boolean){
         selectionLayer.visibility=if(active)View.VISIBLE else View.GONE
+        selectedOutline=selected
         selectionMark.text=if(selected)"✓" else "○"
-        selectionLayer.setBackgroundColor(if(selected)Color.argb(92,97,158,248) else Color.argb(16,97,158,248))
+        selectionMark.setTextColor(if(selected)Color.BLACK else Color.WHITE)
+        selectionMark.background=GradientDrawable().apply{
+            shape=GradientDrawable.OVAL
+            setColor(if(selected)Color.WHITE else 0xff252c37.toInt())
+        }
+        selectionLayer.setBackgroundColor(if(selected)Color.argb(41,255,255,255) else Color.TRANSPARENT)
+        updateFrameColor()
         selectionLayer.contentDescription=if(selected)"Selected browser" else "Select browser"
     }
     private fun updateInteractionSurfaces(){
-        thumbnailTap.visibility=if(compact)View.VISIBLE else View.GONE
-        blankTap.visibility=if(!compact&&state.url=="about:blank")View.VISIBLE else View.GONE
+        thumbnailTap.visibility=View.GONE
+        blankTap.visibility=if(state.url=="about:blank")View.VISIBLE else View.GONE
     }
     fun updateControls(){
         // Focus and grid changes never replace WebViews or steal loaded-site gestures.
         expand.contentDescription=if(focused)"Restore six-window grid" else "Expand window ${host.paneIndex(state.id)}"
         // A thumbnail is already entirely tappable; hide its redundant expand arrow.
-        expand.visibility=if(compact)View.GONE else View.VISIBLE
+        expand.visibility=View.GONE
+        badge.visibility=View.GONE
+        updateHeader()
         updateInteractionSurfaces()
     }
     /** Explicit submit from the thumb-reachable sheet: no navigation on focus loss. */

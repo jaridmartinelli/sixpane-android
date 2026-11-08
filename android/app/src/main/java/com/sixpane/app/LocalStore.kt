@@ -142,6 +142,9 @@ class LocalStore(ctx:Context){
     var currentId:String=""
     var columns:Int=2
     var focusId:String?=null
+    var activePaneId:String?=null
+    var gridPreference:String="automatic"
+    var fullSizeSmallPanes:Boolean=true
     var filterQuery:String=""
     val selectedFrameColors:MutableSet<String> = linkedSetOf()
     // Only app chrome, never a webpage or browser profile.
@@ -174,6 +177,11 @@ class LocalStore(ctx:Context){
             currentId=j.optString("current", "")
             columns=if(j.optInt("columns",2)==3)3 else 2
             focusId=j.optString("focus", "").takeIf { it.isNotBlank() }
+            activePaneId=j.optString("activePaneId", "").takeIf{it.isNotBlank()}
+            gridPreference=j.optString("gridPreference","automatic").takeIf{
+                it in listOf("automatic","2x3","3x2")
+            }?:"automatic"
+            fullSizeSmallPanes=j.optBoolean("fullSizeSmallPanes",true)
             filterQuery=j.optString("filterQuery", "")
             val filters=j.optJSONArray("selectedFrameColors")?:JSONArray()
             for(i in 0 until filters.length()){
@@ -192,6 +200,8 @@ class LocalStore(ctx:Context){
         // Repair legacy viewport ratio duplicates without changing session/profile IDs.
         allocateViewportRatios(spaces.flatMap{it.panes})
         if(spaces.none { it.id==currentId }) currentId=spaces.first().id
+        if(spaces.flatMap{it.panes}.none{it.id==activePaneId})
+            activePaneId=spaces.first{it.id==currentId}.panes.firstOrNull()?.id
         save()
     }
     /** Allocates proportional viewport ratios across every existing workspace. */
@@ -238,6 +248,8 @@ class LocalStore(ctx:Context){
             put("pending",JSONArray().apply{pendingDeletion.forEach{put(it)}})
             put("bookmarks",JSONArray().apply{bookmarks.forEach{put(it)}})
             put("current",currentId);put("columns",columns);put("focus",focusId?:"")
+            put("activePaneId",activePaneId?:"");put("gridPreference",gridPreference)
+            put("fullSizeSmallPanes",fullSizeSmallPanes)
             put("filterQuery",filterQuery)
             put("selectedFrameColors",JSONArray().apply{selectedFrameColors.forEach{put(it)}})
         }
@@ -282,6 +294,7 @@ class LocalStore(ctx:Context){
             }
         }
         if(focusId in ids)focusId=null
+        if(activePaneId in ids)activePaneId=result.firstOrNull{it.first.id==activePaneId}?.second?.id
         save()
         return result
     }
@@ -314,6 +327,7 @@ class LocalStore(ctx:Context){
             }
         }
         if(focusId in ids)focusId=null
+        if(activePaneId in ids)activePaneId=replacements.firstOrNull{it.first.id==activePaneId}?.second?.id
         save()
         return replacements
     }
@@ -322,7 +336,7 @@ class LocalStore(ctx:Context){
         require(WorkspacePolicy.canCreate(spaces.size))
         val w=WorkspaceState();spaces.add(w)
         allocateViewportRatios(w.panes)
-        currentId=w.id;focusId=null;save();return w
+        currentId=w.id;focusId=null;activePaneId=w.panes.firstOrNull()?.id;save();return w
     }
     /** Tombstone profile identifiers first, before any attempt at physical deletion. */
     fun close(id:String):WorkspaceState {
@@ -339,7 +353,8 @@ class LocalStore(ctx:Context){
             val fresh=WorkspaceState();spaces.add(fresh)
             allocateViewportRatios(fresh.panes) // never reuse retired identities
         }
-        currentId=spaces.last().id;focusId=null;save()
+        currentId=spaces.last().id;focusId=null
+        activePaneId=spaces.last().panes.firstOrNull()?.id;save()
         return w
     }
 }

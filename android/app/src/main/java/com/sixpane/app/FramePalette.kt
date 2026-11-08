@@ -3,16 +3,24 @@ import java.util.Locale
 
 /** Per-pane frame-color palette, search matching and any available color filtering. */
 object FramePalette {
-    val MAX_SELECTED_COLORS:Int get()=names.size
+    val MAX_SELECTED_COLORS:Int get()=(names+tesseraNames).distinct().size
     val names=listOf("Graphite","Blue","Teal","Amber","Purple","Rose","Silver","Green")
     val colors=listOf(0xff51606e.toInt(),0xff82b6ff.toInt(),0xff72dbcf.toInt(),0xffe8bd76.toInt(),
         0xffb5a0ef.toInt(),0xffe89eae.toInt(),0xffc8d1da.toInt(),0xff9acb91.toInt())
-    fun nameFor(color:Int)=names.getOrElse(colors.indexOf(color)){"Graphite"}
+    val tesseraNames=listOf("Blue","Green","Red","Gold","Olive","Teal")
+    val tesseraColors=listOf(0xff204dda.toInt(),0xff59b435.toInt(),0xffb5381c.toInt(),
+        0xffc39533.toInt(),0xff9a9d32.toInt(),0xff7cc5b4.toInt())
+    fun nameFor(color:Int):String{
+        val target=tesseraColors.indexOf(color)
+        if(target>=0)return tesseraNames[target]
+        return names.getOrElse(colors.indexOf(color)){"Graphite"}
+    }
     fun typedColors(query:String):Set<String>? {
         val terms=query.split(",").map{it.trim()}.filter{it.isNotEmpty()}
         if(terms.isEmpty()||terms.size>MAX_SELECTED_COLORS)return null
-        return if(terms.all{t->names.any{it.equals(t,ignoreCase=true)}})
-            terms.map{t->names.first{it.equals(t,ignoreCase=true)}}.toSet() else null
+        val recognized=(names+tesseraNames).distinct()
+        return if(terms.all{t->recognized.any{it.equals(t,ignoreCase=true)}})
+            terms.map{t->recognized.first{it.equals(t,ignoreCase=true)}}.toSet() else null
     }
     /** Known typed color(s) override picker chips; a URL narrows the selected color chips. */
     fun matches(url:String,color:Int,query:String,selectedColors:Set<String>):Boolean {
@@ -38,5 +46,5 @@ object FramePalette {
             .removePrefix("www.").contains(normalized)
     }
     fun validSelection(selected:Set<String>):Boolean=
-        selected.size<=MAX_SELECTED_COLORS&&selected.all{it in names}
+        selected.size<=MAX_SELECTED_COLORS&&selected.all{it in names||it in tesseraNames}
 }

@@ -17,13 +17,23 @@ object PaneLayout {
                 w.coerceAtLeast(1),h.coerceAtLeast(1))}
         }
         if(count==1)return listOf(PaneBounds(gap,gap,(width-gap*2).coerceAtLeast(1),(height-gap*2).coerceAtLeast(1)))
-        val sw=(width*.185f).toInt().coerceAtLeast(minStackWidth).coerceAtMost((width/2).coerceAtLeast(1))
-        val mw=(width-sw-gap*3).coerceAtLeast(minMainWidth)
-        val mh=(height-gap*2).coerceAtLeast(1)
-        val sh=((mh-gap*(count-2))/(count-1)).coerceAtLeast(1)
+        val tall=height.toDouble()>=1.1*width.toDouble()
+        if(tall){
+            val strip=minStackWidth.coerceAtMost((height/3).coerceAtLeast(1))
+            val mainH=(height-strip-gap*3).coerceAtLeast(1)
+            val thumbnailW=((width-gap*(count+1))/(count-1)).coerceAtLeast(1)
+            var index=0
+            return List(count){i->if(i==focus)PaneBounds(gap,gap,(width-gap*2).coerceAtLeast(1),mainH)
+                else PaneBounds(gap+(index++)*(thumbnailW+gap),mainH+gap*2,thumbnailW,strip)}
+        }
+        val stackWidth=(minStackWidth*1.3f).toInt()
+            .coerceAtMost((width/3).coerceAtLeast(1))
+        val mainWidth=(width-stackWidth-gap*3).coerceAtLeast(1)
+        val mainHeight=(height-gap*2).coerceAtLeast(1)
+        val smallH=((mainHeight-gap*(count-2))/(count-1)).coerceAtLeast(1)
         var row=0
-        return List(count){i->if(i==focus)PaneBounds(gap,gap,mw,mh)
-            else PaneBounds(mw+gap*2,gap+(row++)*(sh+gap),sw,sh)}
+        return List(count){i->if(i==focus)PaneBounds(gap,gap,mainWidth,mainHeight)
+            else PaneBounds(mainWidth+gap*2,gap+(row++)*(smallH+gap),stackWidth,smallH)}
     }
     fun bounds(width:Int,height:Int,gap:Int,columns:Int,focus:Int?,minStackWidth:Int,minMainWidth:Int):List<PaneBounds>{
         require(columns==2||columns==3)
