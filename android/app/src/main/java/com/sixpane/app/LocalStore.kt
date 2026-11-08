@@ -296,8 +296,9 @@ class LocalStore(ctx:Context){
                 result.add(old to replacement)
             }
         }
-        if(focusId in ids)focusId=null
-        if(activePaneId in ids)activePaneId=result.firstOrNull{it.first.id==activePaneId}?.second?.id
+        val newIds=result.associate{it.first.id to it.second.id}
+        focusId=WorkspacePolicy.remapPaneId(focusId,newIds)
+        activePaneId=WorkspacePolicy.remapPaneId(activePaneId,newIds)
         save()
         return result
     }
@@ -329,8 +330,9 @@ class LocalStore(ctx:Context){
                 }
             }
         }
-        if(focusId in ids)focusId=null
-        if(activePaneId in ids)activePaneId=replacements.firstOrNull{it.first.id==activePaneId}?.second?.id
+        val newIds=replacements.associate{it.first.id to it.second.id}
+        focusId=WorkspacePolicy.remapPaneId(focusId,newIds)
+        activePaneId=WorkspacePolicy.remapPaneId(activePaneId,newIds)
         save()
         return replacements
     }
