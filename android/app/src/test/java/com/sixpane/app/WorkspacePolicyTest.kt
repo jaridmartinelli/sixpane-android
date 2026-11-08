@@ -32,6 +32,13 @@ class WorkspacePolicyTest {
             (1..6).map{it.toString()}.toSet()).size)
     }
 
+    @Test fun destructiveSelectionFindsEveryWorkspace(){
+        val active=setOf("a1","a2","a3","a4","a5","a6")
+        assertFalse(WorkspacePolicy.crossesWorkspace(active,setOf("a1","a2"),false))
+        assertTrue(WorkspacePolicy.crossesWorkspace(active,setOf("a1","b1"),false))
+        assertTrue(WorkspacePolicy.crossesWorkspace(active,setOf("a1"),true))
+    }
+
     @org.junit.Test fun selectionCloseRequiresUnlockedNonempty(){
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(0,false))
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(2,true))
