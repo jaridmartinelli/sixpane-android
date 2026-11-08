@@ -68,6 +68,7 @@ class MainActivity:Activity(){
     private var lastLayoutWidth=0
     private var lastLayoutHeight=0
     private var layoutGeneration=0
+    private var imeAutoExpandedId:String?=null
     private var textNotice:Toast?=null
     private var pendingUpload:android.webkit.ValueCallback<Array<Uri>>?=null
     fun dp(value:Int):Int=(value*resources.displayMetrics.density).roundToInt()
@@ -784,6 +785,7 @@ class MainActivity:Activity(){
     fun copyPanePageReport(card:PaneCard){PanePageReport(this).copy(card)}
     fun focus(card:PaneCard){tesseraActivate(card.state.id,true)}
     fun tesseraActivate(id:String,expand:Boolean=false){
+        if(expand)imeAutoExpandedId=null
         if(selecting){toggleWindowSelection(id);return}
         if(store.active().panes.none{it.id==id})return
         if(!expand&&store.activePaneId==id&&
@@ -885,6 +887,19 @@ class MainActivity:Activity(){
         if(!started||!::stage.isInitialized)return
         val width=stage.width;val height=stage.height
         if(width<10||height<10)return
+        // The app's window uses adjustResize; temporarily enlarge the active
+        // website pane when the IME is visible, but never when editing the dock.
+        val imeVisible=if(Build.VERSION.SDK_INT>=30)
+            stage.rootWindowInsets?.isVisible(WindowInsets.Type.ime())==true
+            else false
+        if(imeVisible && ::tessera.isInitialized && !tessera.addressFocused() &&
+            !selecting && store.focusId==null){
+            val id=tesseraActivePane()?.id
+            if(id!=null){imeAutoExpandedId=id;store.focusId=id}
+        }else if(!imeVisible && imeAutoExpandedId!=null){
+            if(store.focusId==imeAutoExpandedId)store.focusId=null
+            imeAutoExpandedId=null
+        }
         val layoutRun=++layoutGeneration
         val gap=dp(4);val visible=store.active().panes.toList()
         syncVisibleWebViews(visible)

@@ -215,6 +215,7 @@ internal class TesseraBar(private val host:MainActivity) {
         (host.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
             .showSoftInput(address,InputMethodManager.SHOW_IMPLICIT)
     }
+    fun addressFocused():Boolean=address.hasFocus()
     fun closeAddress():Boolean{
         if(!address.hasFocus())return false
         address.clearFocus()
