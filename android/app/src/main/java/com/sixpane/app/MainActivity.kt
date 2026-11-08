@@ -852,7 +852,8 @@ class MainActivity:Activity(){
     fun focus(card:PaneCard){tesseraActivate(card.state.id,true)}
     fun tesseraActivate(id:String,expand:Boolean=false){
         if(expand)imeAutoExpandedId=null
-        if(store.active().panes.none{it.id==id})return
+        // Filter result pages may contain panes from a different original workspace.
+        if(currentFilteredPanes().none{it.id==id})return
         // A page/header touch must end address editing before the active pane
         // can change. This also covers tapping the already-active pane.
         if(::tessera.isInitialized&&tessera.addressFocused())tessera.closeAddress()
@@ -865,9 +866,9 @@ class MainActivity:Activity(){
         store.save();updateUniversalBar();positionCards(expand)
     }
     fun tesseraIsActive(id:String)=store.activePaneId==id
-    fun tesseraActivePane():PaneState?=store.active().panes.firstOrNull{
-        it.id==store.activePaneId
-    }?:store.active().panes.firstOrNull()
+    fun tesseraActivePane():PaneState?=currentFilteredPanes().let{visible->
+        visible.firstOrNull{it.id==store.activePaneId}?:visible.firstOrNull()
+    }
     fun tesseraActiveCard():PaneCard?=tesseraActivePane()?.let{cards[it.id]}
     fun tesseraFocusAddress(id:String){if(::tessera.isInitialized)tessera.focusAddress(id)}
     fun tesseraSelected():Set<String> =selectedPanes.toSet()
@@ -884,7 +885,10 @@ class MainActivity:Activity(){
     fun tesseraSetFilter(query:String,colors:Set<String>){
         store.filterQuery=query
         store.selectedFrameColors.clear();store.selectedFrameColors.addAll(colors)
-        store.save();updateUniversalBar();positionCards(false)
+        filteredPageIndex=0
+        store.focusId=null
+        store.save();renderTabs();positionCards(false)
+        if(selecting)updateSelection()
     }
     fun tesseraClearFilters(){clearAllFilters()}
     fun tesseraOpenWorkspace(id:String){
@@ -989,7 +993,16 @@ class MainActivity:Activity(){
             imeAutoExpandedId=null
         }
         val layoutRun=++layoutGeneration
-        val gap=dp(4);val visible=store.active().panes.toList()
+        val gap=dp(4);val visible=currentFilteredPanes()
+        // Retain the original workspace membership and cookie profile for every result.
+        // A filter page shows at most six matching panes; it must never render unrelated panes.
+        if(visible.isNotEmpty()&&visible.none{it.id==store.activePaneId}){
+            store.activePaneId=visible.first().id
+            store.save()
+        }else if(!filtering() && visible.none{it.id==store.activePaneId}){
+            store.activePaneId=visible.firstOrNull()?.id
+            store.save()
+        }
         syncVisibleWebViews(visible)
         if(store.focusId!=null && visible.none{it.id==store.focusId}){
             store.focusId=null
@@ -1005,10 +1018,8 @@ class MainActivity:Activity(){
         }
         val rects=FilteredPanePages.bounds(width,height,gap,activeColumns,visible.size,
             f?.let{id->visible.indexOfFirst{it.id==id}},dp(78),dp(80))
-        filterEmpty.visibility=if(filtering()&&visible.none{p->
-            FramePalette.matches(p.url,store.frameColor(p.id),
-                store.filterQuery,store.selectedFrameColors)
-        })View.VISIBLE else View.GONE
+        filterEmpty.visibility=if(filtering()&&filteredMatches().isEmpty())
+            View.VISIBLE else View.GONE
         updateUniversalBar()
         val desired=visible.mapIndexed{i,p->val r=rects[i];p.id to intArrayOf(r.x,r.y,r.width,r.height)}.toMap()
         for((id,card) in cards){
