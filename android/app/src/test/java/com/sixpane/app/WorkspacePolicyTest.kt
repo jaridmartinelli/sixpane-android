@@ -49,6 +49,14 @@ class WorkspacePolicyTest {
             WorkspacePolicy.selectionBarKey("A",setOf("p1","p3")))
     }
 
+    @Test fun workspaceClosingKeepsCurrentOrSelectsNeighbour(){
+        val remaining=listOf("w1","w3","w4")
+        assertEquals("w3",WorkspacePolicy.workspaceAfterClose(remaining,1,"w2"))
+        assertEquals("w4",WorkspacePolicy.workspaceAfterClose(remaining,10,"w2"))
+        assertEquals("w1",WorkspacePolicy.workspaceAfterClose(remaining,1,"w1"))
+        assertEquals("fresh",WorkspacePolicy.workspaceAfterClose(listOf("fresh"),0,"w1"))
+    }
+
     @org.junit.Test fun selectionCloseRequiresUnlockedNonempty(){
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(0,false))
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(2,true))
