@@ -47,6 +47,7 @@ class PaneCard(
     private var startY=0f
     private var pullPermitted=false
     private var pullTriggered=false
+    private var refreshGestureGeneration=0
     private val thumbnailTap=FrameLayout(host)
     private val blankTap=FrameLayout(host)
     val lock=CornerIcon(host,CornerIcon.Kind.LOCK)
@@ -226,7 +227,7 @@ class PaneCard(
         // This overlay is never enabled over a loaded site's selectable text.
         blankTap.apply{
             isClickable=true;isFocusable=true
-            contentDescription="Empty window: tap to expand, hold for controls"
+            contentDescription="Empty window: tap to enter an address, hold for pane menu"
             background=android.graphics.drawable.RippleDrawable(
                 android.content.res.ColorStateList.valueOf(Color.argb(55,255,255,255)),null,null)
             setOnClickListener{host.tesseraFocusAddress(state.id)}
@@ -292,7 +293,7 @@ class PaneCard(
             text="○";textSize=21f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
             setBackgroundColor(Color.argb(200,30,42,62))
         }
-        selectionLayer.addView(selectionMark,LayoutParams(host.dp(35),host.dp(35),Gravity.TOP or Gravity.RIGHT))
+        selectionLayer.addView(selectionMark,LayoutParams(host.dp(26),host.dp(26),Gravity.TOP or Gravity.RIGHT))
         addView(selectionLayer,LayoutParams(-1,-1))
         recoveryIndicator.apply{
             textSize=11f;setTextColor(Color.rgb(255,215,125));gravity=Gravity.CENTER
@@ -460,25 +461,47 @@ class PaneCard(
             }
             fresh.setBackgroundColor(Color.WHITE)
             fresh.setOnTouchListener { view,event ->
-                if(event.actionMasked==MotionEvent.ACTION_DOWN){
-                    host.tesseraActivate(state.id)
-                    startY=event.y;pullPermitted=false;pullTriggered=false
-                    if(!state.locked && (view as WebView).scrollY==0){
-                        val density=host.resources.displayMetrics.density
-                        val x=(event.x/density).toInt()
-                        val y=(event.y/density).toInt()
-                        val js="(function(){let e=document.elementFromPoint("+x+","+y+");"+
-                            "while(e){if(e.scrollTop>0&&e.scrollHeight>e.clientHeight)return false;"+
-                            "e=e.parentElement;}return true;})()"
-                        fresh.evaluateJavascript(js){result->
-                            pullPermitted=result=="true"
+                when(event.actionMasked){
+                    MotionEvent.ACTION_DOWN -> {
+                        val generation=++refreshGestureGeneration
+                        host.tesseraActivate(state.id)
+                        startY=event.y;pullPermitted=false;pullTriggered=false
+                        if(!state.locked && event.pointerCount==1 &&
+                            (view as WebView).scrollY==0){
+                            val density=host.resources.displayMetrics.density
+                            val x=(event.x/density).toInt()
+                            val y=(event.y/density).toInt()
+                            val js="(function(){let e=document.elementFromPoint("+x+","+y+");"+
+                                "while(e){if(e.tagName==='IFRAME')return false;"+
+                                "if(e.scrollTop>0&&e.scrollHeight>e.clientHeight)return false;"+
+                                "e=e.parentElement;}return true;})()"
+                            fresh.evaluateJavascript(js){result->
+                                // A delayed response from a prior drag must never
+                                // arm a subsequent pinch or pull-to-refresh gesture.
+                                if(generation==refreshGestureGeneration &&
+                                    !disposed && webViewAlive && fresh===webView &&
+                                    !state.locked){
+                                    pullPermitted=result=="true"
+                                }
+                            }
                         }
                     }
-                }else if(event.actionMasked==MotionEvent.ACTION_MOVE){
-                    if(!pullTriggered&&!state.locked&&pullPermitted&&fresh.scrollY==0 &&
-                        event.y-startY>=host.dp(144)){
-                        pullTriggered=true;showPullIndicator();fresh.reload()
-                        return@setOnTouchListener true
+                    MotionEvent.ACTION_POINTER_DOWN,MotionEvent.ACTION_POINTER_UP -> {
+                        refreshGestureGeneration++
+                        pullPermitted=false
+                        pullTriggered=false
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if(event.pointerCount==1 && !pullTriggered && !state.locked &&
+                            pullPermitted && fresh.scrollY==0 &&
+                            event.y-startY>=host.dp(144)){
+                            pullTriggered=true;showPullIndicator();fresh.reload()
+                            return@setOnTouchListener true
+                        }
+                    }
+                    MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL -> {
+                        refreshGestureGeneration++
+                        pullPermitted=false
                     }
                 }
                 false
@@ -704,8 +727,11 @@ class PaneCard(
         selectionLayer.contentDescription=if(selected)"Selected browser" else "Select browser"
     }
     private fun updateInteractionSurfaces(){
-        thumbnailTap.visibility=View.GONE
-        blankTap.visibility=if(state.url=="about:blank")View.VISIBLE else View.GONE
+        // Miniatures must be full tap targets even when their WebView is loaded:
+        // one tap switches focus without sending an unintended click to the site.
+        thumbnailTap.visibility=if(compact)View.VISIBLE else View.GONE
+        blankTap.visibility=if(!compact && state.url=="about:blank")
+            View.VISIBLE else View.GONE
     }
     fun updateControls(){
         // Focus and grid changes never replace WebViews or steal loaded-site gestures.
