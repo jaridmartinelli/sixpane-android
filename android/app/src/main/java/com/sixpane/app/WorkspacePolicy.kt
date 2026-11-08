@@ -21,6 +21,10 @@ object WorkspacePolicy {
         !tabLocked && !paneLocks.any{it}
     fun canCloseSelected(count:Int, anyLocked:Boolean):Boolean=count>0&&!anyLocked
     fun selectionActionEnabled(count:Int):Boolean=count>0
+    /** All/None applies only to the current workspace; leave other workspaces selected. */
+    fun toggleVisibleSelection(selected:Set<String>,visible:Set<String>):Set<String> =
+        if(visible.isNotEmpty() && visible.all{it in selected})selected-visible
+        else selected+visible
     fun canReset(paneLocked: Boolean): Boolean = !paneLocked
     fun canChangeDesktop(paneLocked: Boolean): Boolean = !paneLocked
     fun canModifyCookies(paneLocked: Boolean): Boolean = !paneLocked
