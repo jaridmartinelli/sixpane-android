@@ -39,6 +39,16 @@ class WorkspacePolicyTest {
         assertTrue(WorkspacePolicy.crossesWorkspace(active,setOf("a1"),true))
     }
 
+    @Test fun selectionBarReflectsWorkspaceSwitchEvenWhenCountUnchanged(){
+        val selected=setOf("p1","p2")
+        assertNotEquals(WorkspacePolicy.selectionBarKey("A",selected),
+            WorkspacePolicy.selectionBarKey("B",selected))
+        assertEquals(WorkspacePolicy.selectionBarKey("A",setOf("p1","p2")),
+            WorkspacePolicy.selectionBarKey("A",setOf("p2","p1")))
+        assertNotEquals(WorkspacePolicy.selectionBarKey("A",setOf("p1","p2")),
+            WorkspacePolicy.selectionBarKey("A",setOf("p1","p3")))
+    }
+
     @org.junit.Test fun selectionCloseRequiresUnlockedNonempty(){
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(0,false))
         org.junit.Assert.assertFalse(WorkspacePolicy.canCloseSelected(2,true))
