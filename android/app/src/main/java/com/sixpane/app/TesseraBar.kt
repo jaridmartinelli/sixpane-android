@@ -121,6 +121,7 @@ internal class TesseraBar(private val host:MainActivity) {
     }
     private val more=button("⋮"){host.tesseraMenuAll()}
     private var selectingRendered:Boolean?=null
+    private var lastSelectionCount:Int=-1
     private var suggestions:PopupWindow?=null
     private var lastSnack:PopupWindow?=null
     init {
@@ -171,8 +172,15 @@ internal class TesseraBar(private val host:MainActivity) {
         if(select!=selectingRendered){
             selectingRendered=select
             if(select)selection() else regular()
+            lastSelectionCount=host.tesseraSelected().size
         }
-        if(select)selection() else {
+        if(select){
+            if(lastSelectionCount!=host.tesseraSelected().size){
+                lastSelectionCount=host.tesseraSelected().size
+                selection()
+            }
+            progress.visibility=View.INVISIBLE
+        }else {
             val pane=host.tesseraActivePane()
             val card=host.tesseraActiveCard()
             paneChip.text=(pane?.let{host.paneIndex(it.id)}?:0).toString()+" ↗"

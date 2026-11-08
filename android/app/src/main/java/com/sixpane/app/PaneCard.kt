@@ -334,7 +334,7 @@ class PaneCard(
                     loading=newProgress<100
                     headerProgress.visibility=if(loading)View.VISIBLE else View.GONE
                     if(newProgress<100)indicator.text="·" else updateZoomIndicator()
-                    host.onPaneUrlChanged(state.id)
+                    host.tesseraRefreshDock()
                 }
             }
             fresh.setBackgroundColor(Color.WHITE)
@@ -454,10 +454,13 @@ class PaneCard(
     private fun updateHeader(){
         if(header.childCount==0)return
         val tag=host.store.frameColor(state.id)
-        header.setBackgroundColor(
-            if(tag!=0xff51606e.toInt())tag else
-                if(host.tesseraIsActive(this@PaneCard.state.id))0xff252c37.toInt() else 0xff1c222b.toInt()
-        )
+        val actual=if(tag!=0xff51606e.toInt())tag else
+            if(host.tesseraIsActive(this@PaneCard.state.id))0xff252c37.toInt() else 0xff1c222b.toInt()
+        header.setBackgroundColor(actual)
+        val ink=FramePalette.textOnTag(actual)
+        headerNumber.setTextColor(ink)
+        headerHost.setTextColor(ink)
+        headerBadge.setTextColor(ink)
         headerLock.visibility=if(state.locked)View.VISIBLE else View.GONE
         headerHost.text=runCatching{java.net.URI(state.url).host}.getOrNull()?:"New session"
         headerBadge.text=listOfNotNull(

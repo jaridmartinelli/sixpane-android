@@ -785,6 +785,8 @@ class MainActivity:Activity(){
     fun tesseraActivate(id:String,expand:Boolean=false){
         if(selecting){toggleWindowSelection(id);return}
         if(store.active().panes.none{it.id==id})return
+        if(!expand&&store.activePaneId==id&&
+            (store.focusId==null||store.focusId==id))return
         store.activePaneId=id
         if(expand)store.focusId=if(store.focusId==id)null else id
         else if(store.focusId!=null && store.focusId!=id)store.focusId=id
@@ -844,6 +846,7 @@ class MainActivity:Activity(){
     }
     fun tesseraOpenSettings(){AppSettings(this).open()}
     fun tesseraMenuAll(){tesseraActiveCard()?.let{tessera.paneMenu(it,true)}}
+    fun tesseraRefreshDock(){if(::tessera.isInitialized)tessera.render()}
     fun tesseraSetGrid(value:String){
         if(value !in listOf("automatic","2x3","3x2"))return
         store.gridPreference=value;store.save();positionCards(true)

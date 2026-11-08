@@ -55,7 +55,7 @@ class CornerIcon(context:Context, val kind:Kind):View(context){
         paint.clearShadowLayer()
         canvas.restoreToCount(count)
     }
-    fun pressedFeedback(){animate().scaleX(.76f).scaleY(.76f).alpha(1f).setDuration(90).withEndAction{animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(180).start()}.start()}
+    fun pressedFeedback(){animate().scaleX(.76f).scaleY(.76f).alpha(1f).setDuration(90).withEndAction{animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(TesseraMotion.PRESS_OUT_MS).start()}.start()}
     fun blockedFeedback(){
         if(kind!=Kind.LOCK)return
         performHapticFeedback(android.view.HapticFeedbackConstants.REJECT)

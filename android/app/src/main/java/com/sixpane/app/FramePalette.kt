@@ -10,6 +10,16 @@ object FramePalette {
     val tesseraNames=listOf("Blue","Green","Red","Gold","Olive","Teal")
     val tesseraColors=listOf(0xff204dda.toInt(),0xff59b435.toInt(),0xffb5381c.toInt(),
         0xffc39533.toInt(),0xff9a9d32.toInt(),0xff7cc5b4.toInt())
+    fun textOnTag(color:Int):Int{
+        val red=android.graphics.Color.red(color)/255.0
+        val green=android.graphics.Color.green(color)/255.0
+        val blue=android.graphics.Color.blue(color)/255.0
+        fun channel(c:Double):Double=if(c<=0.04045)c/12.92
+            else Math.pow((c+0.055)/1.055,2.4)
+        val luminance=.2126*channel(red)+.7152*channel(green)+.0722*channel(blue)
+        return if((luminance+0.05)/0.05 >= 1.05/(luminance+0.05))
+            0xff0b0e13.toInt() else 0xffffffff.toInt()
+    }
     fun nameFor(color:Int):String{
         val target=tesseraColors.indexOf(color)
         if(target>=0)return tesseraNames[target]
