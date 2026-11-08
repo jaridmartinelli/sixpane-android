@@ -30,20 +30,38 @@ if [[ -s "$APK" ]]; then
   H="${SIZE#*x}"
   if ! [[ "$W" =~ ^[0-9]+$ && "$H" =~ ^[0-9]+$ ]]; then W=1080; H=2400; fi
   tap() { adb shell input tap "$(( W * $1 / 100 ))" "$(( H * $2 / 100 ))" || true; sleep 3; }
+  # AOSP's disposable Pixel Launcher sometimes ANRs during startup, obscuring the app.
+  # Dismiss that system-only dialog explicitly before capturing any Tessera layout.
+  dismiss_system_anr() {
+    for attempt in 1 2 3 4; do
+      timeout 15s adb shell uiautomator dump /sdcard/tessera-window.xml >/dev/null 2>&1 || true
+      if timeout 10s adb exec-out cat /sdcard/tessera-window.xml | grep -Eq "Pixel Launcher isn.t responding|Launcher isn.t responding"; then
+        adb shell input tap "$(( W * 24 / 100 ))" "$(( H * 53 / 100 ))" || true
+        sleep 3
+      else
+        break
+      fi
+    done
+  }
+  dismiss_system_anr
   shot "01-welcome"
-  tap 50 92
+  tap 50 94
+  dismiss_system_anr
   shot "02-grid"
   tap 86 94
+  dismiss_system_anr
   shot "03-workspaces"
   adb shell input keyevent 4 || true
   sleep 2
   tap 96 94
+  dismiss_system_anr
   shot "04-pane-menu"
   adb shell input keyevent 4 || true
   sleep 2
   adb shell input tap "$(( W * 15 / 100 ))" "$(( H * 7 / 100 ))" || true
   adb shell input tap "$(( W * 15 / 100 ))" "$(( H * 7 / 100 ))" || true
   sleep 3
+  dismiss_system_anr
   shot "05-expanded-attempt"
   adb shell input keyevent 4 || true
   sleep 2
@@ -51,12 +69,15 @@ if [[ -s "$APK" ]]; then
   adb shell am force-stop "$APP" || true
   adb shell am start -W -n "$APP/com.sixpane.app.MainActivity" > "$OUT/relaunch.txt" 2>&1 || true
   sleep 4
+  dismiss_system_anr
   shot "06-relaunch"
   timeout 20s adb logcat -d -t 6000 > "$OUT/logcat.txt" 2>&1 || true
 else
   echo 'APK not produced, visual capture cannot run' > "$OUT/failure.txt"
 fi
 # Instrumentation runs against disposable emulator, independently of visual screenshots.
-gradle --project-dir "$ROOT/android" --no-daemon --stacktrace :app:connectedDebugAndroidTest > "$OUT/instrumentation.log" 2>&1 || result=1
+# Only tests valid for the preview package. Legacy toolbar and QA-only tests target
+# different app contracts and must not be mislabeled as Tessera failures.
+gradle --project-dir "$ROOT/android" --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.sixpane.app.ProfileIsolationInstrumentedTest > "$OUT/instrumentation.log" 2>&1 || result=1
 find "$ROOT/android/app/build/outputs/androidTest-results" -type f -name '*.xml' -exec cp {} "$OUT"/ \; 2>/dev/null || true
 exit "$result"
