@@ -460,15 +460,105 @@ internal class TesseraBar(private val host:MainActivity) {
             row(body,"Settings",icon="⚙"){dialog.dismiss();settingsScreen()}
         }
     }
+    /** Match the reference menu structure: editable colour choices live in the first row. */
+    private fun paneColourRow(body:LinearLayout,pane:PaneState){
+        val block=LinearLayout(host).apply{
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(9),dp(4),dp(9),dp(6))
+        }
+        block.addView(txt("COLOUR TAG",11f).apply{
+            setTextColor(secondary)
+        },LinearLayout.LayoutParams(-1,dp(26)))
+        val strip=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
+        val dots=mutableListOf<Pair<Int,TextView>>()
+        val choices=listOf(0xff51606e.toInt())+FramePalette.tesseraColors
+        fun updateRings(){
+            val selected=host.store.frameColor(pane.id)
+            dots.forEach{(value,dot)->
+                dot.background=GradientDrawable().apply{
+                    shape=GradientDrawable.OVAL
+                    setColor(if(value==0xff51606e.toInt())surface3 else value)
+                    setStroke(dp(if(selected==value)3 else 1),
+                        if(selected==value)Color.WHITE else stroke)
+                }
+            }
+        }
+        choices.forEachIndexed{index,value->
+            val name=if(index==0)"None" else FramePalette.tesseraNames[index-1]
+            val touch=FrameLayout(host).apply{
+                isClickable=true;isFocusable=true
+                contentDescription="Set pane colour to $name"
+                background=RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x50ffffff),
+                    ColorDrawable(Color.TRANSPARENT),null)
+            }
+            val dot=txt(if(index==0)"×" else "",17f).apply{
+                gravity=Gravity.CENTER
+                setTextColor(text)
+                importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+            dots.add(value to dot)
+            touch.addView(dot,FrameLayout.LayoutParams(dp(34),dp(34),Gravity.CENTER))
+            touch.setOnClickListener{
+                val exists=host.store.spaces.any{ws->ws.panes.any{p->p.id==pane.id}}
+                if(!exists){host.notice("Pane is no longer available");return@setOnClickListener}
+                val old=host.store.frameColor(pane.id)
+                if(old==value)return@setOnClickListener
+                host.tesseraRecolor(setOf(pane.id),value)
+                updateRings()
+                snack("Coloured $name: 1 pane"){
+                    val live=host.store.spaces.any{ws->ws.panes.any{p->p.id==pane.id}}
+                    if(live && host.store.frameColor(pane.id)==value){
+                        host.tesseraRecolor(setOf(pane.id),old)
+                        updateRings()
+                    }
+                }
+            }
+            strip.addView(touch,LinearLayout.LayoutParams(dp(44),dp(44)))
+        }
+        updateRings()
+        block.addView(HorizontalScrollView(host).apply{
+            isHorizontalScrollBarEnabled=false
+            addView(strip)
+        },LinearLayout.LayoutParams(-1,dp(44)))
+        body.addView(block,LinearLayout.LayoutParams(-1,-2))
+    }
+    /** A native state control on the right, without changing the existing desktop action. */
+    private fun toggleRow(body:LinearLayout,title:String,detail:String,enabled:Boolean,
+                          checked:Boolean,icon:String,action:()->Unit){
+        val r=LinearLayout(host).apply{
+            gravity=Gravity.CENTER_VERTICAL
+            setPadding(dp(9),dp(5),dp(9),dp(5))
+            minimumHeight=dp(52);alpha=if(enabled)1f else .45f
+        }
+        r.addView(txt(icon,22f),LinearLayout.LayoutParams(dp(39),dp(44)))
+        val labels=LinearLayout(host).apply{orientation=LinearLayout.VERTICAL}
+        labels.addView(txt(title,15f))
+        labels.addView(txt(detail,12f).apply{
+            setTextColor(if(enabled)secondary else 0xffff6b6b.toInt())
+        })
+        r.addView(labels,LinearLayout.LayoutParams(0,-2,1f))
+        r.addView(android.widget.Switch(host).apply{
+            isChecked=checked;isClickable=false;isFocusable=false
+            isEnabled=enabled
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        },LinearLayout.LayoutParams(dp(52),dp(44)))
+        r.setOnClickListener{
+            if(enabled)action()
+            else {
+                host.tesseraActiveCard()?.lock?.blockedFeedback()
+                host.notice(detail)
+            }
+        }
+        body.addView(r,LinearLayout.LayoutParams(-1,-2))
+    }
     fun paneMenu(card:PaneCard,withAll:Boolean){
         val pane=card.state
         val workspace=host.store.spaces.indexOfFirst{it.panes.any{p->p.id==pane.id}}+1
         val site=runCatching{URI(pane.url).host}.getOrNull().orEmpty()
         page("Pane "+host.paneIndex(pane.id)+" · Workspace "+workspace,
             card.webView.title.orEmpty().take(40)+" · "+site){body,_,dialog->
-            row(body,"Colour tag","Six colours",icon="●"){
-                dialog.dismiss();colorDialog(setOf(pane.id))
-            }
+            paneColourRow(body,pane)
             row(body,if(pane.locked)"Unlock pane" else "Lock pane",icon="♢"){
                 val previous=pane.locked
                 pane.locked=!previous;host.updateWindowLocks();dialog.dismiss()
@@ -476,8 +566,9 @@ internal class TesseraBar(private val host:MainActivity) {
                     pane.locked=previous;host.updateWindowLocks()
                 }
             }
-            row(body,"Desktop site",if(pane.locked)"Unlock pane first" else
-                if(pane.desktop)"On" else "Off",!pane.locked,"▣"){
+            toggleRow(body,"Desktop site",
+                if(pane.locked)"Unlock pane first" else "Changes this pane's layout; reloads the page",
+                !pane.locked,pane.desktop,"▣"){
                 dialog.dismiss();card.toggleDesktop()
             }
             row(body,"Cookies & site data",if(pane.locked)"View-only while locked" else "",icon="☷"){
