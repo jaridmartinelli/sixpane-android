@@ -645,6 +645,7 @@ class MainActivity:Activity(){
     /** Bulk page actions must never silently act on locked panes or forget hidden selections. */
     private fun bulkEligible(requested:Set<String>,verb:String):WorkspacePolicy.SelectionPlan? {
         val plan=selectedActionPlan(requested)
+        plan.skippedLocked.forEach{cards[it]?.lock?.blockedFeedback()}
         if(plan.missing.isNotEmpty()){
             notice("Selection changed; "+verb+" cancelled");return null
         }
@@ -657,7 +658,7 @@ class MainActivity:Activity(){
         return plan
     }
     private fun bulkNotice(verb:String,count:Int,skippedLocked:Int,unavailable:Int=0){
-        notice(verb+" "+count+" pane"+if(count==1)"" else "s"+
+        notice(verb+" "+count+" pane"+(if(count==1)"" else "s")+
             (if(skippedLocked>0)"; skipped "+skippedLocked+" locked" else "")+
             (if(unavailable>0)"; "+unavailable+" not loaded" else ""))
     }
