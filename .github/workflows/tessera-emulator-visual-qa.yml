@@ -43,8 +43,8 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_7
-          disable-animations: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096 -cores 4
           script: bash "$GITHUB_WORKSPACE/tests/tessera_emulator_visual_capture.sh"
       - name: Upload complete screenshots, hierarchy, tests, and logs
         if: always()
