@@ -200,9 +200,13 @@ internal class TesseraBar(private val host:MainActivity) {
             "Across "+workspaceCount+" workspaces",10f).apply{
             setTextColor(secondary)
         })
-        controls.addView(status,LinearLayout.LayoutParams(dp(100),dp(44)))
+        // Fit primary selection controls at common 360dp phone widths;
+        // retain horizontal scrolling only for narrower accessibility layouts.
+        val narrow=host.resources.displayMetrics.widthPixels<dp(400)
+        controls.addView(status,LinearLayout.LayoutParams(dp(if(narrow)76 else 100),dp(44)))
         val currentIds=host.tesseraVisibleSelectionIds()
-        add(if(currentIds.all{it in host.tesseraSelected()})"None" else "All",56){
+        add(if(currentIds.all{it in host.tesseraSelected()})"None" else "All",
+            if(narrow)44 else 56){
             host.tesseraSelectAll()
         }
         add("⌑",44){host.tesseraLockSelected(true)}
@@ -779,8 +783,10 @@ internal class TesseraBar(private val host:MainActivity) {
     }
     private fun selectionScreen(){
         val count=host.tesseraSelected().size
-        page("Selected panes",count.toString()+" selected"){body,_,dialog->
-            row(body,"Workspaces","Select panes in other workspaces",icon="▣"){
+        page("Selected panes",count.toString()+" selected"){body,footer,dialog->
+            // Keep the six reference menu actions in their expected order. Cross-
+            // workspace selection remains reachable from a docked footer action.
+            footerButton(footer,"Workspaces"){
                 dialog.dismiss();workspaceScreen()
             }
             val available=count>0
