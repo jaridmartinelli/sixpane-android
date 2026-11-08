@@ -215,7 +215,7 @@ internal class TesseraBar(private val host:MainActivity) {
     fun render(){
         val select=host.tesseraSelecting()
         val selectionKey=if(select)WorkspacePolicy.selectionBarKey(
-            host.store.currentId,host.tesseraSelected()) else null
+            host.store.currentId,host.tesseraSelected(),host.tesseraVisibleSelectionIds()) else null
         if(select!=selectingRendered){
             selectingRendered=select
             if(select)selection() else regular()
@@ -617,7 +617,9 @@ internal class TesseraBar(private val host:MainActivity) {
             }
             body.addView(grid)
             footerButton(footer,"+ New workspace"){
-                if(host.store.spaces.size>=7){
+                if(host.tesseraSelecting()){
+                    host.notice("Finish selecting first (tap ✕)")
+                }else if(host.store.spaces.size>=7){
                     host.notice("7 is the maximum. Close a workspace to add one.")
                 }else if(host.store.filterQuery.isNotBlank()||
                     host.store.selectedFrameColors.isNotEmpty()){
@@ -641,44 +643,45 @@ internal class TesseraBar(private val host:MainActivity) {
                 ws.panes.forEach{it.locked=false};host.updateWindowLocks();dialog.dismiss()
             }
             row(body,"New workspace to the right",
-                if(host.store.spaces.size==7)"7 is the maximum" else "",host.store.spaces.size<7,
+                if(host.tesseraSelecting())"Finish selecting first" else
+                    if(host.store.spaces.size==7)"7 is the maximum" else
+                    if(host.store.filterQuery.isNotBlank()||host.store.selectedFrameColors.isNotEmpty())
+                        "Clear filters first" else "",
+                !host.tesseraSelecting() && host.store.spaces.size<7 &&
+                    host.store.filterQuery.isBlank() && host.store.selectedFrameColors.isEmpty(),
                 "+"){dialog.dismiss();host.tesseraNewWorkspace()}
-            row(body,"Close workspace",if(ws.panes.any{it.locked})"Unlock panes first" else
-                "Ends all 6 sessions. Reopening starts fresh.",ws.panes.none{it.locked},"×"){
+            row(body,"Close workspace",if(ws.locked||ws.panes.any{it.locked})
+                "Unlock workspace and panes first" else
+                "Ends all 6 sessions. Reopening starts fresh.",
+                !ws.locked&&ws.panes.none{it.locked},"×"){
                 dialog.dismiss();host.tesseraCloseWorkspace(ws.id)
             }
         }
     }
     private fun selectionScreen(){
-        page("Selected panes",host.tesseraSelected().size.toString()+" selected"){body,_,dialog->
+        val count=host.tesseraSelected().size
+        page("Selected panes",count.toString()+" selected"){body,_,dialog->
             row(body,"Workspaces","Select panes in other workspaces",icon="▣"){
                 dialog.dismiss();workspaceScreen()
             }
-            row(body,"Reload selected",icon="↻"){
-                host.tesseraSelected().forEach{
-                    val pane=host.store.spaces.flatMap{ws->ws.panes}.firstOrNull{p->p.id==it}
-                    if(pane?.locked!=true)host.windowCard(it)?.refresh()
-                };dialog.dismiss()
+            val available=count>0
+            val reason=if(available)"" else "Select at least one pane first"
+            row(body,"Reload selected",reason,available,"↻"){
+                dialog.dismiss();host.tesseraBulkReload()
             }
-            row(body,"Open an address in selected",icon="⌕"){
+            row(body,"Open an address in selected",reason,available,"⌕"){
                 dialog.dismiss();bulkAddressDialog()
             }
-            row(body,"Desktop site on",icon="▣"){
-                host.tesseraSelected().forEach{id->
-                    val card=host.windowCard(id)
-                    if(card?.state?.locked==false)card.setDesktopMode(true)
-                };dialog.dismiss()
+            row(body,"Desktop site on",reason,available,"▣"){
+                dialog.dismiss();host.tesseraBulkDesktop(true)
             }
-            row(body,"Desktop site off",icon="▣"){
-                host.tesseraSelected().forEach{id->
-                    val card=host.windowCard(id)
-                    if(card?.state?.locked==false)card.setDesktopMode(false)
-                };dialog.dismiss()
+            row(body,"Desktop site off",reason,available,"▣"){
+                dialog.dismiss();host.tesseraBulkDesktop(false)
             }
-            row(body,"Clear selection",icon="×"){
-                host.tesseraSelected().forEach{};host.tesseraExitSelection();dialog.dismiss()
+            row(body,"Clear selection",reason,available,"×"){
+                host.tesseraExitSelection();dialog.dismiss()
             }
-            row(body,"End sessions…",icon="×"){
+            row(body,"End sessions…",reason,available,"×"){
                 dialog.dismiss();host.tesseraEnd(host.tesseraSelected())
             }
         }
@@ -699,16 +702,7 @@ internal class TesseraBar(private val host:MainActivity) {
         outer.addView(button("Open"){
             val resolved=BrowserPolicy.resolveAddressOrSearch(input.text.toString())
             if(resolved==null){input.error="Enter an address";return@button}
-            val ids=host.tesseraSelected()
-            var skipped=0
-            for(ws in host.store.spaces)for(pane in ws.panes){
-                if(pane.id in ids){
-                    if(pane.locked){skipped++;continue}
-                    host.windowCard(pane.id)?.loadAddress(resolved)?:run{pane.url=resolved}
-                }
-            }
-            host.persist();dialog.dismiss()
-            if(skipped>0)host.notice("Skipped "+skipped+" locked panes")
+            dialog.dismiss();host.tesseraBulkOpenAddress(resolved)
         },LinearLayout.LayoutParams(-1,dp(48)))
         dialog.setContentView(outer);dialog.show()
         dialog.window?.setLayout((host.resources.displayMetrics.widthPixels*.92f).toInt(),-2)
