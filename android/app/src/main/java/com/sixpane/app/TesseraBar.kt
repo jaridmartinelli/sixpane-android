@@ -376,7 +376,7 @@ internal class TesseraBar(private val host:MainActivity) {
             swatches.addView(button(if(index==0)"×" else "●"){
                 host.tesseraRecolor(ids,color);dialog.dismiss();render()
             }.apply{
-                setTextColor(if(index==0)text else color)
+                setTextColor(if(index==0)this@TesseraBar.text else color)
                 background=round(surface3,20,if(ids.any{host.store.frameColor(it)==color})3 else 1,
                     if(ids.any{host.store.frameColor(it)==color})Color.WHITE else stroke)
             },LinearLayout.LayoutParams(0,dp(44),1f))

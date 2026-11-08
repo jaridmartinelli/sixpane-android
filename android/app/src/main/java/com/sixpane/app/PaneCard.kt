@@ -456,7 +456,7 @@ class PaneCard(
         val tag=host.store.frameColor(state.id)
         header.setBackgroundColor(
             if(tag!=0xff51606e.toInt())tag else
-                if(host.tesseraIsActive(state.id))0xff252c37.toInt() else 0xff1c222b.toInt()
+                if(host.tesseraIsActive(this@PaneCard.state.id))0xff252c37.toInt() else 0xff1c222b.toInt()
         )
         headerLock.visibility=if(state.locked)View.VISIBLE else View.GONE
         headerHost.text=runCatching{java.net.URI(state.url).host}.getOrNull()?:"New session"
@@ -504,9 +504,9 @@ class PaneCard(
         background=GradientDrawable().apply{
             setColor(0xff0b0e13.toInt())
             setStroke((if(selectedOutline)host.dp(3)
-                else if(host.tesseraIsActive(state.id))((host.dp(3)+1)/2)
+                else if(host.tesseraIsActive(this@PaneCard.state.id))((host.dp(3)+1)/2)
                 else host.dp(1)).coerceAtLeast(1),
-                if(selectedOutline||host.tesseraIsActive(state.id))Color.WHITE else 0xff2b3340.toInt())
+                if(selectedOutline||host.tesseraIsActive(this@PaneCard.state.id))Color.WHITE else 0xff2b3340.toInt())
             cornerRadius=host.dp(8).toFloat()
         }
         updateHeader()

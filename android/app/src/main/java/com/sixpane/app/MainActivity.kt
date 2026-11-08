@@ -788,6 +788,7 @@ class MainActivity:Activity(){
         it.id==store.activePaneId
     }?:store.active().panes.firstOrNull()
     fun tesseraActiveCard():PaneCard?=tesseraActivePane()?.let{cards[it.id]}
+    fun tesseraFocusAddress(id:String){if(::tessera.isInitialized)tessera.focusAddress(id)}
     fun tesseraSelected():Set<String> =selectedPanes.toSet()
     fun tesseraSelecting():Boolean =selecting
     fun tesseraSelectAll(){
@@ -860,7 +861,7 @@ class MainActivity:Activity(){
             else->if(width.toFloat()>=height.toFloat()*0.95f)3 else 2
         }
         val rects=FilteredPanePages.bounds(width,height,gap,activeColumns,visible.size,
-            f?.let{id->visible.indexOfFirst{it.id==id}},dp(54),dp(80))
+            f?.let{id->visible.indexOfFirst{it.id==id}},dp(78),dp(80))
         filterEmpty.visibility=if(filtering()&&visible.none{p->
             FramePalette.matches(p.url,store.frameColor(p.id),
                 store.filterQuery,store.selectedFrameColors)
@@ -869,6 +870,7 @@ class MainActivity:Activity(){
         val desired=visible.mapIndexed{i,p->val r=rects[i];p.id to intArrayOf(r.x,r.y,r.width,r.height)}.toMap()
         for((id,card) in cards){
             card.updatePaneNumber()
+            card.updateFrameColor()
             val matching=!filtering()||FramePalette.matches(card.state.url,
                 store.frameColor(id),store.filterQuery,store.selectedFrameColors)
             card.alpha=if(matching)1f else .16f
