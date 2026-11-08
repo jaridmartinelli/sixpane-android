@@ -951,6 +951,12 @@ internal class TesseraBar(private val host:MainActivity) {
                     host.tesseraSetGrid(value);dialog.dismiss();settingsScreen()
                 }
             }
+            toggleRow(body,"Condensed filter results",
+                "Optional: group matches across workspaces in six-slot pages",
+                true,host.store.compactFilterResults,"▣"){
+                host.tesseraSetCompactFilterResults(!host.store.compactFilterResults)
+                dialog.dismiss();settingsScreen()
+            }
             row(body,"How sessions work",icon="ⓘ"){dialog.dismiss();howSessions()}
             row(body,"Developer tools","Preserved SIXPANE tools",icon="⚙"){
                 dialog.dismiss();host.tesseraOpenSettings()
