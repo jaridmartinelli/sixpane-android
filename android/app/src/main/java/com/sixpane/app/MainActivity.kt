@@ -633,10 +633,13 @@ class MainActivity:Activity(){
     private fun confirmCloseSelected()=confirmCloseWindows(selectedPanes.toSet())
     /** Preserve the original source workspaces even when selecting virtual filter pages. */
     private fun confirmCloseWindows(requested:Set<String>){
-        val crossWorkspace=filtering()
+        val wasFiltering=filtering()
+        val crossWorkspace=WorkspacePolicy.crossesWorkspace(
+            store.active().panes.map{it.id}.toSet(),requested,wasFiltering)
         val originalWorkspace=store.currentId
         val available=if(crossWorkspace)allPanes() else store.active().panes
         val selected=available.filter{it.id in requested}
+        if(selected.size!=requested.size){notice("Selection changed; end cancelled");return}
         if(selected.isEmpty())return
         val ids=selected.map{it.id}.toSet()
         if(selected.any{it.locked}){
@@ -652,8 +655,7 @@ class MainActivity:Activity(){
             "Fresh isolated profiles replace them in their ORIGINAL workspaces. "+
             "Disk cleanup may require a clean restart.",
             "Close & Replace"){
-            if(crossWorkspace!=filtering()||
-                (!crossWorkspace && store.currentId!=originalWorkspace)){
+            if(wasFiltering!=filtering()||store.currentId!=originalWorkspace){
                 notice("The active view changed; close cancelled");return@confirm
             }
             val live=allPanes().filter{it.id in ids}
@@ -829,10 +831,21 @@ class MainActivity:Activity(){
     fun tesseraNewWorkspace(){createWorkspace()}
     fun tesseraCloseWorkspace(id:String){store.spaces.firstOrNull{it.id==id}?.let{closeWorkspace(it)}}
     fun tesseraLockSelected(value:Boolean){
-        allPanes().filter{it.id in selectedPanes}.forEach{
-            it.locked=value;cards[it.id]?.updateLockStatus()
+        val affected=allPanes().filter{it.id in selectedPanes && it.locked!=value}
+        if(affected.isEmpty()){
+            notice(if(value)"Selected panes are already locked" else "Selected panes are already unlocked")
+            return
         }
+        val before=affected.associate{it.id to it.locked}
+        affected.forEach{it.locked=value;cards[it.id]?.updateLockStatus()}
         store.save();updateSelection()
+        tessera.snack((if(value)"Locked " else "Unlocked ")+affected.size+" panes"){
+            for(pane in allPanes())if(pane.id in before && pane.locked==value){
+                pane.locked=before.getValue(pane.id)
+                cards[pane.id]?.updateLockStatus()
+            }
+            store.save();updateSelection()
+        }
     }
     fun tesseraRecolor(ids:Set<String>,color:Int){recolorWindows(ids,color)}
     fun tesseraEnd(ids:Set<String>){closeWindows(ids)}
