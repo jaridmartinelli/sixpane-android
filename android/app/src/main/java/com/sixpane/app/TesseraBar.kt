@@ -663,10 +663,16 @@ internal class TesseraBar(private val host:MainActivity) {
                         contentDescription=(if(ws.panes.all{it.locked})"Unlock" else "Lock")+
                             " all panes in workspace "+(index+1)
                     },LinearLayout.LayoutParams(dp(44),dp(44)))
+                    val canCloseWorkspace=!ws.locked&&ws.panes.none{it.locked}
                     cardHeader.addView(button("×"){
-                        dialog.dismiss();host.tesseraCloseWorkspace(ws.id)
+                        if(canCloseWorkspace)dialog.dismiss()
+                        // A protected workspace stays open; the close action explains
+                        // the refusal instead of dismissing the card silently.
+                        host.tesseraCloseWorkspace(ws.id)
                     }.apply{
-                        contentDescription="Close workspace "+(index+1)
+                        contentDescription="Close workspace "+(index+1)+
+                            (if(canCloseWorkspace)"" else "; unlock workspace and panes first")
+                        alpha=if(canCloseWorkspace)1f else .45f
                     },LinearLayout.LayoutParams(dp(44),dp(44)))
                     card.addView(cardHeader,LinearLayout.LayoutParams(-1,dp(44)))
                     val previews=android.widget.GridLayout(host).apply{columnCount=2}
