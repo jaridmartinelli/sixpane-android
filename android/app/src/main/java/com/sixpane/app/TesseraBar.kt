@@ -382,6 +382,7 @@ internal class TesseraBar(private val host:MainActivity) {
             LinearLayout.LayoutParams(dp(88),dp(34)))
     }
     private fun page(title:String,subtitle:String="",closeGlyph:String="‹",
+                     footerHeight:Int=64,
                      content:(LinearLayout,LinearLayout,Dialog)->Unit){
         closeAddress()
         val dialog=Dialog(host,android.R.style.Theme_Material_NoActionBar)
@@ -417,7 +418,7 @@ internal class TesseraBar(private val host:MainActivity) {
         val footer=LinearLayout(host).apply{
             gravity=Gravity.CENTER_VERTICAL;setPadding(dp(8),dp(6),dp(8),dp(6))
         }
-        outer.addView(footer,LinearLayout.LayoutParams(-1,dp(64)))
+        outer.addView(footer,LinearLayout.LayoutParams(-1,dp(footerHeight)))
         content(body,footer,dialog)
         dialog.setContentView(outer)
         // Full-screen menus must not place their Back control or title under status-bar icons.
@@ -657,7 +658,7 @@ internal class TesseraBar(private val host:MainActivity) {
         dialog.window?.setDimAmount(.55f)
     }
     fun workspaceScreen(){
-        page("Workspaces",host.store.spaces.size.toString()+" of 7","×"){body,footer,dialog->
+        page("Workspaces",host.store.spaces.size.toString()+" of 7","×",80){body,footer,dialog->
             val cols=if(host.resources.displayMetrics.widthPixels>=dp(600))3 else 2
             val width=(host.resources.displayMetrics.widthPixels-dp(48))/cols
             val grid=android.widget.GridLayout(host).apply{columnCount=cols}
@@ -781,18 +782,37 @@ internal class TesseraBar(private val host:MainActivity) {
                 }
             }
             body.addView(grid)
-            footerButton(footer,"+ New workspace"){
-                if(host.tesseraSelecting()){
-                    host.notice("Finish selecting first (tap ✕)")
-                }else if(host.store.spaces.size>=7){
-                    host.notice("7 is the maximum. Close a workspace to add one.")
-                }else if(host.store.filterQuery.isNotBlank()||
-                    host.store.selectedFrameColors.isNotEmpty()){
-                    host.notice("Clear filters to add a workspace")
-                }else{
+            val addReason=when{
+                host.tesseraSelecting()->"Finish selecting first"
+                host.store.spaces.size>=7->"7 is the maximum; close a workspace to add one"
+                host.store.filterQuery.isNotBlank()||
+                    host.store.selectedFrameColors.isNotEmpty()->"Clear filters to add a workspace"
+                else->""
+            }
+            val footerStack=LinearLayout(host).apply{
+                orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER
+            }
+            footerStack.addView(button("+ New workspace"){
+                if(addReason.isNotBlank())host.notice(addReason)
+                else{
                     dialog.dismiss();host.tesseraNewWorkspace();workspaceScreen()
                 }
+            }.apply{
+                textSize=15f
+                setTypeface(null,Typeface.BOLD)
+                setTextColor(0xff0b0e13.toInt())
+                background=round(accent,12)
+                alpha=if(addReason.isBlank())1f else .45f
+                contentDescription=if(addReason.isBlank())"Create new workspace"
+                    else "New workspace unavailable: "+addReason
+            },LinearLayout.LayoutParams(-1,dp(48)))
+            if(addReason.isNotBlank()){
+                footerStack.addView(txt(addReason,10f).apply{
+                    gravity=Gravity.CENTER
+                    setTextColor(0xffff6b6b.toInt())
+                },LinearLayout.LayoutParams(-1,dp(16)))
             }
+            footer.addView(footerStack,LinearLayout.LayoutParams(0,-2,1f))
         }
     }
     private fun workspaceMenu(ws:WorkspaceState){
