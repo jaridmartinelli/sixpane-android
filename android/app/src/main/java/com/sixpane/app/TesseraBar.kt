@@ -201,7 +201,7 @@ internal class TesseraBar(private val host:MainActivity) {
             setTextColor(secondary)
         })
         controls.addView(status,LinearLayout.LayoutParams(dp(100),dp(44)))
-        val currentIds=host.store.active().panes.map{it.id}.toSet()
+        val currentIds=host.tesseraVisibleSelectionIds()
         add(if(currentIds.all{it in host.tesseraSelected()})"None" else "All",56){
             host.tesseraSelectAll()
         }
@@ -650,6 +650,9 @@ internal class TesseraBar(private val host:MainActivity) {
     }
     private fun selectionScreen(){
         page("Selected panes",host.tesseraSelected().size.toString()+" selected"){body,_,dialog->
+            row(body,"Workspaces","Select panes in other workspaces",icon="▣"){
+                dialog.dismiss();workspaceScreen()
+            }
             row(body,"Reload selected",icon="↻"){
                 host.tesseraSelected().forEach{
                     val pane=host.store.spaces.flatMap{ws->ws.panes}.firstOrNull{p->p.id==it}
