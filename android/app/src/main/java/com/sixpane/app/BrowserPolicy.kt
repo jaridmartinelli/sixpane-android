@@ -64,7 +64,7 @@ object BrowserPolicy {
             .matches(text)
         val localhost=Regex("""^localhost(?::[0-9]{1,5})?(?:[/#?].*)?$""",RegexOption.IGNORE_CASE)
             .matches(text)
-        val ipAddress=Regex("""^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?::[0-9]{1,5})?(?:[/#?].*)?$""")
+        val ipAddress=Regex("""^(?:[0-9]{1,3}[.]){3}[0-9]{1,3}(?::[0-9]{1,5})?(?:[/#?].*)?$""")
             .matches(text)
         if(explicitHttp||hostWithDomain||localhost||ipAddress){
             val candidate=when {
