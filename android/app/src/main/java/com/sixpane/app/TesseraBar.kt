@@ -364,14 +364,15 @@ internal class TesseraBar(private val host:MainActivity) {
         filterContents.addView(button("Clear all"){host.tesseraClearFilters()},
             LinearLayout.LayoutParams(dp(88),dp(34)))
     }
-    private fun page(title:String,subtitle:String="",content:(LinearLayout,LinearLayout,Dialog)->Unit){
+    private fun page(title:String,subtitle:String="",closeGlyph:String="‹",
+                     content:(LinearLayout,LinearLayout,Dialog)->Unit){
         closeAddress()
         val dialog=Dialog(host,android.R.style.Theme_Material_NoActionBar)
         val outer=LinearLayout(host).apply{
             orientation=LinearLayout.VERTICAL;setBackgroundColor(0xff0b0e13.toInt())
         }
         val header=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
-        header.addView(button("‹"){dialog.dismiss()},LinearLayout.LayoutParams(dp(48),dp(48)))
+        header.addView(button(closeGlyph){dialog.dismiss()},LinearLayout.LayoutParams(dp(48),dp(48)))
         val heading=LinearLayout(host).apply{orientation=LinearLayout.VERTICAL}
         heading.addView(txt(title,21f).apply{setTypeface(null,Typeface.BOLD)})
         if(subtitle.isNotBlank())heading.addView(txt(subtitle,13f).apply{setTextColor(secondary)})
@@ -525,7 +526,7 @@ internal class TesseraBar(private val host:MainActivity) {
         dialog.window?.setDimAmount(.55f)
     }
     fun workspaceScreen(){
-        page("Workspaces",host.store.spaces.size.toString()+" of 7"){body,footer,dialog->
+        page("Workspaces",host.store.spaces.size.toString()+" of 7","×"){body,footer,dialog->
             val cols=if(host.resources.displayMetrics.widthPixels>=dp(600))3 else 2
             val width=(host.resources.displayMetrics.widthPixels-dp(48))/cols
             val grid=android.widget.GridLayout(host).apply{columnCount=cols}
