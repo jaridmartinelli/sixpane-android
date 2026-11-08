@@ -3,6 +3,7 @@ package com.sixpane.app
 import android.content.Context
 import android.content.Intent
 import android.app.AlertDialog
+import android.app.Dialog
 import android.app.DownloadManager
 import android.net.Uri
 import android.os.Environment
@@ -47,6 +48,10 @@ class PaneCard(
     private var startY=0f
     private var pullPermitted=false
     private var pullTriggered=false
+    private var popupDialog:Dialog?=null
+    private var popupWebView:WebView?=null
+    /** Read-only instrumented-test hook; does not alter or reset profile identity. */
+    internal fun popupForTest():WebView?=popupWebView
     private var refreshGestureGeneration=0
     private val thumbnailTap=FrameLayout(host)
     private val blankTap=FrameLayout(host)
@@ -344,8 +349,8 @@ class PaneCard(
             WebViewCompat.setProfile(fresh,state.profile)
             fresh.settings.apply {
                 javaScriptEnabled=true;domStorageEnabled=true;databaseEnabled=true
-                loadsImagesAutomatically=true;javaScriptCanOpenWindowsAutomatically=false
-                setSupportMultipleWindows(false)
+                loadsImagesAutomatically=true;javaScriptCanOpenWindowsAutomatically=true
+                setSupportMultipleWindows(true)
                 // Native Android WebView gestures, no SIXPANE zoom buttons.
                 setSupportZoom(true)
                 builtInZoomControls=true;displayZoomControls=false
@@ -375,6 +380,25 @@ class PaneCard(
             WebViewCompat.getProfile(fresh).cookieManager.setAcceptThirdPartyCookies(fresh,true)
             fresh.webViewClient=onPageChanged
             fresh.webChromeClient=object:WebChromeClient(){
+                override fun onCreateWindow(view:WebView?,isDialog:Boolean,
+                    isUserGesture:Boolean,resultMsg:android.os.Message?):Boolean {
+                    if(view!==webView||resultMsg==null||disposed||
+                        host.isFinishing||host.isDestroyed)return false
+                    val hit=view.hitTestResult
+                    val ordinaryAnchor=hit?.type==WebView.HitTestResult.SRC_ANCHOR_TYPE ||
+                        hit?.type==WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+                    val target=hit?.extra
+                    // A directly clicked target=_blank link can open in the existing
+                    // unlocked pane, per the handoff; scripted authentication windows
+                    // and ALL locked-pane new tabs use the same-profile popup.
+                    if(!state.locked && isUserGesture && ordinaryAnchor &&
+                        (target?.startsWith("https://")==true||
+                         target?.startsWith("http://")==true)){
+                        loadAddress(target!!)
+                        return false
+                    }
+                    return showSameProfilePopup(resultMsg)
+                }
                 override fun onShowFileChooser(webView:WebView?,
                     filePathCallback:ValueCallback<Array<Uri>>?,
                     fileChooserParams:FileChooserParams?):Boolean {
@@ -511,7 +535,179 @@ class PaneCard(
             return fresh
         }catch(e:Exception){fresh.destroy();throw e}
     }
+    /**
+     * Extra browser windows share the source pane's existing named profile.
+     * No profile name is created here, and closing the UI does not clear any
+     * cookie, localStorage, IndexedDB or service-worker data.
+     */
+    private fun showSameProfilePopup(message:android.os.Message):Boolean {
+        if(popupDialog?.isShowing==true){
+            host.notice("Close this pane's existing pop-up first")
+            return false
+        }
+        val transport=message.obj as? WebView.WebViewTransport ?:return false
+        val child=WebView(host)
+        try{
+            // MUST precede any other child WebView configuration or loading.
+            WebViewCompat.setProfile(child,state.profile)
+            child.settings.apply{
+                javaScriptEnabled=true
+                domStorageEnabled=true
+                databaseEnabled=true
+                loadsImagesAutomatically=true
+                javaScriptCanOpenWindowsAutomatically=false
+                setSupportMultipleWindows(false)
+                setSupportZoom(true)
+                builtInZoomControls=true
+                displayZoomControls=false
+                useWideViewPort=true
+                loadWithOverviewMode=!state.desktop
+                userAgentString=webView.settings.userAgentString
+                mediaPlaybackRequiresUserGesture=true
+            }
+            WebViewCompat.getProfile(child).cookieManager
+                .setAcceptThirdPartyCookies(child,true)
+            child.setBackgroundColor(Color.WHITE)
+            val dialog=Dialog(host,android.R.style.Theme_Material_NoActionBar)
+            val root=LinearLayout(host).apply{
+                orientation=LinearLayout.VERTICAL
+                setBackgroundColor(0xff0b0e13.toInt())
+            }
+            val header=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
+            val heading=TextView(host).apply{
+                text="Pane "+host.paneIndex(state.id)+" · Pop-up"
+                textSize=18f
+                setTextColor(Color.WHITE)
+                setTypeface(null,Typeface.BOLD)
+                setPadding(host.dp(14),0,0,0)
+                maxLines=1
+                ellipsize=TextUtils.TruncateAt.END
+            }
+            header.addView(heading,LinearLayout.LayoutParams(0,host.dp(56),1f))
+            val close=TextView(host).apply{
+                text="×";textSize=27f
+                gravity=Gravity.CENTER
+                setTextColor(Color.WHITE)
+                isClickable=true;isFocusable=true
+                contentDescription="Close pop-up"
+                setOnClickListener{dialog.dismiss()}
+            }
+            header.addView(close,LinearLayout.LayoutParams(host.dp(48),host.dp(56)))
+            root.addView(header,LinearLayout.LayoutParams(-1,host.dp(56)))
+            root.addView(child,LinearLayout.LayoutParams(-1,0,1f))
+            val footer=LinearLayout(host).apply{
+                orientation=LinearLayout.VERTICAL
+                setPadding(host.dp(10),host.dp(5),host.dp(10),host.dp(5))
+                setBackgroundColor(0xff141920.toInt())
+            }
+            val open=TextView(host).apply{
+                text="Open in pane"
+                textSize=15f
+                gravity=Gravity.CENTER
+                setTextColor(0xff0b0e13.toInt())
+                setTypeface(null,Typeface.BOLD)
+                background=GradientDrawable().apply{
+                    setColor(0xff7ea6ff.toInt())
+                    cornerRadius=host.dp(12).toFloat()
+                }
+                contentDescription="Open pop-up page in Pane "+host.paneIndex(state.id)
+                isClickable=true;isFocusable=true
+                alpha=if(state.locked).45f else 1f
+                setOnClickListener{
+                    if(state.locked){
+                        blocked("Unlock pane to open this page")
+                        return@setOnClickListener
+                    }
+                    val destination=child.url
+                    if(destination.isNullOrEmpty()||
+                        !(destination.startsWith("https://")||
+                          destination.startsWith("http://"))){
+                        host.notice("Pop-up page is not ready to open")
+                        return@setOnClickListener
+                    }
+                    dialog.dismiss()
+                    loadAddress(destination)
+                }
+            }
+            footer.addView(open,LinearLayout.LayoutParams(-1,host.dp(48)))
+            if(state.locked){
+                footer.addView(TextView(host).apply{
+                    text="Unlock pane to open this page"
+                    textSize=11f
+                    setTextColor(0xffff6b6b.toInt())
+                    gravity=Gravity.CENTER
+                },LinearLayout.LayoutParams(-1,host.dp(19)))
+            }
+            root.addView(footer,LinearLayout.LayoutParams(-1,
+                host.dp(if(state.locked)77 else 60)))
+            child.webViewClient=object:WebViewClient(){
+                override fun shouldInterceptRequest(view:WebView,
+                    request:WebResourceRequest):WebResourceResponse? =
+                    assetLoader.shouldInterceptRequest(request.url)
+                override fun shouldOverrideUrlLoading(view:WebView,
+                    request:WebResourceRequest):Boolean {
+                    val scheme=request.url.scheme?.lowercase().orEmpty()
+                    return scheme !in listOf("https","http","about","data","blob")
+                }
+                override fun onPageStarted(view:WebView?,url:String?,
+                    favicon:android.graphics.Bitmap?){
+                    val hostName=runCatching{Uri.parse(url).host}.getOrNull()
+                        ?: "Pop-up"
+                    heading.text="Pane "+host.paneIndex(state.id)+" · "+hostName
+                }
+            }
+            child.webChromeClient=object:WebChromeClient(){
+                override fun onCloseWindow(window:WebView?){dialog.dismiss()}
+                override fun onPermissionRequest(request:PermissionRequest?){
+                    request?.deny()
+                }
+                override fun onGeolocationPermissionsShowPrompt(
+                    origin:String?,callback:GeolocationPermissions.Callback?
+                ){callback?.invoke(origin,false,false)}
+                override fun onShowFileChooser(webView:WebView?,
+                    filePathCallback:ValueCallback<Array<Uri>>?,
+                    fileChooserParams:FileChooserParams?):Boolean {
+                    if(filePathCallback==null)return false
+                    host.tesseraChooseFile(filePathCallback);return true
+                }
+            }
+            dialog.setContentView(root)
+            dialog.setOnDismissListener{
+                if(popupDialog===dialog)popupDialog=null
+                if(popupWebView===child)popupWebView=null
+                runCatching{
+                    WebViewCompat.getProfile(child).cookieManager.flush()
+                    child.stopLoading()
+                    child.destroy()
+                }
+            }
+            if(android.os.Build.VERSION.SDK_INT>=30){
+                root.setOnApplyWindowInsetsListener{view,insets->
+                    val bars=insets.getInsets(android.view.WindowInsets.Type.systemBars())
+                    view.setPadding(bars.left,bars.top,bars.right,bars.bottom)
+                    insets
+                }
+            }
+            popupDialog=dialog
+            popupWebView=child
+            dialog.show()
+            dialog.window?.setLayout(-1,-1)
+            if(android.os.Build.VERSION.SDK_INT>=30)root.requestApplyInsets()
+            transport.webView=child
+            message.sendToTarget()
+            return true
+        }catch(e:Exception){
+            if(popupWebView===child)popupWebView=null
+            runCatching{popupDialog?.dismiss()}
+            popupDialog=null
+            runCatching{child.destroy()}
+            host.notice("Pop-up could not open: "+e.javaClass.simpleName)
+            return false
+        }
+    }
     private fun discardWebView(){
+        popupDialog?.dismiss()
+        popupDialog=null;popupWebView=null
         loadTimeout?.let{recoveryHandler.removeCallbacks(it)};loadTimeout=null
         if(webViewAlive){webViewAlive=false;body.removeView(webView);webView.destroy()}
     }
