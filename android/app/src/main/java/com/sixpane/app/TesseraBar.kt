@@ -390,8 +390,18 @@ internal class TesseraBar(private val host:MainActivity) {
         outer.addView(footer,LinearLayout.LayoutParams(-1,dp(64)))
         content(body,footer,dialog)
         dialog.setContentView(outer)
+        // Full-screen menus must not place their Back control or title under status-bar icons.
+        // Use actual insets rather than a device-specific fixed top margin.
+        if(android.os.Build.VERSION.SDK_INT>=30){
+            outer.setOnApplyWindowInsetsListener{v,insets->
+                val bars=insets.getInsets(android.view.WindowInsets.Type.systemBars())
+                v.setPadding(bars.left,bars.top,bars.right,bars.bottom)
+                insets
+            }
+        }
         dialog.show()
         dialog.window?.setLayout(-1,-1)
+        if(android.os.Build.VERSION.SDK_INT>=30)outer.requestApplyInsets()
     }
     private fun row(body:LinearLayout,title:String,description:String="",enabled:Boolean=true,
                     icon:String="◦",action:()->Unit){
