@@ -35,3 +35,195 @@ The GitHub Actions workflow for each source commit compiles/unit-tests and verif
 These are code-inspection findings; physical-device reproductions or user incidents were not claimed.
 
 Production `main` must not be merged from this document alone. Retain all original unverified rows as unchecked until evidence is recorded.
+
+
+---
+
+## Full 100-item JM working index — November 8, 2026
+
+The **canonical acceptance authority** remains the **18-section, 228-check**
+`SIXPANE_TESSERA_JM_ACCEPTANCE_CHECKLIST.md` based on
+`PROMPT_MATCH_TESSERA_DESIGN.md` and 27 reference JPGs in
+`Tessera-screens.zip`. The 100 numbers below reproduce the **condensed working
+list previously displayed in chat**, not a claim that this numbering occurs
+verbatim in the original Claude handoff. Compound handoff requirements have
+not been removed or waived by this working index.
+
+Status meanings: **E** = a specific emulator view was previously observed,
+not the complete journey; **T** = relevant policy/JVM test passed,
+not the interaction; **I** = source implementation changed;
+**U** = interaction/visual acceptance still unverified;
+**P** = known incomplete requirement, mismatch or serious evidence gap.
+**Zero full end-to-end JM journeys are accepted merely by compiling.**
+
+### Core baseline (1–10)
+
+| # | Working JM check | Evidence boundary |
+|---:|---|---|
+| 1 | Six panes appear without overlap | E · specific emulator screen observed; complete journey unaccepted |
+| 2 | Bottom command bar accessible | E · specific emulator screen observed; complete journey unaccepted |
+| 3 | Old top bar and seven-tab strip absent | E · specific emulator screen observed; complete journey unaccepted |
+| 4 | Webpage touch activates correct pane | U · source support/behavior needs targeted JM evidence |
+| 5 | Header tap activates pane | U · source support/behavior needs targeted JM evidence |
+| 6 | Header double tap expands/collapses | U · source support/behavior needs targeted JM evidence |
+| 7 | Header hold opens pane menu | U · source support/behavior needs targeted JM evidence |
+| 8 | Pane chip tap expands/collapses | U · source support/behavior needs targeted JM evidence |
+| 9 | Pane chip hold opens menu | U · source support/behavior needs targeted JM evidence |
+| 10 | Dock actions target active pane | U · source support/behavior needs targeted JM evidence |
+
+### Navigation, workspace selection, bulk actions (11–25)
+
+| # | Working JM check | Evidence boundary |
+|---:|---|---|
+| 11 | Android Back follows priority order | U · source support/behavior needs targeted JM evidence |
+| 12 | Workspace button opens workspace screen | E · specific emulator screen observed; complete journey unaccepted |
+| 13 | Workspace card tap switches workspace | U · source support/behavior needs targeted JM evidence |
+| 14 | Workspace card hold opens workspace menu | U · source support/behavior needs targeted JM evidence |
+| 15 | Workspace button hold opens workspace menu | U · source support/behavior needs targeted JM evidence |
+| 16 | Pane menu enters selection mode | U · source support/behavior needs targeted JM evidence |
+| 17 | Pane tap toggles selection | U · source support/behavior needs targeted JM evidence |
+| 18 | Workspaces reachable while selecting | I · source change implemented; interaction/photo QA pending |
+| 19 | Cross-workspace selection retained | T · targeted JVM rule passed; UI test pending |
+| 20 | All/None limited to visible page | T · targeted JVM rule passed; UI test pending |
+| 21 | Selection controls fit narrow phones | U · source support/behavior needs targeted JM evidence |
+| 22 | Bulk actions target selected IDs safely | T · targeted JVM rule passed; UI test pending |
+| 23 | Locked panes skipped with feedback | I · source change implemented; interaction/photo QA pending |
+| 24 | Controls work without filters | U · source support/behavior needs targeted JM evidence |
+| 25 | Menu/dialog exits reach previous UI | I · source change implemented; interaction/photo QA pending |
+
+### Pane geometry and gestures (26–50)
+
+| # | Working JM check | Evidence boundary |
+|---:|---|---|
+| 26 | Auto 2x3 / 3x2 at 95% threshold | U · source support/behavior needs targeted JM evidence |
+| 27 | Manual grid override persists | U · source support/behavior needs targeted JM evidence |
+| 28 | Exact 4dp grid gap and padding | U · source support/behavior needs targeted JM evidence |
+| 29 | 26dp pane header and 8dp corners | U · source support/behavior needs targeted JM evidence |
+| 30 | Active pane 1.5dp white border | U · source support/behavior needs targeted JM evidence |
+| 31 | Selected overlay/3dp ring/check size | P · known mismatch or missing evidence |
+| 32 | Inactive pane 1dp outline | U · source support/behavior needs targeted JM evidence |
+| 33 | Correct pane index, hostname and state | U · source support/behavior needs targeted JM evidence |
+| 34 | Red lock badge when locked | U · source support/behavior needs targeted JM evidence |
+| 35 | Desktop and non-100% zoom indicator | U · source support/behavior needs targeted JM evidence |
+| 36 | Tag contrast readable | U · source support/behavior needs targeted JM evidence |
+| 37 | Loading progress shown | U · source support/behavior needs targeted JM evidence |
+| 38 | Empty pane Open a site action | I · source change implemented; interaction/photo QA pending |
+| 39 | Page error Retry action | U · source support/behavior needs targeted JM evidence |
+| 40 | Pull refresh only at top | U · source support/behavior needs targeted JM evidence |
+| 41 | Nested scrolling prevents false refresh | P · known mismatch or missing evidence |
+| 42 | Locked pane resists refresh | U · source support/behavior needs targeted JM evidence |
+| 43 | 72dp refresh threshold | U · source support/behavior needs targeted JM evidence |
+| 44 | Spinner stops after loading | U · source support/behavior needs targeted JM evidence |
+| 45 | Pinch zoom, no buttons | U · source support/behavior needs targeted JM evidence |
+| 46 | 320dp virtual width in small panes | U · source support/behavior needs targeted JM evidence |
+| 47 | Portrait enlarged strip 78dp | U · source support/behavior needs targeted JM evidence |
+| 48 | Landscape enlarged right strip | U · source support/behavior needs targeted JM evidence |
+| 49 | Thumbnail switches focus | U · source support/behavior needs targeted JM evidence |
+| 50 | Keyboard keeps site input and dock accessible | P · known mismatch or missing evidence |
+
+### Bottom controls and menus (51–75)
+
+| # | Working JM check | Evidence boundary |
+|---:|---|---|
+| 51 | Bottom command bar order | U · source support/behavior needs targeted JM evidence |
+| 52 | Pane chip dimensions/feedback | U · source support/behavior needs targeted JM evidence |
+| 53 | Address pill layout | U · source support/behavior needs targeted JM evidence |
+| 54 | Host/full URL on focus | U · source support/behavior needs targeted JM evidence |
+| 55 | Go/Enter submit | U · source support/behavior needs targeted JM evidence |
+| 56 | URL/search resolution | U · source support/behavior needs targeted JM evidence |
+| 57 | Paste and Go reads clipboard on tap | U · source support/behavior needs targeted JM evidence |
+| 58 | Eight bookmark suggestions with metadata | P · known mismatch or missing evidence |
+| 59 | Bookmark star turns into Stop | U · source support/behavior needs targeted JM evidence |
+| 60 | Forward reflects history | U · source support/behavior needs targeted JM evidence |
+| 61 | Workspace button geometry | P · known mismatch or missing evidence |
+| 62 | More button includes All panes | E · specific emulator screen observed; complete journey unaccepted |
+| 63 | Pane menu row order and inline controls | I · source change implemented; interaction/photo QA pending |
+| 64 | All panes actions reach correct screens | U · source support/behavior needs targeted JM evidence |
+| 65 | Full-screen menu page composition | I · source change implemented; interaction/photo QA pending |
+| 66 | Disabled row reasons and feedback | U · source support/behavior needs targeted JM evidence |
+| 67 | Blocked lock action haptic/shake/snack | P · known mismatch or missing evidence |
+| 68 | Exactly six Tessera palette choices | P · known mismatch or missing evidence |
+| 69 | Colour swatch ring/contrast | I · source change implemented; interaction/photo QA pending |
+| 70 | Lock and unlock state | U · source support/behavior needs targeted JM evidence |
+| 71 | Desktop site switch and lock restrictions | I · source change implemented; interaction/photo QA pending |
+| 72 | Locked cookie editor view-only | U · source support/behavior needs targeted JM evidence |
+| 73 | End session confirmation, target checks | I · source change implemented; interaction/photo QA pending |
+| 74 | Selection controls refresh with membership | T · targeted JVM rule passed; UI test pending |
+| 75 | Selection overflow actions navigable | I · source change implemented; interaction/photo QA pending |
+
+### Workspaces, filters, acceptance (76–100)
+
+| # | Working JM check | Evidence boundary |
+|---:|---|---|
+| 76 | Workspaces title/count/close | I · source change implemented; interaction/photo QA pending |
+| 77 | Workspace cards responsive 2/3 columns | U · source support/behavior needs targeted JM evidence |
+| 78 | Current workspace border | U · source support/behavior needs targeted JM evidence |
+| 79 | Workspace card header/count/lock controls | I · source change implemented; interaction/photo QA pending |
+| 80 | Six live preview tiles and fallback | P · known mismatch or missing evidence |
+| 81 | Preview tiles dimensions | U · source support/behavior needs targeted JM evidence |
+| 82 | Workspace lock/unlock and close | U · source support/behavior needs targeted JM evidence |
+| 83 | Create right, adjacent close behavior | T · targeted JVM rule passed; UI test pending |
+| 84 | Seven workspace maximum | U · source support/behavior needs targeted JM evidence |
+| 85 | New workspace disabled correctly while filtering | P · known mismatch or missing evidence |
+| 86 | Workspace menu actions | U · source support/behavior needs targeted JM evidence |
+| 87 | Close workspace safely replaces state | I · source change implemented; interaction/photo QA pending |
+| 88 | Multi-colour filtering | U · source support/behavior needs targeted JM evidence |
+| 89 | URL substring filter live | I · source change implemented; interaction/photo QA pending |
+| 90 | Filter chips, names and count | P · known mismatch or missing evidence |
+| 91 | No matches offers Clear | U · source support/behavior needs targeted JM evidence |
+| 92 | Theme colours parity | P · known mismatch or missing evidence |
+| 93 | Icon sizes / tap targets | P · known mismatch or missing evidence |
+| 94 | Snackbar above dock/keyboard | P · known mismatch or missing evidence |
+| 95 | Undo for lock, colour, bookmark | P · known mismatch or missing evidence |
+| 96 | Confirmation words/consequences | I · source change implemented; interaction/photo QA pending |
+| 97 | Motion timings and reduced motion | P · known mismatch or missing evidence |
+| 98 | Rotation/narrow/text-scale layouts | P · known mismatch or missing evidence |
+| 99 | TalkBack actions and labels | P · known mismatch or missing evidence |
+| 100 | Final full JM plus 27-image layout parity | P · known mismatch or missing evidence |
+
+### High-priority findings from the current source and image audit
+
+1. **Session safety is higher priority than styling.** Preserve unique
+   WebView profiles and never reuse retired names. Screen filter pages must
+   show the actual matching panes across source workspaces, not just the
+   current source workspace; preserve their original memberships and cookies.
+2. **Menus layout rather than art direction.** The pane menu now has inline
+   none+six colour controls and a desktop toggle in the first seven actions,
+   without deleting legacy saved tag values. Workspace-card lock and close
+   actions now sit before their 2×3 preview, consistent with handoff images.
+3. **Selection and destructive actions.** Cross-workspace membership persists
+   while opening menus and changing filters. Bulk actions plan eligible,
+   locked and missing IDs, and fail closed for stale selections. A fresh pane
+   gets a fresh profile; UI selection/focus follows the corresponding slot.
+4. **Photo parity not yet accepted.** Menus need actual clean emulator
+   screenshots after each code change; unmatched layout states remain open.
+   The existing reference set has images of the pane menu, All panes menu,
+   workspace screen, selection menu, colour picker, filter, cookies and settings.
+5. **Unapproved or infeasible promises remain open.** The handoff's shared
+   bookmarks migration is explicitly approval-gated; current per-pane
+   bookmarks are preserved. Background all-42 WebView continuous execution,
+   fake visibility and Recents overlay behavior cannot be promised by the
+   observed Android implementation. Locked sign-in popups/new windows and
+   `beforeunload` remain unresolved and need separate safe WebView QA.
+6. **Zero unsupported 'all 100 fixed' claim.** The valid acceptance
+   requirement is source + automated regression + emulator journey + image
+   comparison for every applicable interaction, with real-device performance
+   and session upgrade checks reserved for later release acceptance.
+
+### Incidents found and preventive checks
+
+- Previously the selection state was cleared by a second menu entry and by
+  filter changes. Fixed by preserving selected IDs, with JVM tests.
+- Previously a 6-slot filter page rendered `store.active().panes` even when
+  matched panes came from other source workspaces. Corrected the visible
+  set for layout/interaction; a disposable-emulator test was added.
+- Previously the pane menu required a second colour dialog and workspace
+  close/lock controls appeared under the previews. Reorganized those shared
+  menu structures and added layout instrumentation.
+- A manual source edit temporarily failed CI because a TextView's own
+  `text` property shadowed the chrome colour identifier. The ambiguity
+  was corrected by using `this@TesseraBar.text`. Later source passes must
+  be checked before calling the change tested.
+
+No changes from this record promote the feature branch to `main`, install
+on the user's phone, erase live sessions, or approve a bookmarks migration.
