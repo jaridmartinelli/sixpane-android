@@ -357,29 +357,56 @@ internal class TesseraBar(private val host:MainActivity) {
             return
         }
         filterChips.visibility=View.VISIBLE
-        filterChips.layoutParams?.height=dp(42)
+        filterChips.layoutParams?.height=dp(48)
         filterChips.requestLayout()
-        filterContents.addView(button("⌕"){filterScreen()},LinearLayout.LayoutParams(dp(40),dp(34)))
+        filterContents.addView(button("⌕"){filterScreen()}.apply{
+            contentDescription="Open filters"
+        },LinearLayout.LayoutParams(dp(44),dp(44)))
         colors.forEach{name->
-            filterContents.addView(txt(name+" ×",12f).apply{
-                background=round(surface2,16,1);gravity=Gravity.CENTER
+            val index=FramePalette.tesseraNames.indexOf(name)
+            val legacy=FramePalette.names.indexOf(name)
+            val dotColor=if(index>=0)FramePalette.tesseraColors[index]
+                else if(legacy>=0)FramePalette.colors[legacy] else surface3
+            val chip=LinearLayout(host).apply{
+                gravity=Gravity.CENTER_VERTICAL
+                background=round(surface2,16,1)
+                isClickable=true;isFocusable=true
+                contentDescription="Remove "+name+" colour filter"
                 setOnClickListener{host.tesseraSetFilter(query,colors-name)}
-            },LinearLayout.LayoutParams(dp(88),dp(34)))
+                setPadding(dp(6),0,dp(2),0)
+            }
+            chip.addView(View(host).apply{
+                background=GradientDrawable().apply{
+                    shape=GradientDrawable.OVAL
+                    setColor(dotColor)
+                }
+                importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            },LinearLayout.LayoutParams(dp(10),dp(10)))
+            chip.addView(txt(name,12f).apply{
+                gravity=Gravity.CENTER
+                importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            },LinearLayout.LayoutParams(0,dp(44),1f))
+            chip.addView(txt("×",16f).apply{
+                gravity=Gravity.CENTER
+                importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            },LinearLayout.LayoutParams(dp(20),dp(44)))
+            filterContents.addView(chip,LinearLayout.LayoutParams(dp(100),dp(44)))
         }
         if(query.isNotBlank()){
             filterContents.addView(txt("URL has \""+query.take(11)+"\" ×",11f).apply{
                 gravity=Gravity.CENTER;background=round(surface2,16,1)
                 setOnClickListener{host.tesseraSetFilter("",colors)}
-            },LinearLayout.LayoutParams(dp(150),dp(34)))
+            },LinearLayout.LayoutParams(dp(150),dp(44)))
         }
         val count=host.store.spaces.flatMap{it.panes}.count{p->
             FramePalette.matches(p.url,host.store.frameColor(p.id),query,colors)
         }
         filterContents.addView(txt(count.toString()+" matches",12f).apply{
             gravity=Gravity.CENTER
-        },LinearLayout.LayoutParams(dp(85),dp(34)))
-        filterContents.addView(button("Clear all"){host.tesseraClearFilters()},
-            LinearLayout.LayoutParams(dp(88),dp(34)))
+        },LinearLayout.LayoutParams(dp(85),dp(44)))
+        filterContents.addView(button("Clear all"){host.tesseraClearFilters()}.apply{
+            contentDescription="Clear all filters"
+        },LinearLayout.LayoutParams(dp(88),dp(44)))
     }
     private fun page(title:String,subtitle:String="",closeGlyph:String="‹",
                      footerHeight:Int=64,
