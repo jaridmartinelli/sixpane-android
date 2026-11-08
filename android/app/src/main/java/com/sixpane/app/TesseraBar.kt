@@ -162,7 +162,7 @@ internal class TesseraBar(private val host:MainActivity) {
     }
     private val more=button("⋮"){host.tesseraMenuAll()}
     private var selectingRendered:Boolean?=null
-    private var lastSelectionCount:Int=-1
+    private var lastSelectionKey:String?=null
     private var suggestions:PopupWindow?=null
     private var editingPaneId:String?=null
     private var lastSnack:PopupWindow?=null
@@ -214,14 +214,16 @@ internal class TesseraBar(private val host:MainActivity) {
     }
     fun render(){
         val select=host.tesseraSelecting()
+        val selectionKey=if(select)WorkspacePolicy.selectionBarKey(
+            host.store.currentId,host.tesseraSelected()) else null
         if(select!=selectingRendered){
             selectingRendered=select
             if(select)selection() else regular()
-            lastSelectionCount=host.tesseraSelected().size
+            lastSelectionKey=selectionKey
         }
         if(select){
-            if(lastSelectionCount!=host.tesseraSelected().size){
-                lastSelectionCount=host.tesseraSelected().size
+            if(lastSelectionKey!=selectionKey){
+                lastSelectionKey=selectionKey
                 selection()
             }
             progress.visibility=View.INVISIBLE
