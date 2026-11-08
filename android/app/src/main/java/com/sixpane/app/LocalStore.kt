@@ -353,13 +353,21 @@ class LocalStore(ctx:Context){
             it.phase=SessionPhase.RETIRED;it.retiredAt=System.currentTimeMillis()
             retiredSessions.add(it);pendingDeletion.add(it.profile)
         }
+        val closedIndex=spaces.indexOf(w)
+        val previousCurrent=currentId
         spaces.remove(w)
         if(spaces.isEmpty()){
             val fresh=WorkspaceState();spaces.add(fresh)
             allocateViewportRatios(fresh.panes) // never reuse retired identities
         }
-        currentId=spaces.last().id;focusId=null
-        activePaneId=spaces.last().panes.firstOrNull()?.id;save()
+        currentId=WorkspacePolicy.workspaceAfterClose(
+            spaces.map{it.id},closedIndex,previousCurrent)
+        val target=active()
+        if(currentId!=previousCurrent || target.panes.none{it.id==activePaneId}){
+            focusId=null
+            activePaneId=target.panes.firstOrNull()?.id
+        }
+        save()
         return w
     }
 }
