@@ -503,7 +503,9 @@ class PaneCard(
     fun updateFrameColor(){
         background=GradientDrawable().apply{
             setColor(0xff0b0e13.toInt())
-            setStroke(host.dp(if(selectedOutline)3 else 1).coerceAtLeast(1),
+            setStroke((if(selectedOutline)host.dp(3)
+                else if(host.tesseraIsActive(state.id))((host.dp(3)+1)/2)
+                else host.dp(1)).coerceAtLeast(1),
                 if(selectedOutline||host.tesseraIsActive(state.id))Color.WHITE else 0xff2b3340.toInt())
             cornerRadius=host.dp(8).toFloat()
         }

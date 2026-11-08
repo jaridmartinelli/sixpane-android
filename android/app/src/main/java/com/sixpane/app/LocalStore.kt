@@ -186,7 +186,8 @@ class LocalStore(ctx:Context){
             val filters=j.optJSONArray("selectedFrameColors")?:JSONArray()
             for(i in 0 until filters.length()){
                 val candidate=filters.getString(i)
-                if(candidate in FramePalette.names&&selectedFrameColors.size<FramePalette.MAX_SELECTED_COLORS)
+                if(candidate in (FramePalette.names+FramePalette.tesseraNames)&&
+                    selectedFrameColors.size<FramePalette.MAX_SELECTED_COLORS)
                     selectedFrameColors.add(candidate)
             }
         } catch (_:Exception){

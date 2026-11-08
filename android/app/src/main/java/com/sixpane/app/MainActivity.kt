@@ -908,7 +908,9 @@ class MainActivity:Activity(){
                     card.scaleY=oldH.toFloat()/card.height.coerceAtLeast(1)
                     card.translationX=oldX-card.left.toFloat()
                     card.translationY=oldY-card.top.toFloat()
-                    card.animate().translationX(0f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(320).start()
+                    card.animate().translationX(0f).translationY(0f).scaleX(1f).scaleY(1f)
+                        .setInterpolator(android.view.animation.PathInterpolator(.2f,0f,0f,1f))
+                        .setDuration(TesseraMotion.PANE_RESIZE_MS).start()
                 }
             }
         }

@@ -430,7 +430,8 @@ internal class TesseraBar(private val host:MainActivity) {
                     card.addView(previews)
                     val actions=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
                     actions.addView(button("⌑"){
-                        ws.panes.forEach{it.locked=!ws.panes.all{it.locked}}
+                        val next=!ws.panes.all{it.locked}
+                        ws.panes.forEach{it.locked=next}
                         host.updateWindowLocks();dialog.dismiss();workspaceScreen()
                     },LinearLayout.LayoutParams(0,dp(44),1f))
                     actions.addView(button("×"){
@@ -493,7 +494,7 @@ internal class TesseraBar(private val host:MainActivity) {
                 };dialog.dismiss()
             }
             row(body,"Open an address in selected",icon="⌕"){
-                dialog.dismiss();address.requestFocus()
+                dialog.dismiss();bulkAddressDialog()
             }
             row(body,"Desktop site on",icon="▣"){
                 host.tesseraSelected().forEach{id->
@@ -515,6 +516,36 @@ internal class TesseraBar(private val host:MainActivity) {
             }
         }
     }
+    private fun bulkAddressDialog(){
+        val dialog=Dialog(host)
+        val input=EditText(host).apply{
+            hint="Search or enter address";setSingleLine(true);textSize=15f
+            setTextColor(this@TesseraBar.text);setHintTextColor(secondary)
+            background=round(surface2,12,1)
+        }
+        val outer=LinearLayout(host).apply{
+            orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(18),dp(18),dp(12))
+            background=round(surface,22)
+        }
+        outer.addView(txt("Open in selected panes",18f))
+        outer.addView(input,LinearLayout.LayoutParams(-1,dp(52)))
+        outer.addView(button("Open"){
+            val resolved=BrowserPolicy.resolveAddressOrSearch(input.text.toString())
+            if(resolved==null){input.error="Enter an address";return@button}
+            val ids=host.tesseraSelected()
+            var skipped=0
+            for(ws in host.store.spaces)for(pane in ws.panes){
+                if(pane.id in ids){
+                    if(pane.locked){skipped++;continue}
+                    host.windowCard(pane.id)?.loadAddress(resolved)?:run{pane.url=resolved}
+                }
+            }
+            host.persist();dialog.dismiss()
+            if(skipped>0)host.notice("Skipped "+skipped+" locked panes")
+        },LinearLayout.LayoutParams(-1,dp(48)))
+        dialog.setContentView(outer);dialog.show()
+        dialog.window?.setLayout((host.resources.displayMetrics.widthPixels*.92f).toInt(),-2)
+    }
     private fun filterScreen(){
         page("Filter panes","By colour or URL"){body,footer,dialog->
             val swatches=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
@@ -534,7 +565,7 @@ internal class TesseraBar(private val host:MainActivity) {
             body.addView(swatches)
             val edit=EditText(host).apply{
                 hint="URL contains";setSingleLine(true);setText(host.store.filterQuery)
-                setTextColor(text);setHintTextColor(secondary)
+                setTextColor(this@TesseraBar.text);setHintTextColor(secondary)
                 background=round(surface2,12,1);setPadding(dp(12),0,dp(12),0)
                 addTextChangedListener(object:TextWatcher{
                     override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
@@ -592,7 +623,7 @@ internal class TesseraBar(private val host:MainActivity) {
         }
     }
     fun snack(message:String){
-        if(dock.parent==null)return
+        if(dock.windowToken==null)return
         lastSnack?.dismiss()
         val label=txt(message,13f).apply{
             setPadding(dp(14),dp(4),dp(14),dp(4))
