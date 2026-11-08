@@ -134,6 +134,35 @@ class TesseraLayoutInstrumentedTest {
         }finally{scenario.close()}
     }
 
+    @Test fun filterChipHasColourDotNameAndRemoveAndClearsWithoutReload(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            lateinit var ids:List<String>
+            scenario.onActivity{host->
+                ids=host.store.active().panes.map{it.id}
+                host.store.setFrameColor(setOf(ids[0]),FramePalette.tesseraColors[0])
+                host.tesseraSetFilter("",setOf("Blue"))
+            }
+            val chip=device.wait(Until.findObject(
+                By.desc("Remove Blue colour filter")),8_000L)
+            assertNotNull("A colour filter needs a labelled removable chip",chip)
+            assertTrue("Chip must be a tap target",chip.isClickable)
+            val bounds=chip.visibleBounds
+            val density=instrumentation.targetContext.resources.displayMetrics.density
+            assertTrue("Filter-chip tap height should be at least 44dp",
+                bounds.height()/density>=43f)
+            chip.click()
+            device.waitForIdle()
+            scenario.onActivity{host->
+                assertTrue("Filter removal should clear colour selection",
+                    host.store.selectedFrameColors.isEmpty())
+                assertTrue("Filter removal must keep original pane identities",
+                    ids==host.store.active().panes.map{it.id})
+            }
+        }finally{scenario.close()}
+    }
+
     @Test fun newWorkspaceDisabledByFilterShowsReasonBelowFooter(){
         val scenario=ActivityScenario.launch(MainActivity::class.java)
         try{
