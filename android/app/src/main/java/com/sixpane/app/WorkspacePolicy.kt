@@ -15,6 +15,12 @@ object WorkspacePolicy {
     const val MAX_ZOOM = 200
     const val ZOOM_STEP = 10
     fun canCreate(count: Int): Boolean = count in 0 until MAX_WORKSPACES
+    /** Preserve the current workspace if it survives; otherwise choose the neighbour. */
+    fun workspaceAfterClose(remaining:List<String>,closedIndex:Int,previousCurrent:String):String {
+        require(remaining.isNotEmpty())
+        return if(previousCurrent in remaining)previousCurrent
+        else remaining[closedIndex.coerceIn(0,remaining.lastIndex)]
+    }
     fun canClose(tabLocked: Boolean): Boolean = !tabLocked
     /** Protect an entire workspace whenever its tab OR any contained browser is locked. */
     fun canCloseWorkspace(tabLocked:Boolean,paneLocks:List<Boolean>):Boolean =
