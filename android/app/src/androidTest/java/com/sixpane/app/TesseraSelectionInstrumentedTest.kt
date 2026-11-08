@@ -98,7 +98,7 @@ class TesseraSelectionInstrumentedTest {
                 assertTrue(eligible.desktop)
                 host.tesseraEnd(host.tesseraSelected())
             }
-            val prompt=device.wait(Until.findObject(By.text("End 1 session?")),10_000L)
+            val prompt=device.wait(Until.findObject(By.text("End Pane 2?")),10_000L)
             assertNotNull("Confirmation must count only eligible panes",prompt)
             val description=device.findObject(By.textContains("Skipped 1 locked pane."))
             assertNotNull("Confirmation must disclose skipped locked pane",description)
