@@ -710,7 +710,9 @@ class MainActivity:Activity(){
         val ids=plan.eligible
         val skippedAtOpen=plan.skippedLocked.size
         val count=ids.size
-        confirm("End "+count+" session"+(if(count==1)"" else "s")+"?",
+        val confirmationTitle=if(count==1) "End Pane "+paneIndex(ids.first())+"?"
+            else "End "+count+" sessions?"
+        confirm(confirmationTitle,
             "Fresh isolated profiles replace these panes in their original workspaces. "+
             "Ended profile data is retired for deletion after a clean restart. "+
             (if(skippedAtOpen>0)"Skipped "+skippedAtOpen+" locked pane"+
