@@ -807,9 +807,10 @@ class MainActivity:Activity(){
     fun tesseraActiveCard():PaneCard?=tesseraActivePane()?.let{cards[it.id]}
     fun tesseraFocusAddress(id:String){if(::tessera.isInitialized)tessera.focusAddress(id)}
     fun tesseraSelected():Set<String> =selectedPanes.toSet()
+    fun tesseraVisibleSelectionIds():Set<String> =currentFilteredPanes().map{it.id}.toSet()
     fun tesseraSelecting():Boolean =selecting
     fun tesseraSelectAll(){
-        val visible=store.active().panes.map{it.id}.toSet()
+        val visible=tesseraVisibleSelectionIds()
         val next=WorkspacePolicy.toggleVisibleSelection(selectedPanes,visible)
         selectedPanes.clear()
         selectedPanes.addAll(next)
