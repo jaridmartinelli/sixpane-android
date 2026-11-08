@@ -262,3 +262,52 @@ refer to the current feature-branch source after the menu/selection changes.
 individual UI actions are not automatically passed by compilation.**
 Keep production promotion, session migration and user-device testing gated
 until required evidence has been collected.
+
+
+## Corrected JM filter authority — preserve source slots by default
+
+**Detected contradiction (source vs handoff):** The prior code/display
+implementation and progress note treated repacking matching panes from multiple
+workspaces into virtual six-slot pages as the default "fixed" filter behavior.
+That was incompatible with canonical handoff section 9, line 121, which says
+non-matching panes fade **in their own slots** and other panes **never move or
+grow**. Passing a test for repacked matches did not establish compliance with
+the handoff. The earlier interpretation was an implementation error.
+
+**Correction:** The default filter now keeps all six panes in the current
+original workspace grid, fading non-matches to 16% opacity, without removing
+or reassigning panes. The Workspaces page only lists workspaces containing
+matches while a filter is active. The existing condensed cross-workspace
+paging capability remains available as a separate reversible **Settings →
+Condensed filter results** switch, default off. The original WebView profile
+IDs, lock state and saved manifest format remain unchanged. The selection
+All/None rule acts on matching panes when a filter is active. Changes are in
+`MainActivity.kt`, `TesseraBar.kt` and a separate SharedPreferences key in
+`LocalStore.kt`.
+
+**Prevention:** Separate emulator tests check that default filter leaves
+each source pane's grid coordinates unchanged and dims non-matches, and that
+the opt-in condensed mode still displays matches from different source
+workspaces while retaining profile IDs. The Filter chips test additionally
+checks colour-dot/name/removal layout and touch size. Passing compilation
+alone does not close either acceptance test.
+
+### Current shared-layout and interaction corrections
+
+- Workspace screen: full-screen ✕ is at top right; lock/close controls stay in
+  the card header before the 2×3 preview; blank/still-loading previews show
+  labelled placeholders instead of misleading white WebView screenshots.
+- Workspace footer: when New workspace cannot be used (7 limit, active filter,
+  or selection), the button is visibly dimmed and has an on-screen reason below
+  it, while denied clicks give the same explanation and preserve state.
+- Pane and selection: compact pane thumbnails are clickable even with loaded
+  websites; they change expanded focus without forwarding clicks to the
+  webpage. Pull-to-refresh refuses stale asynchronous JavaScript results from
+  earlier gestures and cancels its permission on pinch/up/cancel.
+- Accessibility: dock controls and selection actions have meaningful screen-
+  reader labels; selection check circle is 26dp; filter chips have readable
+  remove actions and minimum 44dp-high targets.
+
+Any 100-point or 18-section "Done" designation still requires the relevant
+runtime checks plus reference-layout comparisons. Do not equate new source
+changes with all 27 image states passing.
