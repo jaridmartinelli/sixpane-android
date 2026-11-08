@@ -20,6 +20,9 @@ object WorkspacePolicy {
     fun canCloseWorkspace(tabLocked:Boolean,paneLocks:List<Boolean>):Boolean =
         !tabLocked && !paneLocks.any{it}
     fun canCloseSelected(count:Int, anyLocked:Boolean):Boolean=count>0&&!anyLocked
+    /** Destructive selected-pane actions must include every selected source workspace. */
+    fun crossesWorkspace(activeIds:Set<String>,selectedIds:Set<String>,filtering:Boolean):Boolean =
+        filtering || selectedIds.any{it !in activeIds}
     fun selectionActionEnabled(count:Int):Boolean=count>0
     /** All/None applies only to the current workspace; leave other workspaces selected. */
     fun toggleVisibleSelection(selected:Set<String>,visible:Set<String>):Set<String> =
