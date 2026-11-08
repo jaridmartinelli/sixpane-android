@@ -7,6 +7,7 @@ on:
       - 'tests/tessera_emulator_visual_capture.sh'
       - 'android/app/src/androidTest/java/com/sixpane/app/TesseraSelectionInstrumentedTest.kt'
       - 'android/app/src/androidTest/java/com/sixpane/app/TesseraLayoutInstrumentedTest.kt'
+      - 'android/app/src/androidTest/java/com/sixpane/app/TesseraPopupInstrumentedTest.kt'
       - 'android/app/src/main/java/com/sixpane/app/MainActivity.kt'
       - 'android/app/src/main/java/com/sixpane/app/TesseraBar.kt'
       - 'android/app/src/main/java/com/sixpane/app/PaneCard.kt'
