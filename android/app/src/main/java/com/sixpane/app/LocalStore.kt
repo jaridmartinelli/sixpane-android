@@ -145,6 +145,7 @@ class LocalStore(ctx:Context){
     var activePaneId:String?=null
     var gridPreference:String="automatic"
     var fullSizeSmallPanes:Boolean=true
+    var welcomeSeen:Boolean=false
     var filterQuery:String=""
     val selectedFrameColors:MutableSet<String> = linkedSetOf()
     // Only app chrome, never a webpage or browser profile.
@@ -182,6 +183,7 @@ class LocalStore(ctx:Context){
                 it in listOf("automatic","2x3","3x2")
             }?:"automatic"
             fullSizeSmallPanes=j.optBoolean("fullSizeSmallPanes",true)
+            welcomeSeen=j.optBoolean("welcomeSeen",list.length()>0)
             filterQuery=j.optString("filterQuery", "")
             val filters=j.optJSONArray("selectedFrameColors")?:JSONArray()
             for(i in 0 until filters.length()){
@@ -250,7 +252,7 @@ class LocalStore(ctx:Context){
             put("bookmarks",JSONArray().apply{bookmarks.forEach{put(it)}})
             put("current",currentId);put("columns",columns);put("focus",focusId?:"")
             put("activePaneId",activePaneId?:"");put("gridPreference",gridPreference)
-            put("fullSizeSmallPanes",fullSizeSmallPanes)
+            put("fullSizeSmallPanes",fullSizeSmallPanes);put("welcomeSeen",welcomeSeen)
             put("filterQuery",filterQuery)
             put("selectedFrameColors",JSONArray().apply{selectedFrameColors.forEach{put(it)}})
         }

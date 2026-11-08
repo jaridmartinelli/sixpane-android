@@ -352,7 +352,11 @@ internal class TesseraBar(private val host:MainActivity) {
                 dialog.dismiss();colorDialog(setOf(pane.id))
             }
             row(body,if(pane.locked)"Unlock pane" else "Lock pane",icon="♢"){
-                pane.locked=!pane.locked;host.updateWindowLocks();dialog.dismiss()
+                val previous=pane.locked
+                pane.locked=!previous;host.updateWindowLocks();dialog.dismiss()
+                snack(if(pane.locked)"Locked 1 panes" else "Unlocked 1 panes"){
+                    pane.locked=previous;host.updateWindowLocks()
+                }
             }
             row(body,"Desktop site",if(pane.locked)"Unlock pane first" else
                 if(pane.desktop)"On" else "Off",!pane.locked,"▣"){
@@ -390,9 +394,16 @@ internal class TesseraBar(private val host:MainActivity) {
         }
         root.addView(txt("Colour tag",18f),LinearLayout.LayoutParams(-1,dp(40)))
         val swatches=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
+        val prior=ids.associateWith{host.store.frameColor(it)}
         (listOf(0xff51606e.toInt())+FramePalette.tesseraColors).forEachIndexed{index,color->
             swatches.addView(button(if(index==0)"×" else "●"){
                 host.tesseraRecolor(ids,color);dialog.dismiss();render()
+                val name=if(index==0)"None" else FramePalette.tesseraNames[index-1]
+                snack("Coloured "+name+": "+ids.size+" panes"){
+                    prior.forEach{(id,original)->
+                        host.tesseraRecolor(setOf(id),original)
+                    }
+                }
             }.apply{
                 setTextColor(if(index==0)this@TesseraBar.text else color)
                 background=round(surface3,20,if(ids.any{host.store.frameColor(it)==color})3 else 1,
@@ -640,20 +651,84 @@ internal class TesseraBar(private val host:MainActivity) {
             }
         }
     }
-    fun snack(message:String){
+    fun confirm(title:String,message:String,yes:String,action:()->Unit){
+        val dialog=Dialog(host)
+        val outer=LinearLayout(host).apply{
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(18),dp(18),dp(18),dp(14))
+            background=round(surface,22)
+        }
+        outer.addView(txt(title,19f).apply{setTypeface(null,Typeface.BOLD)})
+        outer.addView(txt(message,14f).apply{
+            setTextColor(secondary);setPadding(0,dp(12),0,dp(14))
+        })
+        val actions=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
+        actions.addView(button("Cancel"){dialog.dismiss()}.apply{
+            textSize=15f;background=round(surface3,12,1)
+        },LinearLayout.LayoutParams(0,dp(52),1f).apply{rightMargin=dp(6)})
+        actions.addView(button(yes){
+            dialog.dismiss();action()
+        }.apply{
+            textSize=15f;setTypeface(null,Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background=round(0xffff6b6b.toInt(),12)
+        },LinearLayout.LayoutParams(0,dp(52),1f))
+        outer.addView(actions)
+        dialog.setContentView(outer);dialog.show()
+        dialog.window?.setLayout((host.resources.displayMetrics.widthPixels*.92).toInt()
+            .coerceAtMost(dp(440)),-2)
+        dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialog.window?.setDimAmount(.55f)
+    }
+    fun welcomeScreen(){
+        page("Welcome to SIXPANE","42 private browsers — 7 workspaces of 6 panes."){body,footer,dialog->
+            body.addView(txt("The bar controls your active pane. Use Android's back gesture to go back.",15f).apply{
+                setPadding(dp(12),dp(14),dp(12),dp(14))
+            })
+            body.addView(txt("Tap a pane header to activate, double-tap to enlarge, hold for its menu.",15f).apply{
+                setPadding(dp(12),dp(14),dp(12),dp(14))
+            })
+            body.addView(txt("So sessions never drop",17f).apply{
+                setPadding(dp(12),dp(18),dp(12),dp(8))
+            })
+            val power=host.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if(!power.isIgnoringBatteryOptimizations(host.packageName)){
+                row(body,"Allow background operation","Android battery restrictions",icon="◉"){
+                    host.requestBatteryExemption(true)
+                }
+            }
+            if(android.os.Build.VERSION.SDK_INT>=33 &&
+                host.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED){
+                row(body,"Allow keep-alive notification",icon="◉"){
+                    host.requestNotificationPermissionFromSettings()
+                }
+            }
+            footerButton(footer,"Got it"){
+                host.store.welcomeSeen=true;host.persist();dialog.dismiss()
+            }
+        }
+    }
+    fun snack(message:String,undo:(()->Unit)?=null){
         if(dock.windowToken==null)return
         lastSnack?.dismiss()
-        val label=txt(message,13f).apply{
-            setPadding(dp(14),dp(4),dp(14),dp(4))
+        val box=LinearLayout(host).apply{
+            gravity=Gravity.CENTER_VERTICAL
+            setPadding(dp(14),dp(4),dp(10),dp(4))
             background=round(surface3,14,1)
             elevation=dp(8).toFloat()
         }
-        val popup=PopupWindow(label,
+        box.addView(txt(message,13f),LinearLayout.LayoutParams(0,dp(40),1f))
+        val popup=PopupWindow(box,
             (host.resources.displayMetrics.widthPixels-dp(24)).coerceAtLeast(dp(200)),
             dp(48),false)
+        if(undo!=null)box.addView(button("Undo"){
+            undo();popup.dismiss()
+        },LinearLayout.LayoutParams(dp(56),dp(44)))
         lastSnack=popup
         popup.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         popup.showAtLocation(dock,Gravity.BOTTOM,0,dp(66))
-        dock.postDelayed({if(popup.isShowing)popup.dismiss()},3200L)
+        dock.postDelayed({if(popup.isShowing)popup.dismiss()},
+            if(undo==null)TesseraMotion.SNACK_MS else TesseraMotion.SNACK_WITH_ACTION_MS)
     }
 }

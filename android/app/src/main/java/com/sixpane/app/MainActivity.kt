@@ -152,6 +152,9 @@ class MainActivity:Activity(){
         renderTabs()
         updateUniversalBar()
         tessera.render()
+        screen.post{
+            if(started&&!store.welcomeSeen)tessera.welcomeScreen()
+        }
         if(pendingFailures>0)notice("${pendingFailures} retired profiles await deletion on a later clean start; no IDs will be reused")
     }
 
@@ -359,6 +362,9 @@ class MainActivity:Activity(){
         textNotice?.cancel();textNotice=Toast.makeText(this,message,Toast.LENGTH_LONG);textNotice?.show()
     }
     fun confirm(title:String,message:String,yes:String="Continue",action:()->Unit){
+        if(::tessera.isInitialized){
+            tessera.confirm(title,message,yes,action);return
+        }
         AlertDialog.Builder(this).setTitle(title).setMessage(message)
             .setNegativeButton("Cancel",null).setPositiveButton(yes){_,_->action()}.show()
     }
