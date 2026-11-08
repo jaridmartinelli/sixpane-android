@@ -643,10 +643,32 @@ internal class TesseraBar(private val host:MainActivity) {
                         background=round(surface,16,if(ws.id==host.store.currentId)2 else 1,
                             if(ws.id==host.store.currentId)Color.WHITE else stroke)
                     }
-                    card.addView(txt("Workspace "+(index+1),16f).apply{
+                    // The reference places workspace number, count, lock and close
+                    // together in the card header, BEFORE the 2×3 live preview.
+                    val cardHeader=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
+                    cardHeader.addView(txt((index+1).toString(),16f).apply{
                         setTypeface(null,Typeface.BOLD)
-                    },LinearLayout.LayoutParams(-1,dp(30)))
-                    card.addView(txt(ws.panes.count{it.url!="about:blank"}.toString()+" open",12f))
+                        contentDescription="Workspace "+(index+1)
+                    },LinearLayout.LayoutParams(dp(20),dp(44)))
+                    cardHeader.addView(txt(
+                        ws.panes.count{it.url!="about:blank"}.toString()+" open",10f
+                    ).apply{
+                        setTextColor(secondary)
+                    },LinearLayout.LayoutParams(0,dp(44),1f))
+                    cardHeader.addView(button("⌑"){
+                        val next=!ws.panes.all{it.locked}
+                        ws.panes.forEach{it.locked=next}
+                        host.updateWindowLocks();dialog.dismiss();workspaceScreen()
+                    }.apply{
+                        contentDescription=(if(ws.panes.all{it.locked})"Unlock" else "Lock")+
+                            " all panes in workspace "+(index+1)
+                    },LinearLayout.LayoutParams(dp(44),dp(44)))
+                    cardHeader.addView(button("×"){
+                        dialog.dismiss();host.tesseraCloseWorkspace(ws.id)
+                    }.apply{
+                        contentDescription="Close workspace "+(index+1)
+                    },LinearLayout.LayoutParams(dp(44),dp(44)))
+                    card.addView(cardHeader,LinearLayout.LayoutParams(-1,dp(44)))
                     val previews=android.widget.GridLayout(host).apply{columnCount=2}
                     ws.panes.forEach{p->
                         val tile=LinearLayout(host).apply{
@@ -693,16 +715,6 @@ internal class TesseraBar(private val host:MainActivity) {
                         })
                     }
                     card.addView(previews)
-                    val actions=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
-                    actions.addView(button("⌑"){
-                        val next=!ws.panes.all{it.locked}
-                        ws.panes.forEach{it.locked=next}
-                        host.updateWindowLocks();dialog.dismiss();workspaceScreen()
-                    },LinearLayout.LayoutParams(0,dp(44),1f))
-                    actions.addView(button("×"){
-                        dialog.dismiss();host.tesseraCloseWorkspace(ws.id)
-                    },LinearLayout.LayoutParams(0,dp(44),1f))
-                    card.addView(actions)
                     card.setOnClickListener{
                         host.tesseraOpenWorkspace(ws.id);dialog.dismiss()
                     }
