@@ -233,14 +233,29 @@ class PaneCard(
             setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}
         }
         body.addView(blankTap,LayoutParams(-1,-1))
-        blankTap.addView(TextView(host).apply{
-            text="New session\nOpen a site"
-            textSize=14f;setTextColor(Color.WHITE);gravity=Gravity.CENTER
-            background=GradientDrawable().apply{
-                setColor(0xff252c37.toInt());cornerRadius=host.dp(12).toFloat()
-            }
+        // Match the handoff's empty-pane structure: a label and a real separate
+        // 44dp "Open a site" action, not one ambiguous two-line tap target.
+        val emptyContent=LinearLayout(host).apply{
+            orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER
+        }
+        emptyContent.addView(TextView(host).apply{
+            text="New session";textSize=13f;gravity=Gravity.CENTER
+            setTextColor(0xb3ffffff.toInt())
+        },LinearLayout.LayoutParams(-1,host.dp(28)))
+        emptyContent.addView(TextView(host).apply{
+            text="Open a site";textSize=13f;gravity=Gravity.CENTER
+            setTextColor(Color.WHITE)
+            isClickable=true;isFocusable=true
+            contentDescription="Open a site in pane "+host.paneIndex(state.id)
+            background=android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x50ffffff),
+                GradientDrawable().apply{
+                    setColor(0xff252c37.toInt())
+                    cornerRadius=host.dp(11).toFloat()
+                },null)
             setOnClickListener{host.tesseraFocusAddress(state.id)}
-        },LayoutParams(-2,host.dp(82),Gravity.CENTER))
+        },LinearLayout.LayoutParams(-1,host.dp(44)))
+        blankTap.addView(emptyContent,LayoutParams(host.dp(126),host.dp(72),Gravity.CENTER))
         badge.apply{
             orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
             // Transparent 44x36dp touch target around the visible 24x22dp number badge.
