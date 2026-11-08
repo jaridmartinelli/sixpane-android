@@ -236,7 +236,10 @@ class MainActivity:Activity(){
     }
 
     private fun currentFilteredPanes():List<PaneState>{
-        if(!filtering())return store.active().panes.toList()
+        // Default handoff rule: unmatched panes fade in their ORIGINAL slots,
+        // never move/grow, and the six-pane grid stays bound to its workspace.
+        if(!filtering() || !store.compactFilterResults)
+            return store.active().panes.toList()
         clampFilteredPage()
         return FilteredPanePages.page(filteredMatches(),filteredPageIndex)
     }
@@ -443,7 +446,7 @@ class MainActivity:Activity(){
         val light=store.lightMode
         tabStrip.setBackgroundColor(if(light)Color.rgb(225,233,242) else Color.rgb(17,23,29))
         tabStrip.setPadding(dp(2),dp(2),dp(2),dp(2))
-        if(filtering()){
+        if(filtering() && store.compactFilterResults){
             clampFilteredPage();renderFilteredTabs();return
         }
         repeat(WorkspacePolicy.MAX_WORKSPACES){index->
@@ -874,7 +877,22 @@ class MainActivity:Activity(){
     fun tesseraActiveCard():PaneCard?=tesseraActivePane()?.let{cards[it.id]}
     fun tesseraFocusAddress(id:String){if(::tessera.isInitialized)tessera.focusAddress(id)}
     fun tesseraSelected():Set<String> =selectedPanes.toSet()
-    fun tesseraVisibleSelectionIds():Set<String> =currentFilteredPanes().map{it.id}.toSet()
+    fun tesseraVisibleSelectionIds():Set<String> =
+        currentFilteredPanes().filter{pane->
+            !filtering()||FramePalette.matches(pane.url,store.frameColor(pane.id),
+                store.filterQuery,store.selectedFrameColors)
+        }.map{it.id}.toSet()
+    /** Opt-in preservation of the earlier condensed cross-workspace filter view. */
+    fun tesseraSetCompactFilterResults(enabled:Boolean){
+        if(store.compactFilterResults==enabled)return
+        store.compactFilterResults=enabled
+        filteredPageIndex=0
+        store.focusId=null
+        store.save()
+        renderTabs();positionCards(false)
+        if(selecting)updateSelection()
+        updateUniversalBar()
+    }
     fun tesseraSelecting():Boolean =selecting
     fun tesseraSelectAll(){
         val visible=tesseraVisibleSelectionIds()
@@ -996,8 +1014,9 @@ class MainActivity:Activity(){
         }
         val layoutRun=++layoutGeneration
         val gap=dp(4);val visible=currentFilteredPanes()
-        // Retain the original workspace membership and cookie profile for every result.
-        // A filter page shows at most six matching panes; it must never render unrelated panes.
+        // Each source workspace keeps its profile membership in both filter modes.
+        // The default displays all six source slots, dimming non-matches in place;
+        // optional condensed mode pages matching panes across workspaces.
         if(visible.isNotEmpty()&&visible.none{it.id==store.activePaneId}){
             store.activePaneId=visible.first().id
             store.save()
