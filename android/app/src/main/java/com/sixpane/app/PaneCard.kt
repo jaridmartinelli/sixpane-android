@@ -626,7 +626,9 @@ class PaneCard(
                         return@setOnClickListener
                     }
                     dialog.dismiss()
-                    loadAddress(destination)
+                    // The popup has already resolved its destination. Avoid probing
+                    // shallow prefix URLs, which could strand the pane at the host root.
+                    loadAddress(destination,exact=true)
                 }
             }
             footer.addView(open,LinearLayout.LayoutParams(-1,host.dp(48)))
@@ -945,9 +947,9 @@ class PaneCard(
         loadAddress(next)
         return true
     }
-    fun loadAddress(url:String){
+    fun loadAddress(url:String,exact:Boolean=false){
         if(disposed)return
-        val candidates=if(url.startsWith("http://")||url.startsWith("https://"))
+        val candidates=if(!exact && (url.startsWith("http://")||url.startsWith("https://")))
             BrowserPolicy.entryCandidates(url) else listOf(url)
         entryCandidates=if(candidates.size>1)candidates else emptyList()
         entryIndex=0;activeEntry=entryCandidates.firstOrNull()

@@ -58,6 +58,7 @@ internal class TesseraBar(private val host:MainActivity) {
     }
     val filterChips=HorizontalScrollView(host).apply{
         isHorizontalScrollBarEnabled=false;setBackgroundColor(0xff0b0e13.toInt())
+        importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         visibility=View.GONE
     }
     private val filterContents=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
@@ -154,8 +155,21 @@ internal class TesseraBar(private val host:MainActivity) {
         if(view!=null&&view.canGoForward())view.goForward()
         else host.notice("Nothing to go forward to")
     }.apply{contentDescription="Forward in the active pane"}
-    private val workspace=button("□"){workspaceScreen()}.apply{
+    private val workspaceNumber=txt("1",12.5f).apply{
+        gravity=Gravity.CENTER
+        includeFontPadding=false
+        setTypeface(null,Typeface.BOLD)
+        background=round(Color.TRANSPARENT,3,2,secondary)
+    }
+    private val workspace=FrameLayout(host).apply{
+        minimumWidth=dp(44);minimumHeight=dp(44)
+        isClickable=true;isFocusable=true
+        background=RippleDrawable(
+            android.content.res.ColorStateList.valueOf(0x50ffffff),
+            ColorDrawable(Color.TRANSPARENT),null)
+        addView(workspaceNumber,FrameLayout.LayoutParams(dp(24),dp(24),Gravity.CENTER))
         contentDescription="Workspaces; tap to browse, hold for workspace menu"
+        setOnClickListener{workspaceScreen()}
         setOnLongClickListener{
             workspaceMenu(host.store.active())
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);true
@@ -262,10 +276,9 @@ internal class TesseraBar(private val host:MainActivity) {
             val currentWorkspaceNumber=host.store.spaces.indexOfFirst{
                 it.id==host.store.currentId
             }+1
-            workspace.text="▣"+currentWorkspaceNumber
+            workspaceNumber.text=currentWorkspaceNumber.toString()
             workspace.contentDescription="Workspaces; current "+currentWorkspaceNumber+
                 "; tap to browse, hold for workspace menu"
-            workspace.textSize=15f
             lead.text=if(pane?.locked==true)"♢" else "⌕"
             lead.setTextColor(if(pane?.locked==true)0xffff4d57.toInt() else secondary)
             if(!address.hasFocus()){
@@ -350,53 +363,73 @@ internal class TesseraBar(private val host:MainActivity) {
         filterContents.removeAllViews()
         val colors=host.store.selectedFrameColors
         val query=host.store.filterQuery
-        if(colors.isEmpty()&&query.isBlank()){
-            filterChips.visibility=View.GONE
-            filterChips.layoutParams?.height=0
-            filterChips.requestLayout()
-            return
+        val desiredHeight=if(colors.isEmpty()&&query.isBlank())0 else dp(48)
+        val params=filterChips.layoutParams
+        if(params!=null && params.height!=desiredHeight){
+            // Reassign the parent's LayoutParams so LinearLayout measures the
+            // chips instead of retaining the initial zero-height allocation.
+            params.height=desiredHeight
+            filterChips.layoutParams=params
         }
-        filterChips.visibility=View.VISIBLE
-        filterChips.layoutParams?.height=dp(48)
-        filterChips.requestLayout()
+        filterChips.visibility=if(desiredHeight==0)View.GONE else View.VISIBLE
+        if(desiredHeight==0)return
         filterContents.addView(button("⌕"){filterScreen()}.apply{
             contentDescription="Open filters"
         },LinearLayout.LayoutParams(dp(44),dp(44)))
+        // The visible chip is 34dp tall, but the tap target remains 44dp.
+        // The remove glyph owns a 34dp-wide area inside that face.
+        fun addFilterChip(name:String,dotColor:Int?,description:String,
+                          width:Int,remove:()->Unit){
+            val tap=FrameLayout(host).apply{
+                minimumHeight=dp(44)
+                isClickable=true;isFocusable=true
+                contentDescription=description
+                background=RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x50ffffff),
+                    ColorDrawable(Color.TRANSPARENT),null)
+                setOnClickListener{remove()}
+            }
+            val face=LinearLayout(host).apply{
+                gravity=Gravity.CENTER_VERTICAL
+                background=round(surface2,16,1)
+                setPadding(dp(6),0,0,0)
+                importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+            if(dotColor!=null){
+                face.addView(View(host).apply{
+                    background=GradientDrawable().apply{
+                        shape=GradientDrawable.OVAL
+                        setColor(dotColor)
+                    }
+                },LinearLayout.LayoutParams(dp(10),dp(10)).apply{
+                    rightMargin=dp(5)
+                })
+            }
+            face.addView(txt(name,12f).apply{
+                gravity=Gravity.CENTER_VERTICAL
+                maxLines=1
+            },LinearLayout.LayoutParams(0,dp(34),1f))
+            face.addView(txt("×",16f).apply{
+                gravity=Gravity.CENTER
+                setTextColor(secondary)
+            },LinearLayout.LayoutParams(dp(34),dp(34)))
+            tap.addView(face,FrameLayout.LayoutParams(-1,dp(34),Gravity.CENTER))
+            filterContents.addView(tap,LinearLayout.LayoutParams(dp(width),dp(44)))
+        }
         colors.forEach{name->
             val index=FramePalette.tesseraNames.indexOf(name)
             val legacy=FramePalette.names.indexOf(name)
             val dotColor=if(index>=0)FramePalette.tesseraColors[index]
                 else if(legacy>=0)FramePalette.colors[legacy] else surface3
-            val chip=LinearLayout(host).apply{
-                gravity=Gravity.CENTER_VERTICAL
-                background=round(surface2,16,1)
-                isClickable=true;isFocusable=true
-                contentDescription="Remove "+name+" colour filter"
-                setOnClickListener{host.tesseraSetFilter(query,colors-name)}
-                setPadding(dp(6),0,dp(2),0)
+            addFilterChip(name,dotColor,"Remove "+name+" colour filter",112){
+                host.tesseraSetFilter(query,colors-name)
             }
-            chip.addView(View(host).apply{
-                background=GradientDrawable().apply{
-                    shape=GradientDrawable.OVAL
-                    setColor(dotColor)
-                }
-                importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            },LinearLayout.LayoutParams(dp(10),dp(10)))
-            chip.addView(txt(name,12f).apply{
-                gravity=Gravity.CENTER
-                importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            },LinearLayout.LayoutParams(0,dp(44),1f))
-            chip.addView(txt("×",16f).apply{
-                gravity=Gravity.CENTER
-                importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            },LinearLayout.LayoutParams(dp(20),dp(44)))
-            filterContents.addView(chip,LinearLayout.LayoutParams(dp(100),dp(44)))
         }
         if(query.isNotBlank()){
-            filterContents.addView(txt("URL has \""+query.take(11)+"\" ×",11f).apply{
-                gravity=Gravity.CENTER;background=round(surface2,16,1)
-                setOnClickListener{host.tesseraSetFilter("",colors)}
-            },LinearLayout.LayoutParams(dp(150),dp(44)))
+            addFilterChip("URL has \""+query.take(11)+"\"",null,
+                "Remove URL filter",172){
+                host.tesseraSetFilter("",colors)
+            }
         }
         val count=host.store.spaces.flatMap{it.panes}.count{p->
             FramePalette.matches(p.url,host.store.frameColor(p.id),query,colors)

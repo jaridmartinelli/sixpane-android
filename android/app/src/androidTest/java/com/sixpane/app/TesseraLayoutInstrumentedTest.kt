@@ -78,7 +78,8 @@ class TesseraLayoutInstrumentedTest {
         val scenario=ActivityScenario.launch(MainActivity::class.java)
         try{
             dismissWelcome()
-            val workspace=device.wait(Until.findObject(By.text("▣1")),10_000L)
+            val workspace=device.wait(Until.findObject(
+                By.descContains("Workspaces; current 1")),10_000L)
             assertNotNull("Workspace dock button unavailable",workspace)
             workspace.click()
             assertNotNull(device.wait(Until.findObject(By.text("Workspaces")),8_000L))
@@ -146,7 +147,9 @@ class TesseraLayoutInstrumentedTest {
             }
             val chip=device.wait(Until.findObject(
                 By.desc("Remove Blue colour filter")),8_000L)
-            assertNotNull("A colour filter needs a labelled removable chip",chip)
+            assertNotNull("A colour filter needs a labelled removable chip; "+
+                "Blue text visible="+device.hasObject(By.text("Blue"))+
+                ", any Blue description="+device.hasObject(By.descContains("Blue")),chip)
             assertTrue("Chip must be a tap target",chip.isClickable)
             val bounds=chip.visibleBounds
             val density=instrumentation.targetContext.resources.displayMetrics.density
@@ -293,6 +296,55 @@ class TesseraLayoutInstrumentedTest {
                 assertEquals(profiles,host.store.spaces.flatMap{it.panes}
                     .associate{it.id to it.profile})
             }
+        }finally{scenario.close()}
+    }
+
+    @Test fun noMatchesShowsSeparateClearButtonAndPreservesSessions(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try {
+            dismissWelcome()
+            lateinit var original:Map<String,String>
+            scenario.onActivity{host->
+                original=host.store.active().panes.associate{it.id to it.profile}
+                host.tesseraSetFilter("sixpane-no-match-00000.invalid",emptySet())
+            }
+            assertNotNull("No-match screen title is missing",
+                device.wait(Until.findObject(By.text("No panes match these filters")),8_000L))
+            assertNotNull("No-match screen must disclose live sessions",
+                device.findObject(By.text("Your sessions are still running.")))
+            val clear=device.findObject(By.desc("Clear filters and show all panes"))
+            assertNotNull("Clear filters must be its own actionable button",clear)
+            assertTrue(clear.isClickable)
+            clear.click()
+            device.waitForIdle()
+            scenario.onActivity{host->
+                assertTrue(host.store.filterQuery.isEmpty())
+                assertTrue(host.store.selectedFrameColors.isEmpty())
+                assertEquals("Clearing filters must not replace session profiles",
+                    original,host.store.active().panes.associate{it.id to it.profile})
+            }
+        }finally{scenario.close()}
+    }
+
+    @Test fun workspaceDockUses44dpTargetWith24dpOutlinedNumber(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try {
+            dismissWelcome()
+            val target=device.wait(Until.findObject(
+                By.descContains("Workspaces; current 1")),8_000L)
+            assertNotNull(target)
+            val scale=instrumentation.targetContext.resources.displayMetrics.density
+            assertTrue("Workspace tap target must be at least 44dp",
+                target.visibleBounds.width()/scale>=43f)
+            val digit=target.findObject(By.text("1"))
+            assertNotNull("Workspace number should be in an outlined square",digit)
+            val box=digit.visibleBounds
+            assertTrue("Workspace number square width should be 24dp",
+                box.width()/scale in 22f..26f)
+            assertTrue("Workspace number square height should be 24dp",
+                box.height()/scale in 22f..26f)
+            target.click()
+            assertNotNull(device.wait(Until.findObject(By.text("Workspaces")),8_000L))
         }finally{scenario.close()}
     }
 }

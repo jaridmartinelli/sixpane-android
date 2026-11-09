@@ -28,7 +28,9 @@ class MainActivity:Activity(){
     private val tabLockIcons=mutableMapOf<String,CornerIcon>()
     private lateinit var universalBar: UniversalBar
     private lateinit var tessera:TesseraBar
-    private lateinit var filterEmpty:TextView
+    private lateinit var filterEmpty:LinearLayout
+    private lateinit var filterEmptyTitle:TextView
+    private lateinit var filterEmptySubtitle:TextView
     private val saveFilter=Runnable{if(::store.isInitialized)store.save()}
     private var selecting=false
     private val selectedPanes=linkedSetOf<String>()
@@ -142,11 +144,40 @@ class MainActivity:Activity(){
         tessera=TesseraBar(this)
         screen.addView(tessera.filterChips,LinearLayout.LayoutParams(-1,dp(0)))
         screen.addView(tessera.dock,LinearLayout.LayoutParams(-1,dp(56)))
-        filterEmpty=TextView(this).apply{
-            text="No panes match these filters\nYour sessions are still running.\nClear filters"
+        filterEmpty=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
             gravity=Gravity.CENTER
-            setOnClickListener{clearAllFilters()}
-            textSize=13f;setTextColor(Color.rgb(174,186,206));visibility=View.GONE
+            setBackgroundColor(Color.rgb(11,14,19))
+            visibility=View.GONE
+            isClickable=true
+            addView(TextView(this@MainActivity).apply{
+                text="⌕";gravity=Gravity.CENTER;textSize=28f
+                setTextColor(Color.rgb(174,186,206))
+                importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            },LinearLayout.LayoutParams(dp(60),dp(54)))
+            filterEmptyTitle=TextView(this@MainActivity).apply{
+                text="No panes match these filters"
+                gravity=Gravity.CENTER;textSize=17f
+                setTextColor(Color.rgb(238,242,247))
+            }
+            addView(filterEmptyTitle,LinearLayout.LayoutParams(-1,dp(40)))
+            filterEmptySubtitle=TextView(this@MainActivity).apply{
+                text="Your sessions are still running."
+                gravity=Gravity.CENTER;textSize=13f
+                setTextColor(Color.rgb(174,186,206))
+            }
+            addView(filterEmptySubtitle,LinearLayout.LayoutParams(-1,dp(34)))
+            addView(TextView(this@MainActivity).apply{
+                text="Clear filters";textSize=15f
+                setTypeface(null,android.graphics.Typeface.BOLD)
+                setTextColor(Color.rgb(11,14,19))
+                gravity=Gravity.CENTER;isClickable=true;isFocusable=true
+                contentDescription="Clear filters and show all panes"
+                background=android.graphics.drawable.GradientDrawable().apply{
+                    setColor(Color.rgb(126,166,255));cornerRadius=dp(14).toFloat()
+                }
+                setOnClickListener{clearAllFilters()}
+            },LinearLayout.LayoutParams(dp(180),dp(48)).apply{topMargin=dp(12)})
         }
         stage.addView(filterEmpty,FrameLayout.LayoutParams(-1,-1))
         setContentView(screen)
@@ -533,7 +564,8 @@ class MainActivity:Activity(){
         screen.setBackgroundColor(Color.rgb(11,14,19))
         stage.setBackgroundColor(Color.rgb(11,14,19))
         tabStrip.setBackgroundColor(if(light)Color.rgb(225,233,242) else Color.rgb(17,23,29))
-        filterEmpty.setTextColor(if(light)Color.rgb(65,78,96) else Color.rgb(174,186,206))
+        filterEmptyTitle.setTextColor(Color.rgb(238,242,247))
+        filterEmptySubtitle.setTextColor(Color.rgb(174,186,206))
         universalBar.applyChromeTheme(light)
         renderTabs()
     }
