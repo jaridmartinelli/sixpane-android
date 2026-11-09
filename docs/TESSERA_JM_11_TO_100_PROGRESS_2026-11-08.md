@@ -371,8 +371,13 @@ untested.
 
 **Known acceptance gates / limitations:**
 
-- The handoff explicitly requires approval before merging existing per-pane
-  bookmarks into one shared list. That migration was *not* performed.
+- **Resolved November 9, 2026 — user-approved decision:** Keep bookmarks
+  strictly separate for each pane/session. Reject and skip the Tessera handoff's
+  proposed single shared bookmark list and merge/migration. Do not change or
+  erase existing per-pane bookmarks. This is a superseded requirement, not a
+  failed implementation item; exclude the shared-bookmark migration from the
+  remaining acceptance count. Verify that bookmark isolation persists across
+  workspace changes, app restarts and session retirement as applicable.
 - The Android 14+/15 lifecycle does not guarantee all 42 WebViews remain
   executing and visible after screen-off, Recents removal or process death;
   never spoof browser/page visibility or promise impossible guarantees.
