@@ -325,21 +325,65 @@ internal class TesseraBar(private val host:MainActivity) {
             orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(8),dp(8),dp(8))
             background=round(surface,18,1)
         }
+        // Snapshot the source pane: a stale popup must never remove a bookmark
+        // from another browser after the active pane changes.
+        val sourcePaneId=editingPaneId?:host.tesseraActivePane()?.id
         val clipboard=host.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        if(clipboard.hasPrimaryClip()){
+        if(clipboard.primaryClipDescription!=null){
             contents.addView(button("Paste & go"){
-                val text=clipboard.primaryClip?.getItemAt(0)?.coerceToText(host)?.toString().orEmpty()
-                if(text.isNotBlank())submit(text)
-            },LinearLayout.LayoutParams(-1,dp(44)))
+                if(sourcePaneId!=host.tesseraActivePane()?.id){
+                    closeAddress()
+                    host.notice("Active pane changed; reopen the address")
+                }else{
+                    // The clipboard contents are read only after the user taps.
+                    val text=clipboard.primaryClip?.getItemAt(0)?.coerceToText(host)?.toString().orEmpty()
+                    if(text.isNotBlank())submit(text)
+                }
+            }.apply{contentDescription="Paste clipboard into the active pane"},LinearLayout.LayoutParams(-1,dp(44)))
         }
-        host.tesseraBookmarksForActive().take(8).forEach{url->
-            val row=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
-            val title=txt((runCatching{URI(url).host}.getOrNull()?:"Site")+"\n"+url.take(90),12f)
-            title.setOnClickListener{submit(url)}
-            row.addView(title,LinearLayout.LayoutParams(0,dp(52),1f))
+        val links=sourcePaneId?.let{host.store.bookmarksForPane(it)}.orEmpty()
+        links.take(8).forEach{url->
+            val domain=runCatching{URI(url).host}.getOrNull()?:"Saved website"
+            val active=host.tesseraActiveCard()
+            val knownTitle=active?.takeIf{it.state.id==sourcePaneId&&it.state.url==url}
+                ?.webView?.title?.trim()?.takeIf{it.isNotBlank()}
+            val pathLabel=runCatching{URI(url).rawPath.orEmpty().trim('/').substringAfterLast('/')}
+                .getOrNull()?.takeIf{it.isNotBlank()}
+            val title=knownTitle?:pathLabel?:domain
+            val row=LinearLayout(host).apply{
+                gravity=Gravity.CENTER_VERTICAL
+                isClickable=true;isFocusable=true
+                contentDescription="Open bookmark "+domain+" in this pane"
+                setOnClickListener{
+                    if(sourcePaneId!=host.tesseraActivePane()?.id){
+                        closeAddress()
+                        host.notice("Active pane changed; reopen the address")
+                    }else submit(url)
+                }
+            }
+            val labels=LinearLayout(host).apply{
+                orientation=LinearLayout.VERTICAL
+                gravity=Gravity.CENTER_VERTICAL
+                importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+            labels.addView(txt(title.take(55),14f).apply{
+                maxLines=1
+                ellipsize=android.text.TextUtils.TruncateAt.END
+            })
+            labels.addView(txt(domain,12f).apply{
+                setTextColor(secondary);maxLines=1
+                ellipsize=android.text.TextUtils.TruncateAt.END
+            })
+            row.addView(labels,LinearLayout.LayoutParams(0,dp(52),1f))
             row.addView(button("×"){
-                host.tesseraActivePane()?.let{host.store.toggleBookmarkForPane(it.id,url)}
-                suggestions?.dismiss();showSuggestions()
+                // Do not toggle (which would re-add a stale bookmark).
+                if(sourcePaneId!=null&&host.store.bookmarkedInPane(sourcePaneId,url)){
+                    host.store.toggleBookmarkForPane(sourcePaneId,url)
+                }
+                suggestions?.dismiss()
+                if(address.hasFocus())showSuggestions()
+            }.apply{
+                contentDescription="Remove bookmark "+domain+" from this pane"
             },LinearLayout.LayoutParams(dp(44),dp(44)))
             contents.addView(row)
         }
@@ -1003,7 +1047,7 @@ internal class TesseraBar(private val host:MainActivity) {
             row(body,"Battery optimisation","✓ or Fix",icon="◉"){
                 dialog.dismiss();host.requestBatteryExemption(true)
             }
-            row(body,"App info","OnePlus background settings",icon="⚙"){
+            row(body,"App info","Android system app settings",icon="⚙"){
                 dialog.dismiss();host.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                     Uri.parse("package:"+host.packageName)))
             }
