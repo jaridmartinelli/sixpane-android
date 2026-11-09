@@ -907,7 +907,11 @@ class MainActivity:Activity(){
         store.selectedFrameColors.clear();store.selectedFrameColors.addAll(colors)
         filteredPageIndex=0
         store.focusId=null
-        store.save();renderTabs();positionCards(false)
+        store.save();renderTabs()
+        // A filter can be activated before the stage receives its first size.
+        // Keep the filter-chip row in sync regardless of stage geometry.
+        updateUniversalBar()
+        positionCards(false)
         if(selecting)updateSelection()
     }
     fun tesseraClearFilters(){clearAllFilters()}

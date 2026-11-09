@@ -71,11 +71,23 @@ class TesseraPopupInstrumentedTest {
             assertNotNull(open)
             open.click()
             device.waitForIdle()
+            // WebView navigates asynchronously (and may try a shallow entry
+            // candidate first). Do not mistake an in-flight URL for a final one.
+            var observed=false
+            for(i in 0 until 50){
+                scenario.onActivity{host->
+                    val pane=host.store.active().panes.first()
+                    observed=pane.url==target &&
+                        host.windowCard(firstId)?.webView?.url==target
+                }
+                if(observed)break
+                Thread.sleep(200)
+            }
             scenario.onActivity{host->
                 val pane=host.store.active().panes.first()
                 assertEquals(firstId,pane.id)
                 assertEquals(firstProfile,pane.profile)
-                assertEquals(target,pane.url)
+                assertTrue("Original pane must finally navigate to the popup URL",observed)
                 assertNull(host.windowCard(firstId)?.popupForTest())
             }
         }finally{scenario.close()}

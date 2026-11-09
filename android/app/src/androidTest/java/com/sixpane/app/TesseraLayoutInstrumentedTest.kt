@@ -217,8 +217,20 @@ class TesseraLayoutInstrumentedTest {
                         val lp=card?.layoutParams as? FrameLayout.LayoutParams
                         if(lp!=null)pane.id to (lp.leftMargin to lp.topMargin) else null
                     }.toMap()
-                assertEquals("Filtering must preserve six original workspace slots",
-                    original,slots)
+                // Filter chips occupy 48dp below the stage, so absolute Y coordinates
+                // may legitimately contract. Preserve pane identity, column and slot
+                // order instead of incorrectly insisting on identical screen pixels.
+                assertEquals("Filtering must retain six original workspace slots",
+                    original.keys,slots.keys)
+                val bySlot=compareBy<Map.Entry<String,Pair<Int,Int>>>(
+                    {it.value.second},{it.value.first})
+                assertEquals("Filter must not reorder source pane slots",
+                    original.entries.sortedWith(bySlot).map{it.key},
+                    slots.entries.sortedWith(bySlot).map{it.key})
+                original.forEach{(id,origin)->
+                    assertEquals("Filter must preserve the source pane column",
+                        origin.first,slots.getValue(id).first)
+                }
                 assertEquals("Filtering must retain session identities",
                     profiles,host.store.active().panes.associate{it.id to it.profile})
                 host.auditPanes().filter{it.first.id in paneIds}.forEach{(pane,card)->
