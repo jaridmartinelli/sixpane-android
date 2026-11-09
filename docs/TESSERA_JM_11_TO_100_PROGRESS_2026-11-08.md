@@ -311,3 +311,76 @@ alone does not close either acceptance test.
 Any 100-point or 18-section "Done" designation still requires the relevant
 runtime checks plus reference-layout comparisons. Do not equate new source
 changes with all 27 image states passing.
+
+
+---
+
+## November 9, 2026 — emulator-only JM acceptance and repairs
+
+**Updated acceptance authority:** The user expressly accepts Android emulator
+validation for the 100-item JM development checklist. A physical-device run is
+not a prerequisite for marking an item complete **for now**. To accept one item,
+its actual specified UI interaction, outcome, applicable negative case, preserved
+browser identity, and reference menu layout must pass in emulator evidence.
+JVM-only tests, source review, compilation, and screenshot capture without
+interaction checks are supporting evidence, not an automatic acceptance.
+
+**Production remains protected.** The work targets
+`feature/tessera-ui-20261107` and the isolated
+`com.sixpane.app.preview.filterview` Android package on ephemeral CI emulators.
+Do not merge to `main`, migrate real saved data, swap the canonical signing
+identity, change the named profile setup, or claim all 100 completed.
+
+### Executed regression runs and coverage boundary
+
+- Baseline `58da194358451ddf175b92d473466aa25d5303ce`;
+  emulator workflow [42508424835](https://github.com/jaridmartinelli/sixpane-android/actions/runs/42508424835)
+  executed 14 instrumentation cases: **11 passed, 3 failed**. Failures:
+  row-position expectation for filtered panes; missing Blue filter chip in
+  accessibility hierarchy; script-opened popup did not navigate original pane
+  to exact URL.
+- Repair `17c8507fe46075f1e15c5ca3d9da73e55cb19dea`;
+  emulator workflow [42588158073](https://github.com/jaridmartinelli/sixpane-android/actions/runs/42588158073)
+  executed 14 cases: **12 passed, 2 failed**. Fixed the incorrect test
+  assumption about absolute row Y when adding a filter bar; the two remaining
+  failures were missing Blue filter chip and popup URL.
+- Repair `b5a8801784cd8f5ee3d1857c7dde95b6e9a3ed56`;
+  emulator workflow [42589160344](https://github.com/jaridmartinelli/sixpane-android/actions/runs/42589160344)
+  executed 16 cases: **15 passed, 1 failed**. Exact popup navigation, outlined
+  numbered workspace button and its size, distinct no-match Clear button,
+  filters' original-pane slot ordering, and other covered flows passed. The
+  Blue filter chip still was not discoverable.
+- Fourth attempt `8dda29bc78ac496b971f961bb2b1ddfdc1fc8ed9`;
+  emulator workflow [42590314997](https://github.com/jaridmartinelli/sixpane-android/actions/runs/42590314997)
+  executed **16 cases: 16 passed, 0 failed, 0 skipped** (test report
+  `TEST-emulator-5554 - 15-_app-.xml`). This validates the filter-chip
+  accessibility and removal regression against the emulated revision.
+  The source change avoids repeatedly recreating the same chip nodes during
+  WebView-driven dock refreshes. New diagnostics remain in the test for
+  future recurrence. This is not a 100/100 JM acceptance result.
+
+**Repeated incident — filter chip:** Missing Blue filter-chip accessibility
+node recurred in three independent CI attempts after incremental fixes. The
+first two attempts addressed view refresh and geometry, but did not prevent
+recurrence. The latest preventive theory is that unconditional removal and
+recreation of chips during asynchronous WebView-driven dock renders destabilized
+the hierarchy. The fourth test has now passed, providing prevention verification on
+that emulated revision. Keep the repeatable test and its diagnostic path, rather
+than relying only on a static code review; broad real-world durability remains
+untested.
+
+**Known acceptance gates / limitations:**
+
+- The handoff explicitly requires approval before merging existing per-pane
+  bookmarks into one shared list. That migration was *not* performed.
+- The Android 14+/15 lifecycle does not guarantee all 42 WebViews remain
+  executing and visible after screen-off, Recents removal or process death;
+  never spoof browser/page visibility or promise impossible guarantees.
+  Any replacement for the handoff's absolute background-speed promise requires
+  separately approved technical acceptance semantics.
+- The 27 Tessera reference images were not accessible in the inspected Git
+  checkout or attached CI evidence. Recorded emulator screenshots establish
+  what the app rendered, not exact correspondence to unavailable references.
+- The condensed 100-item index remains the working list; the original
+  228-check/18-section handoff is retained. Tests establish only their actual
+  assertions, never every clause of an entire compound 100 item.
