@@ -271,38 +271,86 @@ class TesseraLayoutInstrumentedTest {
             dismissWelcome()
             lateinit var expected:Set<String>
             lateinit var profiles:Map<String,String>
+            lateinit var firstId:String
+            lateinit var secondId:String
+            val urlA="https://appassets.androidplatform.net/assets/isolation_test.html?qa-filter-fixture=a"
+            val urlB="https://appassets.androidplatform.net/assets/isolation_test.html?qa-filter-fixture=b"
             scenario.onActivity{host->
-                val first=host.store.active()
-                val a=first.panes[1]
+                firstId=host.store.active().panes[1].id
                 host.tesseraNewWorkspace()
-                val b=host.store.active().panes[4]
-                // Navigate any allocated WebViews rather than mutating their
-                // saved URLs while about:blank completion callbacks are pending.
-                // A real local asset URL avoids external network variability.
-                val urlA="https://appassets.androidplatform.net/assets/isolation_test.html?qa-filter-fixture=a"
-                val urlB="https://appassets.androidplatform.net/assets/isolation_test.html?qa-filter-fixture=b"
-                host.windowCard(a.id)?.loadAddress(urlA)?:run{a.url=urlA}
-                host.windowCard(b.id)?.loadAddress(urlB)?:run{b.url=urlB}
+                secondId=host.store.active().panes[4].id
+                expected=setOf(firstId,secondId)
+                profiles=host.store.spaces.flatMap{it.panes}
+                    .associate{it.id to it.profile}
+            }
+            // A just-created WebView can still be completing about:blank.
+            // Wait for startup before injecting local fixture navigation,
+            // otherwise a delayed blank-page callback can retract a match.
+            var ready=false
+            for(i in 0 until 50){
+                scenario.onActivity{host->
+                    val card=host.windowCard(secondId)
+                    ready=card!=null&&card.webView.progress==100&&
+                        card.webView.url=="about:blank"
+                }
+                if(ready)break
+                Thread.sleep(200)
+            }
+            assertTrue("Second workspace browser must settle before fixture navigation",ready)
+            scenario.onActivity{host->
+                val a=host.store.spaces.flatMap{it.panes}.first{it.id==firstId}
+                val b=host.store.spaces.flatMap{it.panes}.first{it.id==secondId}
+                host.windowCard(a.id)?.loadAddress(urlA,exact=true)?:run{a.url=urlA}
+                host.windowCard(b.id)?.loadAddress(urlB,exact=true)?:run{b.url=urlB}
                 host.persist()
-                expected=setOf(a.id,b.id)
-                profiles=host.store.spaces.flatMap{it.panes}.associate{it.id to it.profile}
-                // Preserve and explicitly exercise the older condensed result mode.
+            }
+            var fixtureReady=false
+            var details=""
+            for(i in 0 until 100){
+                scenario.onActivity{host->
+                    val all=host.store.spaces.flatMap{it.panes}
+                    val a=all.first{it.id==firstId}
+                    val b=all.first{it.id==secondId}
+                    val cardA=host.windowCard(firstId)
+                    val cardB=host.windowCard(secondId)
+                    fixtureReady=a.url==urlA&&b.url==urlB &&
+                        (cardA==null||cardA.webView.url==urlA) &&
+                        (cardB==null||cardB.webView.url==urlB)
+                    details="a="+a.url+" webA="+cardA?.webView?.url+
+                        " b="+b.url+" webB="+cardB?.webView?.url
+                }
+                if(fixtureReady)break
+                Thread.sleep(200)
+            }
+            assertTrue("Local fixture navigation must settle before applying a filter: "+details,
+                fixtureReady)
+            scenario.onActivity{host->
                 host.tesseraSetCompactFilterResults(true)
                 host.tesseraSetFilter("qa-filter-fixture",emptySet())
             }
             var actual:Set<String> = emptySet()
-            for(i in 0 until 30){
+            var diagnostic=""
+            for(i in 0 until 50){
                 scenario.onActivity{host->
                     actual=host.auditPanes().filter{(_,card)->
                         if(card==null)return@filter false
                         val lp=card.layoutParams as? FrameLayout.LayoutParams
                         lp!=null && lp.leftMargin>=0 && card.width>0 && card.height>0
                     }.map{it.first.id}.toSet()
+                    if(actual!=expected){
+                        diagnostic=host.store.spaces.flatMap{it.panes}.filter{
+                            it.id in expected
+                        }.joinToString(" | "){
+                            p->p.id+" saved="+p.url+" card="+
+                                host.windowCard(p.id)?.webView?.url
+                        }
+                    }
                 }
                 if(actual==expected)break
-                Thread.sleep(300)
+                Thread.sleep(250)
             }
-            assertEquals("Only matching source panes may occupy visible result slots",expected,actual)
+            assertEquals("Only matching source panes may occupy visible result slots. "+
+                diagnostic,expected,actual)
             scenario.onActivity{host->
                 assertEquals(2,host.store.spaces.size)
                 assertEquals(2,host.store.spaces.flatMap{it.panes}.count{

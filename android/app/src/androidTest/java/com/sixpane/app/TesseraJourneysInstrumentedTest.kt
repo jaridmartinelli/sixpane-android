@@ -218,23 +218,39 @@ class TesseraJourneysInstrumentedTest {
                 actualFocus=(f.get(host) as TesseraBar).addressFocused()
             }
             assertTrue("The native address field must retain input focus",actualFocus)
-            var typed=false
-            for(attempt in 0 until 6){
-                try{
-                    val fresh=device.wait(Until.findObject(
-                        By.clazz("android.widget.EditText")),2_000L)
-                    if(fresh!=null){
-                        assertEquals("Focused field should expose complete address",
-                            testUrl,fresh.text)
-                        fresh.setText("about:blank")
-                        typed=true
-                        break
-                    }
-                }catch(_:androidx.test.uiautomator.StaleObjectException){
-                    Thread.sleep(250)
-                }
+            // UIAutomator cannot always enumerate a text node while the IME
+            // and suggestion PopupWindow are visible. Exercise the user input
+            // channel directly, rather than changing the field programmatically.
+            scenario.onActivity{host->
+                val f=MainActivity::class.java.getDeclaredField("tessera")
+                f.isAccessible=true
+                val bar=f.get(host) as TesseraBar
+                val editorField=TesseraBar::class.java.getDeclaredField("address")
+                editorField.isAccessible=true
+                val editor=editorField.get(bar) as android.widget.EditText
+                assertEquals("The full URL must appear in the focused native field",
+                    testUrl,editor.text.toString())
+                editor.selectAll()
             }
-            assertTrue("The focused address control should accept text",typed)
+            device.executeShellCommand("input text about:blank")
+            var typed=false
+            var observed=""
+            for(attempt in 0 until 30){
+                scenario.onActivity{host->
+                    val f=MainActivity::class.java.getDeclaredField("tessera")
+                    f.isAccessible=true
+                    val bar=f.get(host) as TesseraBar
+                    val editorField=TesseraBar::class.java.getDeclaredField("address")
+                    editorField.isAccessible=true
+                    val editor=editorField.get(bar) as android.widget.EditText
+                    observed=editor.text.toString()
+                    typed=observed=="about:blank"
+                }
+                if(typed)break
+                Thread.sleep(200)
+            }
+            assertTrue("System input must reach the focused address editor; was="+observed,
+                typed)
             device.pressEnter()
             var submitted=false
             for(i in 0 until 30){
@@ -420,6 +436,51 @@ class TesseraJourneysInstrumentedTest {
                 assertTrue(host.store.selectedFrameColors.isEmpty())
                 assertEquals(profiles,host.store.active().panes.associate{it.id to it.profile})
             }
+        }finally{scenario.close()}
+    }
+
+
+    @Test fun snackbarWithUndoSitsAboveDockWhenKeyboardIsVisible(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            scenario.onActivity{host->
+                val f=MainActivity::class.java.getDeclaredField("tessera")
+                f.isAccessible=true
+                (f.get(host) as TesseraBar).focusAddress(host.store.active().panes[0].id)
+            }
+            var imeVisible=false
+            for(attempt in 0 until 35){
+                scenario.onActivity{host->
+                    imeVisible=Build.VERSION.SDK_INT>=30 &&
+                        host.window.decorView.rootWindowInsets?.isVisible(
+                            android.view.WindowInsets.Type.ime())==true
+                }
+                if(imeVisible)break
+                Thread.sleep(200)
+            }
+            assertTrue("Emulator must display an IME to validate keyboard anchoring",
+                imeVisible)
+            var dockTop=0
+            var density=1f
+            scenario.onActivity{host->
+                val f=MainActivity::class.java.getDeclaredField("tessera")
+                f.isAccessible=true
+                val bar=f.get(host) as TesseraBar
+                val position=IntArray(2)
+                bar.dock.getLocationOnScreen(position)
+                dockTop=position[1]
+                density=host.resources.displayMetrics.density
+                bar.snack("Check dock anchor"){}
+            }
+            val undo=device.wait(Until.findObject(By.text("Undo")),3_000L)
+            assertNotNull("Snack with action should show Undo",undo)
+            val snap=undo.visibleBounds
+            assertTrue("Snack should be placed above the keyboard-lifted dock",
+                snap.bottom<=dockTop-(6*density).toInt())
+            assertTrue("Snack should be within 64dp of dock top",
+                dockTop-snap.bottom<(64*density).toInt())
+            undo.click()
         }finally{scenario.close()}
     }
 }

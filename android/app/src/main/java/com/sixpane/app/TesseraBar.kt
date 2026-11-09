@@ -1179,15 +1179,35 @@ internal class TesseraBar(private val host:MainActivity) {
             elevation=dp(8).toFloat()
         }
         box.addView(txt(message,13f),LinearLayout.LayoutParams(0,dp(40),1f))
-        val popup=PopupWindow(box,
-            (host.resources.displayMetrics.widthPixels-dp(24)).coerceAtLeast(dp(200)),
-            dp(48),false)
+        val width=(host.resources.displayMetrics.widthPixels-dp(24)).coerceAtLeast(dp(200))
+        val height=dp(48)
+        val popup=PopupWindow(box,width,height,false)
         if(undo!=null)box.addView(button("Undo"){
             undo();popup.dismiss()
         },LinearLayout.LayoutParams(dp(56),dp(44)))
         lastSnack=popup
         popup.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        popup.showAtLocation(dock,Gravity.BOTTOM,0,dp(66))
+        // Position relative to the actual dock, not the bottom of the physical
+        // screen: the IME lifts the dock but does not necessarily lift popups
+        // shown with Gravity.BOTTOM. Never cover a website's keyboard controls.
+        fun aboveDock(){
+            if(dock.windowToken==null)return
+            val position=IntArray(2)
+            dock.getLocationOnScreen(position)
+            val availableWidth=dock.width.takeIf{it>0}
+                ?:host.resources.displayMetrics.widthPixels
+            val x=position[0]+((availableWidth-width)/2).coerceAtLeast(0)
+            val y=(position[1]-height-dp(10)).coerceAtLeast(0)
+            if(popup.isShowing)popup.update(x,y,width,height)
+            else popup.showAtLocation(dock,Gravity.TOP or Gravity.LEFT,x,y)
+        }
+        val move=View.OnLayoutChangeListener{_,_,_,_,_,_,_,_,_->aboveDock()}
+        dock.addOnLayoutChangeListener(move)
+        popup.setOnDismissListener{
+            dock.removeOnLayoutChangeListener(move)
+            if(lastSnack===popup)lastSnack=null
+        }
+        aboveDock()
         dock.postDelayed({if(popup.isShowing)popup.dismiss()},
             if(undo==null)TesseraMotion.SNACK_MS else TesseraMotion.SNACK_WITH_ACTION_MS)
     }
