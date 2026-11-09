@@ -359,10 +359,20 @@ internal class TesseraBar(private val host:MainActivity) {
             }
         }
     }
+    private var lastChipsFingerprint:String?=null
     private fun updateChips(){
-        filterContents.removeAllViews()
         val colors=host.store.selectedFrameColors
         val query=host.store.filterQuery
+        val count=host.store.spaces.flatMap{it.panes}.count{p->
+            FramePalette.matches(p.url,host.store.frameColor(p.id),query,colors)
+        }
+        // Page-load callbacks may refresh the command dock many times a second.
+        // Never tear down and recreate focused/accessible filter controls when
+        // neither the filter nor its result count has actually changed.
+        val fingerprint=query+"|"+colors.sorted().joinToString(",")+"|"+count
+        if(lastChipsFingerprint==fingerprint)return
+        lastChipsFingerprint=fingerprint
+        filterContents.removeAllViews()
         val desiredHeight=if(colors.isEmpty()&&query.isBlank())0 else dp(48)
         val params=filterChips.layoutParams
         if(params!=null && params.height!=desiredHeight){
@@ -430,9 +440,6 @@ internal class TesseraBar(private val host:MainActivity) {
                 "Remove URL filter",172){
                 host.tesseraSetFilter("",colors)
             }
-        }
-        val count=host.store.spaces.flatMap{it.panes}.count{p->
-            FramePalette.matches(p.url,host.store.frameColor(p.id),query,colors)
         }
         filterContents.addView(txt(count.toString()+" matches",12f).apply{
             gravity=Gravity.CENTER

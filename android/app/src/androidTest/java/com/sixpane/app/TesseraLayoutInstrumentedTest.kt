@@ -147,9 +147,25 @@ class TesseraLayoutInstrumentedTest {
             }
             val chip=device.wait(Until.findObject(
                 By.desc("Remove Blue colour filter")),8_000L)
+            var diagnostics=""
+            if(chip==null){
+                scenario.onActivity{host->
+                    val barField=MainActivity::class.java.getDeclaredField("tessera")
+                    barField.isAccessible=true
+                    val bar=barField.get(host) as TesseraBar
+                    val container=bar.filterChips
+                    diagnostics=" state="+host.store.selectedFrameColors+
+                        " viewVisibility="+container.visibility+
+                        " viewHeight="+container.height+
+                        " requestedHeight="+container.layoutParams?.height+
+                        " childCount="+container.childCount+
+                        " parentHeight="+(container.parent as? android.view.View)?.height
+                }
+            }
             assertNotNull("A colour filter needs a labelled removable chip; "+
                 "Blue text visible="+device.hasObject(By.text("Blue"))+
-                ", any Blue description="+device.hasObject(By.descContains("Blue")),chip)
+                ", any Blue description="+device.hasObject(By.descContains("Blue"))+
+                diagnostics,chip)
             assertTrue("Chip must be a tap target",chip.isClickable)
             val bounds=chip.visibleBounds
             val density=instrumentation.targetContext.resources.displayMetrics.density
