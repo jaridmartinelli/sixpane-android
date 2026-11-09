@@ -136,8 +136,12 @@ internal class TesseraBar(private val host:MainActivity) {
                 render()
                 val site=runCatching{URI(url).host}.getOrNull()?:"site"
                 if(bookmarked!=null)snack(if(bookmarked)"Bookmarked "+site else "Bookmark removed"){
-                    host.store.toggleBookmarkForPane(pane.id,url)
-                    render()
+                    // Undo only the matching action, never an intervening change
+                    // made by the user while the snack was visible.
+                    if(host.store.bookmarkedInPane(pane.id,url)==bookmarked){
+                        host.store.toggleBookmarkForPane(pane.id,url)
+                        render()
+                    }
                 }
             }
         }
@@ -387,7 +391,9 @@ internal class TesseraBar(private val host:MainActivity) {
             },LinearLayout.LayoutParams(dp(44),dp(44)))
             contents.addView(row)
         }
-        val pop=PopupWindow(contents,dp(310),-2,true).apply{
+        // This is a non-modal suggestion panel. Keeping it non-focusable lets
+        // the dock EditText retain the IME and receive Enter/Go normally.
+        val pop=PopupWindow(contents,dp(310),-2,false).apply{
             isOutsideTouchable=true;elevation=dp(6).toFloat()
             setBackgroundDrawable(ColorDrawable(surface))
         }
@@ -703,9 +709,13 @@ internal class TesseraBar(private val host:MainActivity) {
             paneColourRow(body,pane)
             row(body,if(pane.locked)"Unlock pane" else "Lock pane",icon="♢"){
                 val previous=pane.locked
-                pane.locked=!previous;host.updateWindowLocks();dialog.dismiss()
-                snack(if(pane.locked)"Locked 1 panes" else "Unlocked 1 panes"){
-                    pane.locked=previous;host.updateWindowLocks()
+                val applied=!previous
+                pane.locked=applied;host.updateWindowLocks();dialog.dismiss()
+                snack(if(applied)"Locked 1 pane" else "Unlocked 1 pane"){
+                    val live=host.store.spaces.any{ws->ws.panes.any{it.id==pane.id}}
+                    if(live&&pane.locked==applied){
+                        pane.locked=previous;host.updateWindowLocks()
+                    }
                 }
             }
             toggleRow(body,"Desktop site",
@@ -747,15 +757,29 @@ internal class TesseraBar(private val host:MainActivity) {
         val swatches=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
         val prior=ids.associateWith{host.store.frameColor(it)}
         (listOf(0xff51606e.toInt())+FramePalette.tesseraColors).forEachIndexed{index,color->
+            val name=if(index==0)"None" else FramePalette.tesseraNames[index-1]
             swatches.addView(button(if(index==0)"×" else "●"){
-                host.tesseraRecolor(ids,color);dialog.dismiss();render()
-                val name=if(index==0)"None" else FramePalette.tesseraNames[index-1]
-                snack("Coloured "+name+": "+ids.size+" panes"){
-                    prior.forEach{(id,original)->
-                        host.tesseraRecolor(setOf(id),original)
+                val live=host.store.spaces.flatMap{it.panes}.map{it.id}.toSet()
+                if(!live.containsAll(ids)){
+                    dialog.dismiss()
+                    host.notice("Selected panes changed; colour not applied")
+                    return@button
+                }
+                val changed=ids.filter{host.store.frameColor(it)!=color}.toSet()
+                if(changed.isEmpty()){dialog.dismiss();return@button}
+                host.tesseraRecolor(changed,color);dialog.dismiss();render()
+                snack("Coloured "+name+": "+changed.size+" panes"){
+                    // Fresh panes must never inherit an ended session's colour.
+                    // Do not undo an intervening recolour or touch stale IDs.
+                    val nowLive=host.store.spaces.flatMap{it.panes}.map{it.id}.toSet()
+                    changed.forEach{id->
+                        if(id in nowLive && host.store.frameColor(id)==color){
+                            host.tesseraRecolor(setOf(id),prior.getValue(id))
+                        }
                     }
                 }
             }.apply{
+                contentDescription="Set selected panes colour to "+name
                 setTextColor(if(index==0)this@TesseraBar.text else color)
                 background=round(surface3,20,if(ids.any{host.store.frameColor(it)==color})3 else 1,
                     if(ids.any{host.store.frameColor(it)==color})Color.WHITE else stroke)
@@ -1079,7 +1103,7 @@ internal class TesseraBar(private val host:MainActivity) {
             listOf("Each pane is its own private browser.",
                 "A login in one pane is not shared with any other pane.",
                 "Ending a session or closing a workspace retires its profile.",
-                "Bookmarks are just addresses.",
+                "Bookmarks are addresses saved separately in each pane.",
                 "Android may pause live pages when the app is closed.",
                 "Check isolation & health from All panes."
             ).forEach{

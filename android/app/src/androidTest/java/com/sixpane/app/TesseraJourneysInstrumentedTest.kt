@@ -208,8 +208,23 @@ class TesseraJourneysInstrumentedTest {
             assertEquals("Unfocused dock should show host only",
                 "appassets.androidplatform.net",edit.text)
             edit.click()
-            assertEquals("Focused field should expose complete address",testUrl,edit.text)
-            edit.setText("about:blank")
+            // IME opening can reconstruct accessibility nodes. Reacquire
+            // the focused field rather than reusing a stale UiObject2.
+            val activeEditor=device.wait(Until.findObject(
+                By.clazz("android.widget.EditText").focused(true)),8_000L)
+            assertNotNull("Address field must retain focus while suggestions show",activeEditor)
+            assertEquals("Focused field should expose complete address",testUrl,activeEditor.text)
+            var typed=false
+            for(attempt in 0 until 4){
+                try{
+                    val fresh=device.findObject(
+                        By.clazz("android.widget.EditText").focused(true))
+                    if(fresh!=null){fresh.setText("about:blank");typed=true;break}
+                }catch(_:androidx.test.uiautomator.StaleObjectException){
+                    Thread.sleep(200)
+                }
+            }
+            assertTrue("The focused address control should accept text",typed)
             device.pressEnter()
             var submitted=false
             for(i in 0 until 30){
@@ -220,6 +235,78 @@ class TesseraJourneysInstrumentedTest {
                 Thread.sleep(150)
             }
             assertTrue("Hardware Enter must submit the typed URL",submitted)
+        }finally{scenario.close()}
+    }
+
+
+    @Test fun multiPaneColourUndoSkipsSupersededColourEdits(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            lateinit var firstId:String
+            lateinit var secondId:String
+            scenario.onActivity{host->
+                val panes=host.store.active().panes
+                firstId=panes[0].id
+                secondId=panes[1].id
+                host.tesseraRecolor(setOf(firstId),FramePalette.tesseraColors[1])
+                host.tesseraRecolor(setOf(secondId),FramePalette.tesseraColors[2])
+                host.enterSelection(firstId)
+                host.toggleWindowSelection(secondId)
+            }
+            val change=device.wait(Until.findObject(
+                By.desc("Change colour of selected panes")),8_000L)
+            assertNotNull(change)
+            change.click()
+            val choose=device.wait(Until.findObject(
+                By.desc("Set selected panes colour to Blue")),8_000L)
+            assertNotNull("Bulk colour swatches need accessible names",choose)
+            choose.click()
+            scenario.onActivity{host->
+                assertEquals(FramePalette.tesseraColors[0],host.store.frameColor(firstId))
+                assertEquals(FramePalette.tesseraColors[0],host.store.frameColor(secondId))
+                // A separate newer edit is authoritative, not an Undo casualty.
+                host.tesseraRecolor(setOf(firstId),FramePalette.tesseraColors[3])
+            }
+            val undo=device.wait(Until.findObject(By.text("Undo")),3_000L)
+            assertNotNull("Colour changes must offer Undo",undo)
+            undo.click()
+            device.waitForIdle()
+            scenario.onActivity{host->
+                assertEquals("Undo must preserve the user's newer colour edit",
+                    FramePalette.tesseraColors[3],host.store.frameColor(firstId))
+                assertEquals("Undo must restore the other pane's prior colour",
+                    FramePalette.tesseraColors[2],host.store.frameColor(secondId))
+            }
+        }finally{scenario.close()}
+    }
+
+    @Test fun paneLockUndoDoesNotReverseAnInterveningLockChange(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            lateinit var firstId:String
+            scenario.onActivity{host->
+                firstId=host.store.active().panes[0].id
+                host.tesseraMenuAll()
+            }
+            val lock=device.wait(Until.findObject(By.text("Lock pane")),8_000L)
+            assertNotNull(lock)
+            lock.click()
+            scenario.onActivity{host->
+                val pane=host.store.active().panes[0]
+                assertTrue(pane.locked)
+                pane.locked=false
+                host.updateWindowLocks()
+            }
+            val undo=device.wait(Until.findObject(By.text("Undo")),3_000L)
+            assertNotNull(undo)
+            undo.click()
+            scenario.onActivity{host->
+                assertEquals(firstId,host.store.active().panes[0].id)
+                assertFalse("Undo must not overwrite a newer unlock",
+                    host.store.active().panes[0].locked)
+            }
         }finally{scenario.close()}
     }
 }
