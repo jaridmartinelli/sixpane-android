@@ -208,20 +208,30 @@ class TesseraJourneysInstrumentedTest {
             assertEquals("Unfocused dock should show host only",
                 "appassets.androidplatform.net",edit.text)
             edit.click()
-            // IME opening can reconstruct accessibility nodes. Reacquire
-            // the focused field rather than reusing a stale UiObject2.
-            val activeEditor=device.wait(Until.findObject(
-                By.clazz("android.widget.EditText").focused(true)),8_000L)
-            assertNotNull("Address field must retain focus while suggestions show",activeEditor)
-            assertEquals("Focused field should expose complete address",testUrl,activeEditor.text)
+            // A popup/IME transition can rebuild accessibility nodes, and
+            // UiAutomator's focused selector is not always the same as Android
+            // EditText.hasFocus(). Assert real view focus, then acquire a fresh node.
+            var actualFocus=false
+            scenario.onActivity{host->
+                val f=MainActivity::class.java.getDeclaredField("tessera")
+                f.isAccessible=true
+                actualFocus=(f.get(host) as TesseraBar).addressFocused()
+            }
+            assertTrue("The native address field must retain input focus",actualFocus)
             var typed=false
-            for(attempt in 0 until 4){
+            for(attempt in 0 until 6){
                 try{
-                    val fresh=device.findObject(
-                        By.clazz("android.widget.EditText").focused(true))
-                    if(fresh!=null){fresh.setText("about:blank");typed=true;break}
+                    val fresh=device.wait(Until.findObject(
+                        By.clazz("android.widget.EditText")),2_000L)
+                    if(fresh!=null){
+                        assertEquals("Focused field should expose complete address",
+                            testUrl,fresh.text)
+                        fresh.setText("about:blank")
+                        typed=true
+                        break
+                    }
                 }catch(_:androidx.test.uiautomator.StaleObjectException){
-                    Thread.sleep(200)
+                    Thread.sleep(250)
                 }
             }
             assertTrue("The focused address control should accept text",typed)
@@ -306,6 +316,109 @@ class TesseraJourneysInstrumentedTest {
                 assertEquals(firstId,host.store.active().panes[0].id)
                 assertFalse("Undo must not overwrite a newer unlock",
                     host.store.active().panes[0].locked)
+            }
+        }finally{scenario.close()}
+    }
+
+
+    @Test fun paneHeaderTapSelectsAndHoldOpensItsMenu(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            lateinit var paneOne:String
+            lateinit var paneTwo:String
+            lateinit var profiles:Map<String,String>
+            scenario.onActivity{host->
+                paneOne=host.store.active().panes[0].id
+                paneTwo=host.store.active().panes[1].id
+                profiles=host.store.active().panes.associate{it.id to it.profile}
+                host.tesseraActivate(paneTwo)
+                assertEquals(paneTwo,host.store.activePaneId)
+            }
+            val header=device.wait(Until.findObject(By.desc(
+                "Pane header; make active, double tap to expand, hold for pane menu")),8_000L)
+            assertNotNull("Pane header needs an accessible tap/hold target",header)
+            header.click()
+            Thread.sleep(500) // GestureDetector single-tap confirmation
+            scenario.onActivity{host->assertEquals(
+                "Header tap must make the correct pane active",paneOne,host.store.activePaneId)}
+            val firstHeader=device.findObject(By.desc(
+                "Pane header; make active, double tap to expand, hold for pane menu"))
+            assertNotNull(firstHeader)
+            firstHeader.longClick()
+            assertNotNull("Header hold must show the pane's own menu",
+                device.wait(Until.findObject(
+                    By.textContains("Pane 1 · Workspace 1")),8_000L))
+            device.pressBack()
+            scenario.onActivity{host->
+                assertEquals(profiles,host.store.active().panes.associate{it.id to it.profile})
+            }
+        }finally{scenario.close()}
+    }
+
+    @Test fun paneMenuSelectionAndAllNoneWorkThroughVisibleControls(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            scenario.onActivity{host->host.tesseraMenuAll()}
+            val select=device.wait(Until.findObject(By.text("Select multiple")),8_000L)
+            assertNotNull(select)
+            select.click()
+            scenario.onActivity{host->
+                assertTrue(host.tesseraSelecting())
+                assertEquals(1,host.tesseraSelected().size)
+            }
+            val all=device.wait(Until.findObject(
+                By.desc("Select all visible panes")),8_000L)
+            assertNotNull(all)
+            all.click()
+            scenario.onActivity{host->assertEquals(6,host.tesseraSelected().size)}
+            val none=device.wait(Until.findObject(
+                By.desc("Deselect all visible panes")),8_000L)
+            assertNotNull(none)
+            none.click()
+            scenario.onActivity{host->
+                assertTrue(host.tesseraSelecting())
+                assertTrue(host.tesseraSelected().isEmpty())
+            }
+        }finally{scenario.close()}
+    }
+
+    @Test fun multiColourChipsRemoveOneFilterWithoutChangingProfiles(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            lateinit var ids:List<String>
+            lateinit var profiles:Map<String,String>
+            scenario.onActivity{host->
+                ids=host.store.active().panes.map{it.id}
+                profiles=host.store.active().panes.associate{it.id to it.profile}
+                host.store.setFrameColor(setOf(ids[0]),FramePalette.tesseraColors[0])
+                host.store.setFrameColor(setOf(ids[1]),FramePalette.tesseraColors[1])
+                host.tesseraSetFilter("",setOf("Blue","Green"))
+            }
+            assertNotNull(device.wait(Until.findObject(
+                By.desc("Remove Blue colour filter")),8_000L))
+            val green=device.findObject(By.desc("Remove Green colour filter"))
+            assertNotNull(green)
+            assertNotNull("Two active colours must report two matches",
+                device.findObject(By.text("2 matches")))
+            val remove=device.findObject(By.desc("Remove Blue colour filter"))
+            assertNotNull(remove)
+            remove.click()
+            device.waitForIdle()
+            scenario.onActivity{host->
+                assertEquals(setOf("Green"),host.store.selectedFrameColors)
+                assertEquals(setOf(ids[1]),host.tesseraVisibleSelectionIds())
+                assertEquals(profiles,host.store.active().panes.associate{it.id to it.profile})
+            }
+            assertNotNull(device.wait(Until.findObject(By.text("1 matches")),8_000L))
+            val clear=device.findObject(By.desc("Clear all filters"))
+            assertNotNull(clear)
+            clear.click()
+            scenario.onActivity{host->
+                assertTrue(host.store.selectedFrameColors.isEmpty())
+                assertEquals(profiles,host.store.active().panes.associate{it.id to it.profile})
             }
         }finally{scenario.close()}
     }
