@@ -71,8 +71,9 @@ class TesseraJmMenuAuditInstrumentedTest {
                 val row=device.findObject(By.text(name))
                 assertNotNull(row)
                 // Rows are required to be >= 52dp; child glyphs are not.
-                val target=row.parent?.parent
-                assertNotNull("Menu row must be actionable",target)
+                val target=requireNotNull(row.parent?.parent){
+                    "Menu row must be actionable: "+name
+                }
                 assertTrue("Menu row must have a 52dp target: "+name+
                     " actual="+dp(target.visibleBounds.height()),
                     dp(target.visibleBounds.height())>=50f)
@@ -187,5 +188,30 @@ class TesseraJmMenuAuditInstrumentedTest {
             device.unfreezeRotation()
             scenario.close()
         }
+    }
+
+
+    @Test fun filterAndSettingsScreensHaveReferenceSectionHeadings(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            scenario.onActivity{host->host.tesseraMenuAll()}
+            val filter=device.wait(Until.findObject(By.text("Filter panes")),8_000L)
+            assertNotNull(filter)
+            filter.click()
+            assertNotNull(device.wait(Until.findObject(By.text("COLOURS · ANY OF THESE")),8_000L))
+            assertNotNull(device.findObject(By.text("URL CONTAINS")))
+            assertNotNull(device.findObject(By.text("Clear all")))
+            assertNotNull(device.findObject(By.text("Done")))
+            device.pressBack()
+            device.waitForIdle()
+            scenario.onActivity{host->host.tesseraMenuAll()}
+            val settings=device.wait(Until.findObject(By.text("Settings")),8_000L)
+            assertNotNull(settings)
+            settings.click()
+            assertNotNull(device.wait(Until.findObject(By.text("KEEP SESSIONS ALIVE")),8_000L))
+            assertNotNull(device.findObject(By.text("LAYOUT")))
+            assertNotNull(device.findObject(By.text("ABOUT")))
+        }finally{scenario.close()}
     }
 }

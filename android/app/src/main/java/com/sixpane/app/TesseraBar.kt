@@ -1030,7 +1030,12 @@ internal class TesseraBar(private val host:MainActivity) {
         dialog.window?.setLayout((host.resources.displayMetrics.widthPixels*.92f).toInt(),-2)
     }
     private fun filterScreen(){
-        page("Filter panes","By colour or URL"){body,footer,dialog->
+        page("Filter panes",
+            "Matching panes stay in place; others fade. Sessions keep running."){body,footer,dialog->
+            body.addView(txt("COLOURS · ANY OF THESE",11f).apply{
+                setTextColor(secondary)
+                setPadding(dp(8),dp(12),0,dp(8))
+            })
             val swatches=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
             FramePalette.tesseraNames.forEachIndexed{i,name->
                 val selected=name in host.store.selectedFrameColors
@@ -1046,6 +1051,10 @@ internal class TesseraBar(private val host:MainActivity) {
                 },LinearLayout.LayoutParams(0,dp(44),1f))
             }
             body.addView(swatches)
+            body.addView(txt("URL CONTAINS",11f).apply{
+                setTextColor(secondary)
+                setPadding(dp(8),dp(20),0,dp(8))
+            })
             val edit=EditText(host).apply{
                 hint="URL contains";setSingleLine(true);setText(host.store.filterQuery)
                 setTextColor(this@TesseraBar.text);setHintTextColor(secondary)
@@ -1059,12 +1068,23 @@ internal class TesseraBar(private val host:MainActivity) {
                 })
             }
             body.addView(edit,LinearLayout.LayoutParams(-1,dp(52)))
+            body.addView(txt("Colours match any selected colour. The URL must also match. Filters stay on until you clear them.",12f).apply{
+                setTextColor(secondary)
+                setPadding(dp(8),dp(16),dp(8),dp(8))
+            })
             footerButton(footer,"Clear all"){host.tesseraClearFilters();dialog.dismiss()}
             footerButton(footer,"Done"){dialog.dismiss()}
         }
     }
     private fun settingsScreen(){
         page("Settings"){body,_,dialog->
+            fun section(name:String){
+                body.addView(txt(name,11f).apply{
+                    setTextColor(secondary)
+                    setPadding(dp(9),dp(16),0,dp(8))
+                })
+            }
+            section("KEEP SESSIONS ALIVE")
             row(body,"Keep-alive notification","✓ or Allow",icon="◉"){
                 dialog.dismiss();host.requestNotificationPermissionFromSettings()
             }
@@ -1075,6 +1095,7 @@ internal class TesseraBar(private val host:MainActivity) {
                 dialog.dismiss();host.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                     Uri.parse("package:"+host.packageName)))
             }
+            section("LAYOUT")
             row(body,"Full-size pages in small panes",
                 if(host.store.fullSizeSmallPanes)"On" else "Off",icon="▣"){
                 host.store.fullSizeSmallPanes=!host.store.fullSizeSmallPanes
@@ -1092,6 +1113,7 @@ internal class TesseraBar(private val host:MainActivity) {
                 host.tesseraSetCompactFilterResults(!host.store.compactFilterResults)
                 dialog.dismiss();settingsScreen()
             }
+            section("ABOUT")
             row(body,"How sessions work",icon="ⓘ"){dialog.dismiss();howSessions()}
             row(body,"Developer tools","Preserved SIXPANE tools",icon="⚙"){
                 dialog.dismiss();host.tesseraOpenSettings()
