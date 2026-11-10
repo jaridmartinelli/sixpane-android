@@ -529,3 +529,25 @@ This is a narrowly scoped feature-branch change, **not** permission to remove
 any additional controls or edit cookie functionality. Full 100-item JM signoff
 still requires separate evidence. New CI results must be recorded after
 execution rather than assumed from source changes.
+
+
+### Emulator regression: explicit address target must not be replaced by prefix
+
+On the November 10 approved-menu revision
+`c8cca1cbb51a151cb002ebb9fbe0a267e12afd0b`, emulator run
+[42813905420](https://github.com/jaridmartinelli/sixpane-android/actions/runs/42813905420)
+completed **43/44 passed; one failed**:
+`bulkAddressSkipsLockedPanesAndPreservesProfiles` did not observe the full
+explicit URL in the unlocked target pane. Build and JVM checks passed.
+This is a user-visible end-to-end bulk-navigation failure, not an excuse to
+remove or relax its acceptance test.
+
+Confirmed source path: bulk Open called `PaneCard.loadAddress(resolved)`,
+which defaults to `BrowserPolicy.entryCandidates` and can try shallow root
+URLs before the exact requested destination. That behavior is inappropriate
+for an explicit multi-pane Open action. The scoped prevention is to call
+`loadAddress(resolved, exact=true)` **for bulk Open only**, preserving normal
+single-pane navigation and browser/session policies. The emulator assertion
+now includes the saved and current WebView URLs so any recurrence can be
+diagnosed. The next run must verify both the exact target and skipping locked
+panes before this item is accepted. No cookie-editor changes are authorized.

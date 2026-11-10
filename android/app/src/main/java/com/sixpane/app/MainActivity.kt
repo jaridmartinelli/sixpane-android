@@ -789,7 +789,10 @@ class MainActivity:Activity(){
         var deferred=0
         for(ws in store.spaces)for(pane in ws.panes)if(pane.id in plan.eligible){
             val card=cards[pane.id]
-            if(card!=null)card.loadAddress(resolved)
+            // A bulk address is an explicit destination. Do not navigate
+            // through same-origin prefix probes first: a successful root page
+            // could strand the pane before the requested URL is reached.
+            if(card!=null)card.loadAddress(resolved,exact=true)
             else {pane.url=resolved;deferred++}
         }
         store.save()

@@ -188,14 +188,21 @@ class TesseraApprovedMenuChangesInstrumentedTest {
             address.setText(target)
             device.findObject(By.text("Open")).click()
             var loaded=false
-            for(i in 0 until 35){
+            var observed=""
+            for(i in 0 until 50){
                 scenario.onActivity{host->
-                    loaded=host.store.active().panes.first{it.id==first}.url==target
+                    val selected=host.store.active().panes.first{it.id==first}
+                    observed="saved="+selected.url+
+                        " web="+host.windowCard(first)?.webView?.url+
+                        " selected="+host.tesseraSelected().size
+                    loaded=selected.url==target &&
+                        host.windowCard(first)?.webView?.url==target
                 }
                 if(loaded)break
                 Thread.sleep(250)
             }
-            assertTrue("Unlocked pane must open the target",loaded)
+            assertTrue("Unlocked pane must open the exact requested target; "+observed,
+                loaded)
             scenario.onActivity{host->
                 val panes=host.store.active().panes
                 assertEquals("Locked pane must not navigate","about:blank",
