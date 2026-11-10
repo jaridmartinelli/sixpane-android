@@ -495,3 +495,37 @@ bookmark Undo is pane-scoped and ignores newer changes, and first-launch copy
 does not promise continuous background execution.
 This is still not a 100/100 end-to-end JM acceptance or complete 27-screen
 layout sign-off.
+
+
+---
+
+## November 10, 2026 — approved three-menu cleanup; cookie editor excluded
+
+User decisions for this revision:
+- **Do not touch cookie editing.** The currently approved cookie editor remains
+  untouched; no controls, data, or logic in `CookieEditor.kt` are modified.
+- **Settings:** remove the redundant "Developer tools" entry opening a second
+  Settings dialog. Keep canonical per-pane "Copy diagnostics" and All panes
+  "Check isolation & health". When a retired profile has pending cleanup,
+  show the required "Finish erasing ended sessions (N waiting)" status and
+  explain that a clean restart retries deletion, without attempting to remove
+  a live WebView's profile.
+- **Workspace menu:** show "Lock all 6 panes" unless all six are locked;
+  show "Unlock all panes" only when at least one pane is locked. Preserve
+  New workspace and Close workspace with their existing validation/lock gates.
+- **Open an address in selected:** replace the small input card with a
+  full-screen Tessera page, 52dp-height Cancel/Open footer controls and a
+  validated address/search input. Bulk action keeps the existing behavior of
+  skipping locked panes and preserving profile IDs.
+
+Emulator acceptance additions:
+`TesseraApprovedMenuChangesInstrumentedTest` checks the absence of duplicate
+Settings navigation and presence of canonical diagnostics, conditional
+workspace menu row inventory across unlocked, locked and mixed states,
+full-screen address entry/Cancel/empty validation/touch sizes, and that bulk
+Open skips locked panes without replacing browser profiles.
+
+This is a narrowly scoped feature-branch change, **not** permission to remove
+any additional controls or edit cookie functionality. Full 100-item JM signoff
+still requires separate evidence. New CI results must be recorded after
+execution rather than assumed from source changes.

@@ -959,12 +959,22 @@ internal class TesseraBar(private val host:MainActivity) {
         page("Workspace "+n,
             ws.panes.count{it.url!="about:blank"}.toString()+" of 6 panes open · "+
                 ws.panes.count{it.locked}+" locked"){body,_,dialog->
-            row(body,"Lock all 6 panes","Only this workspace",!ws.panes.all{it.locked},"⌑"){
-                ws.panes.forEach{it.locked=true};host.updateWindowLocks();dialog.dismiss()
+            // These rows are conditional in the approved handoff, not disabled
+            // duplicates. The current workspace never shows an inapplicable action.
+            if(!ws.panes.all{it.locked}){
+                row(body,"Lock all 6 panes","Only this workspace",icon="⌑"){
+                    ws.panes.forEach{it.locked=true}
+                    host.updateWindowLocks()
+                    dialog.dismiss()
+                }
             }
-            row(body,"Unlock all panes",ws.panes.count{it.locked}.toString()+" locked",
-                ws.panes.any{it.locked},"♢"){
-                ws.panes.forEach{it.locked=false};host.updateWindowLocks();dialog.dismiss()
+            val lockedCount=ws.panes.count{it.locked}
+            if(lockedCount>0){
+                row(body,"Unlock all panes",lockedCount.toString()+" locked",icon="♢"){
+                    ws.panes.forEach{it.locked=false}
+                    host.updateWindowLocks()
+                    dialog.dismiss()
+                }
             }
             row(body,"New workspace to the right",
                 if(host.tesseraSelecting())"Finish selecting first" else
@@ -1012,26 +1022,57 @@ internal class TesseraBar(private val host:MainActivity) {
             }
         }
     }
+    /** The handoff requires a full-screen entry page, not a compact picker. */
     private fun bulkAddressDialog(){
-        val dialog=Dialog(host)
-        val input=EditText(host).apply{
-            hint="Search or enter address";setSingleLine(true);textSize=15f
-            setTextColor(this@TesseraBar.text);setHintTextColor(secondary)
-            background=round(surface2,12,1)
+        val selectedCount=host.tesseraSelected().size
+        page("Open in selected panes",
+            selectedCount.toString()+" selected · locked panes will be skipped"){
+                body,footer,dialog->
+            val input=EditText(host).apply{
+                hint="Search or enter address"
+                contentDescription="Address or search for selected panes"
+                setSingleLine(true)
+                textSize=15f
+                setTextColor(this@TesseraBar.text)
+                setHintTextColor(secondary)
+                inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+                imeOptions=EditorInfo.IME_ACTION_GO
+                setPadding(dp(12),0,dp(12),0)
+                background=round(surface2,12,1)
+            }
+            body.addView(input,LinearLayout.LayoutParams(-1,dp(52)))
+            body.addView(txt("Opens in each selected unlocked pane. Locked panes are skipped.",
+                12f).apply{
+                setTextColor(secondary)
+                setPadding(dp(8),dp(10),dp(8),dp(4))
+            })
+            val submitBulk:()->Unit = {
+                val resolved=BrowserPolicy.resolveAddressOrSearch(input.text.toString())
+                if(resolved==null){
+                    input.error="Enter an address"
+                }else{
+                    dialog.dismiss()
+                    host.tesseraBulkOpenAddress(resolved)
+                }
+            }
+            input.setOnEditorActionListener{_,action,event->
+                val hardware=event?.keyCode==KeyEvent.KEYCODE_ENTER &&
+                    event.action==KeyEvent.ACTION_DOWN
+                if(action==EditorInfo.IME_ACTION_GO||hardware){
+                    submitBulk()
+                    true
+                }else false
+            }
+            footer.addView(button("Cancel"){dialog.dismiss()}.apply{
+                textSize=15f
+                contentDescription="Cancel opening address in selected panes"
+                setTextColor(this@TesseraBar.text)
+                background=round(surface3,12,1)
+            },LinearLayout.LayoutParams(0,dp(52),1f).apply{
+                leftMargin=dp(4);rightMargin=dp(4)
+            })
+            footerButton(footer,"Open"){submitBulk()}
         }
-        val outer=LinearLayout(host).apply{
-            orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(18),dp(18),dp(12))
-            background=round(surface,22)
-        }
-        outer.addView(txt("Open in selected panes",18f))
-        outer.addView(input,LinearLayout.LayoutParams(-1,dp(52)))
-        outer.addView(button("Open"){
-            val resolved=BrowserPolicy.resolveAddressOrSearch(input.text.toString())
-            if(resolved==null){input.error="Enter an address";return@button}
-            dialog.dismiss();host.tesseraBulkOpenAddress(resolved)
-        },LinearLayout.LayoutParams(-1,dp(48)))
-        dialog.setContentView(outer);dialog.show()
-        dialog.window?.setLayout((host.resources.displayMetrics.widthPixels*.92f).toInt(),-2)
     }
     private fun filterScreen(){
         page("Filter panes",
@@ -1102,6 +1143,14 @@ internal class TesseraBar(private val host:MainActivity) {
                 dialog.dismiss();host.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                     Uri.parse("package:"+host.packageName)))
             }
+            if(host.store.pendingDeletion.isNotEmpty()){
+                val pending=host.store.pendingDeletion.size
+                row(body,"Finish erasing ended sessions ("+pending+" waiting)",
+                    "Close and reopen SIXPANE to retry retired-profile cleanup",icon="↻"){
+                    host.notice("Restart SIXPANE to retry erasing "+
+                        pending+" retired profiles. Active panes are not affected.")
+                }
+            }
             section("LAYOUT")
             row(body,"Full-size pages in small panes",
                 if(host.store.fullSizeSmallPanes)"On" else "Off",icon="▣"){
@@ -1122,9 +1171,10 @@ internal class TesseraBar(private val host:MainActivity) {
             }
             section("ABOUT")
             row(body,"How sessions work",icon="ⓘ"){dialog.dismiss();howSessions()}
-            row(body,"Developer tools","Preserved SIXPANE tools",icon="⚙"){
-                dialog.dismiss();host.tesseraOpenSettings()
-            }
+            // The second legacy Settings menu was an unapproved duplicate.
+            // Pane diagnostics and the All panes integrity report are available
+            // from their canonical menu actions; cleanup is surfaced above
+            // when pending and never deletes live profiles.
         }
     }
     private fun howSessions(){

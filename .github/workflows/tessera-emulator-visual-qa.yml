@@ -10,6 +10,7 @@ on:
       - 'android/app/src/androidTest/java/com/sixpane/app/TesseraPopupInstrumentedTest.kt'
       - 'android/app/src/androidTest/java/com/sixpane/app/TesseraJourneysInstrumentedTest.kt'
       - 'android/app/src/androidTest/java/com/sixpane/app/TesseraJmMenuAuditInstrumentedTest.kt'
+      - 'android/app/src/androidTest/java/com/sixpane/app/TesseraApprovedMenuChangesInstrumentedTest.kt'
       - 'android/app/src/main/java/com/sixpane/app/MainActivity.kt'
       - 'android/app/src/main/java/com/sixpane/app/TesseraBar.kt'
       - 'android/app/src/main/java/com/sixpane/app/PaneCard.kt'
