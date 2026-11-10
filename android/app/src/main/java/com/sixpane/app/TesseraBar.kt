@@ -403,9 +403,11 @@ internal class TesseraBar(private val host:MainActivity) {
                 contents.measure(
                     View.MeasureSpec.makeMeasureSpec(dp(310),View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(dp(500),View.MeasureSpec.AT_MOST))
-                val pos=IntArray(2);dock.getLocationOnScreen(pos)
-                pop.showAtLocation(dock,Gravity.TOP or Gravity.LEFT,
-                    dp(6),(pos[1]-contents.measuredHeight).coerceAtLeast(0))
+                // Anchor to the dock rather than a one-time screen Y position.
+                // The dock moves when the IME opens; an absolute popup stayed
+                // over Gboard instead of above the address field.
+                pop.showAsDropDown(dock,dp(6),
+                    -dock.height-contents.measuredHeight,Gravity.START)
             }
         }
     }
@@ -861,7 +863,12 @@ internal class TesseraBar(private val host:MainActivity) {
                             val label=if(p.url=="about:blank")"New"
                                 else runCatching{URI(p.url).host}.getOrNull()?:"Empty"
                             tile.addView(txt(label+(if(p.locked)" ♢" else ""),9f).apply{
-                                gravity=Gravity.CENTER;maxLines=2
+                                gravity=Gravity.CENTER
+                                maxLines=2
+                                ellipsize=android.text.TextUtils.TruncateAt.END
+                                contentDescription="Pane "+host.paneIndex(p.id)+": "+label+
+                                    (if(p.locked)", locked" else "")
+                                setPadding(dp(2),0,dp(2),0)
                             },LinearLayout.LayoutParams(-1,tileHeight))
                         }
                         if(p.url=="about:blank"){
@@ -1082,22 +1089,50 @@ internal class TesseraBar(private val host:MainActivity) {
                 setPadding(dp(8),dp(12),0,dp(8))
             })
             val swatches=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
-            FramePalette.tesseraNames.forEachIndexed{i,name->
-                val selected=name in host.store.selectedFrameColors
-                swatches.addView(button("●"){
-                    val colors=host.store.selectedFrameColors.toMutableSet()
-                    if(!colors.add(name))colors.remove(name)
-                    host.tesseraSetFilter(host.store.filterQuery,colors)
-                    dialog.dismiss();filterScreen()
-                }.apply{
-                    contentDescription="Filter by "+name+
-                        (if(selected)" (selected)" else "")
-                    isSelected=selected
-                    setTextColor(FramePalette.tesseraColors[i])
-                    background=round(surface2,22,if(selected)3 else 1,
-                        if(selected)Color.WHITE else stroke)
-                },LinearLayout.LayoutParams(0,dp(44),1f))
+            val circles=linkedMapOf<String,TextView>()
+            val swatchTargets=linkedMapOf<String,FrameLayout>()
+            fun refreshSwatches(){
+                FramePalette.tesseraNames.forEachIndexed{i,name->
+                    val selected=name in host.store.selectedFrameColors
+                    val color=FramePalette.tesseraColors[i]
+                    circles[name]?.apply{
+                        text=if(selected)"✓" else ""
+                        setTextColor(if(Color.luminance(color)>.18)
+                            0xff0b0e13.toInt() else Color.WHITE)
+                        background=round(color,18,if(selected)3 else 1,
+                            if(selected)Color.WHITE else stroke)
+                    }
+                    swatchTargets[name]?.apply{
+                        isSelected=selected
+                        contentDescription=name+" filter "+(if(selected)"selected" else "not selected")
+                    }
+                }
             }
+            FramePalette.tesseraNames.forEach{name->
+                val circle=txt("",15f).apply{
+                    gravity=Gravity.CENTER
+                    setTypeface(null,Typeface.BOLD)
+                }
+                val target=FrameLayout(host).apply{
+                    minimumHeight=dp(48)
+                    isClickable=true
+                    isFocusable=true
+                    setOnClickListener{
+                        val colors=host.store.selectedFrameColors.toMutableSet()
+                        if(!colors.add(name))colors.remove(name)
+                        host.tesseraSetFilter(host.store.filterQuery,colors)
+                        // Update in place: do not close the page, lose URL text,
+                        // or dismiss the keyboard after each colour selection.
+                        refreshSwatches()
+                    }
+                }
+                target.addView(circle,FrameLayout.LayoutParams(
+                    dp(36),dp(36),Gravity.CENTER))
+                circles[name]=circle
+                swatchTargets[name]=target
+                swatches.addView(target,LinearLayout.LayoutParams(0,dp(48),1f))
+            }
+            refreshSwatches()
             body.addView(swatches)
             body.addView(txt("URL CONTAINS",11f).apply{
                 setTextColor(secondary)
@@ -1133,10 +1168,19 @@ internal class TesseraBar(private val host:MainActivity) {
                 })
             }
             section("KEEP SESSIONS ALIVE")
-            row(body,"Keep-alive notification","✓ or Allow",icon="◉"){
+            val notificationAllowed=(android.os.Build.VERSION.SDK_INT<33 ||
+                host.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED) &&
+                (host.getSystemService(Context.NOTIFICATION_SERVICE) as
+                    android.app.NotificationManager).areNotificationsEnabled()
+            row(body,"Keep-alive notification",
+                if(notificationAllowed)"✓ Allowed" else "Allow",icon="◉"){
                 dialog.dismiss();host.requestNotificationPermissionFromSettings()
             }
-            row(body,"Battery optimisation","✓ or Fix",icon="◉"){
+            val power=host.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            val batteryExempt=power.isIgnoringBatteryOptimizations(host.packageName)
+            row(body,"Battery optimisation",
+                if(batteryExempt)"✓ Exempt" else "Fix",icon="◉"){
                 dialog.dismiss();host.requestBatteryExemption(true)
             }
             row(body,"App info","Android system app settings",icon="⚙"){

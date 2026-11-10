@@ -463,6 +463,8 @@ class TesseraJourneysInstrumentedTest {
             assertTrue("Emulator must display an IME to validate keyboard anchoring",
                 imeVisible)
             var dockTop=0
+            var dockBottom=0
+            var keyboardTop=0
             var density=1f
             scenario.onActivity{host->
                 val f=MainActivity::class.java.getDeclaredField("tessera")
@@ -471,9 +473,16 @@ class TesseraJourneysInstrumentedTest {
                 val position=IntArray(2)
                 bar.dock.getLocationOnScreen(position)
                 dockTop=position[1]
+                dockBottom=position[1]+bar.dock.height
+                val imeBottom=host.window.decorView.rootWindowInsets
+                    ?.getInsets(android.view.WindowInsets.Type.ime())?.bottom?:0
+                keyboardTop=device.displayHeight-imeBottom
                 density=host.resources.displayMetrics.density
                 bar.snack("Check dock anchor"){}
             }
+            assertTrue("Address dock must be above the IME, not hidden underneath it; "+
+                "dockBottom="+dockBottom+" keyboardTop="+keyboardTop,
+                dockBottom<=keyboardTop+(8*density).toInt())
             val undo=device.wait(Until.findObject(By.text("Undo")),3_000L)
             assertNotNull("Snack with action should show Undo",undo)
             val snap=undo.visibleBounds

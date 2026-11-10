@@ -180,7 +180,16 @@ class MainActivity:Activity(){
         screen=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(Color.rgb(11,14,19))}
         if(Build.VERSION.SDK_INT>=30)screen.setOnApplyWindowInsetsListener{v,insets->
             val bars=insets.getInsets(WindowInsets.Type.systemBars())
-            v.setPadding(bars.left,bars.top,bars.right,bars.bottom)
+            // The root screen owns the dock; its bottom inset must include the
+            // keyboard on Android 15/16 edge-to-edge windows. adjustResize alone
+            // does not reliably move an app-drawn dock above the IME.
+            val keyboard=insets.getInsets(WindowInsets.Type.ime())
+            val bottom=if(insets.isVisible(WindowInsets.Type.ime()))
+                maxOf(bars.bottom,keyboard.bottom) else bars.bottom
+            if(v.paddingLeft!=bars.left||v.paddingTop!=bars.top||
+                v.paddingRight!=bars.right||v.paddingBottom!=bottom){
+                v.setPadding(bars.left,bars.top,bars.right,bottom)
+            }
             insets
         }
         tabStrip=LinearLayout(this).apply{
@@ -1216,11 +1225,23 @@ class MainActivity:Activity(){
     override fun onResume(){super.onResume()}
     /** Settings is the only entrypoint for permission requests. */
     fun requestNotificationPermissionFromSettings(){
-        if(Build.VERSION.SDK_INT<33){notice("Notification controls are managed by Android");return}
-        if(checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED){
-            notice("Notifications already enabled");return
+        val manager=getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        if(Build.VERSION.SDK_INT>=33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED){
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),NOTIFICATION_REQUEST)
+            return
         }
-        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),NOTIFICATION_REQUEST)
+        if(!manager.areNotificationsEnabled()){
+            try{
+                startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply{
+                    putExtra(Settings.EXTRA_APP_PACKAGE,packageName)
+                })
+            }catch(_:RuntimeException){
+                notice("Open SIXPANE's notification permissions in Android App info")
+            }
+            return
+        }
+        notice("Notifications already enabled")
     }
     override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray){
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)

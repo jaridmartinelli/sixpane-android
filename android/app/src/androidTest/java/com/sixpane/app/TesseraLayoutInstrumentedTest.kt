@@ -182,6 +182,40 @@ class TesseraLayoutInstrumentedTest {
         }finally{scenario.close()}
     }
 
+    @Test fun colourFilterSwatchesUpdateInPlaceAndPreserveProfiles(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            lateinit var profiles:Map<String,String>
+            scenario.onActivity{host->
+                profiles=host.store.active().panes.associate{it.id to it.profile}
+                host.tesseraMenuAll()
+            }
+            val filter=device.wait(Until.findObject(By.text("Filter panes")),8_000L)
+            assertNotNull("Filter menu item missing",filter)
+            filter.click()
+            assertNotNull(device.wait(Until.findObject(By.text("COLOURS · ANY OF THESE")),8_000L))
+            val blue=device.findObject(By.desc("Blue filter not selected"))
+            assertNotNull("Blue must have a full-sized accessible swatch",blue)
+            val density=instrumentation.targetContext.resources.displayMetrics.density
+            assertTrue(blue.visibleBounds.height()/density>=44f)
+            blue.click()
+            assertNotNull("Selecting a color must not close the filter page",
+                device.findObject(By.text("Filter panes")))
+            assertNotNull("Selected swatch state must update in-place",
+                device.findObject(By.desc("Blue filter selected")))
+            val green=device.findObject(By.desc("Green filter not selected"))
+            assertNotNull(green)
+            green.click()
+            assertNotNull(device.findObject(By.desc("Green filter selected")))
+            assertNotNull(device.findObject(By.desc("Blue filter selected")))
+            scenario.onActivity{host->
+                assertEquals(setOf("Blue","Green"),host.store.selectedFrameColors)
+                assertEquals(profiles,host.store.active().panes.associate{it.id to it.profile})
+            }
+        }finally{scenario.close()}
+    }
+
     @Test fun newWorkspaceDisabledByFilterShowsReasonBelowFooter(){
         val scenario=ActivityScenario.launch(MainActivity::class.java)
         try{
