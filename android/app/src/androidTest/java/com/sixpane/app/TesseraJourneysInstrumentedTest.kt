@@ -445,11 +445,16 @@ class TesseraJourneysInstrumentedTest {
         val scenario=ActivityScenario.launch(MainActivity::class.java)
         try{
             dismissWelcome()
+            var stageBefore=0
             scenario.onActivity{host->
+                val stageField=MainActivity::class.java.getDeclaredField("stage")
+                stageField.isAccessible=true
+                stageBefore=(stageField.get(host) as android.widget.FrameLayout).height
                 val f=MainActivity::class.java.getDeclaredField("tessera")
                 f.isAccessible=true
                 (f.get(host) as TesseraBar).focusAddress(host.store.active().panes[0].id)
             }
+            assertTrue("Screen must be laid out before opening the IME",stageBefore>0)
             var imeVisible=false
             for(attempt in 0 until 35){
                 scenario.onActivity{host->
@@ -478,6 +483,12 @@ class TesseraJourneysInstrumentedTest {
                     ?.getInsets(android.view.WindowInsets.Type.ime())?.bottom?:0
                 keyboardTop=device.displayHeight-imeBottom
                 density=host.resources.displayMetrics.density
+                val stageField=MainActivity::class.java.getDeclaredField("stage")
+                stageField.isAccessible=true
+                val stageAfter=(stageField.get(host) as android.widget.FrameLayout).height
+                assertTrue("Address entry must preserve pane viewport geometry; "+
+                    "before="+stageBefore+" after="+stageAfter,
+                    kotlin.math.abs(stageAfter-stageBefore)<=host.dp(4))
                 bar.snack("Check dock anchor"){}
             }
             assertTrue("Address dock must be above the IME, not hidden underneath it; "+

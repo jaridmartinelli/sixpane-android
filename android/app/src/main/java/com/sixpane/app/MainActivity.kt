@@ -74,6 +74,15 @@ class MainActivity:Activity(){
     private var textNotice:Toast?=null
     private var pendingUpload:android.webkit.ValueCallback<Array<Uri>>?=null
     fun dp(value:Int):Int=(value*resources.displayMetrics.density).roundToInt()
+    fun tesseraAddressFocusChanged(focused:Boolean){
+        // On edge-to-edge Android, preserve the grid behind the keyboard only
+        // for address entry. Webpage typing must still get a resized viewport.
+        window.setSoftInputMode(if(focused)
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+            else WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        if(::screen.isInitialized && Build.VERSION.SDK_INT>=30)
+            screen.requestApplyInsets()
+    }
     fun paneIndex(id:String):Int=store.spaces.flatMap{it.panes}.indexOfFirst{it.id==id}+1
     fun auditPanes():List<Pair<PaneState,PaneCard?>> = store.spaces.flatMap{it.panes}.map{it to cards[it.id]}
     override fun onCreate(state:Bundle?){
@@ -180,15 +189,24 @@ class MainActivity:Activity(){
         screen=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(Color.rgb(11,14,19))}
         if(Build.VERSION.SDK_INT>=30)screen.setOnApplyWindowInsetsListener{v,insets->
             val bars=insets.getInsets(WindowInsets.Type.systemBars())
-            // The root screen owns the dock; its bottom inset must include the
-            // keyboard on Android 15/16 edge-to-edge windows. adjustResize alone
-            // does not reliably move an app-drawn dock above the IME.
+            // Site typing shrinks the browser area. Address typing instead
+            // moves only the command dock: never change WebView viewport sizes
+            // merely because the user is entering a URL/search.
             val keyboard=insets.getInsets(WindowInsets.Type.ime())
-            val bottom=if(insets.isVisible(WindowInsets.Type.ime()))
+            val imeVisible=insets.isVisible(WindowInsets.Type.ime())
+            val addressTyping=::tessera.isInitialized && tessera.addressFocused()
+            val lift=if(imeVisible)(keyboard.bottom-bars.bottom).coerceAtLeast(0)
+                else 0
+            val bottom=if(imeVisible && !addressTyping)
                 maxOf(bars.bottom,keyboard.bottom) else bars.bottom
             if(v.paddingLeft!=bars.left||v.paddingTop!=bars.top||
                 v.paddingRight!=bars.right||v.paddingBottom!=bottom){
                 v.setPadding(bars.left,bars.top,bars.right,bottom)
+            }
+            if(::tessera.isInitialized){
+                val translation=if(addressTyping)-lift.toFloat() else 0f
+                tessera.dock.translationY=translation
+                tessera.filterChips.translationY=translation
             }
             insets
         }

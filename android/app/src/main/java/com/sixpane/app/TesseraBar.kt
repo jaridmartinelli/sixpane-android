@@ -106,6 +106,7 @@ internal class TesseraBar(private val host:MainActivity) {
         imeOptions=EditorInfo.IME_ACTION_GO
         setPadding(0,0,0,0);background=null;setSelectAllOnFocus(true)
         setOnFocusChangeListener{_,focus->
+            host.tesseraAddressFocusChanged(focus)
             if(focus){
                 editingPaneId=host.tesseraActivePane()?.id
                 setText(host.tesseraActivePane()?.url?.takeUnless{it=="about:blank"}.orEmpty())
