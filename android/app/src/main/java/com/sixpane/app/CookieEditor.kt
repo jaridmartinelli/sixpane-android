@@ -31,6 +31,8 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
     private lateinit var search:EditText
     private lateinit var editButton:TextView
     private lateinit var deleteButton:TextView
+    private lateinit var selectedActions:LinearLayout
+    private lateinit var siteActions:LinearLayout
     private var filtered=linkedMapOf<String,String>()
     private val bg=0xff0b0e13.toInt()
     private fun label(text:String,size:Float,color:Int=Color.WHITE)=TextView(activity).apply {
@@ -89,13 +91,13 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
         val footer=LinearLayout(activity).apply{
             orientation=LinearLayout.VERTICAL;setBackgroundColor(0xff141920.toInt())
         }
-        val selectedActions=row()
+        selectedActions=row()
         editButton=action("✎ Edit"){editSelected()}
         deleteButton=action("⌫ Delete"){deleteSelected()}
         selectedActions.addView(editButton,LinearLayout.LayoutParams(0,activity.dp(44),1f))
         selectedActions.addView(deleteButton,LinearLayout.LayoutParams(0,activity.dp(44),1f))
         footer.addView(selectedActions)
-        val siteActions=row()
+        siteActions=row()
         siteActions.addView(action("Add cookie"){addCookie()},
             LinearLayout.LayoutParams(0,activity.dp(48),1f))
         siteActions.addView(action("Delete all for this site"){deleteAllForSite()},
@@ -163,6 +165,12 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
         val limitations=label("Android WebView does not reveal the complete cookie path, expiry or HttpOnly attributes. Unknown scope is never overwritten.",11f,Color.LTGRAY)
         limitations.setPadding(activity.dp(18),activity.dp(19),activity.dp(18),activity.dp(14))
         list.addView(limitations)
+        // The handoff's default cookie view shows only site actions. Reveal
+        // selected-cookie editing controls only after a live cookie selection;
+        // locked panes are strictly view-only and expose no mutation controls.
+        selectedActions.visibility=if(selected!=null&&!card.state.locked)
+            View.VISIBLE else View.GONE
+        siteActions.visibility=if(card.state.locked)View.GONE else View.VISIBLE
         editButton.alpha=if(selected==null||card.state.locked).35f else 1f
         deleteButton.alpha=if(selected==null||card.state.locked).35f else 1f
     }

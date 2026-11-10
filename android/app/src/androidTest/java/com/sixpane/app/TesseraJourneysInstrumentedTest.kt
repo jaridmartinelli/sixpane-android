@@ -619,4 +619,118 @@ class TesseraJourneysInstrumentedTest {
             }
         }finally{scenario.close()}
     }
+
+
+    @Test fun cookieEditorHidesMutationControlsWhenLockedAndShowsOnlyValidActions(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            lateinit var profileId:String
+            scenario.onActivity{host->
+                val pane=host.store.active().panes.first()
+                profileId=pane.profile
+                pane.locked=true
+                host.updateWindowLocks()
+                host.tesseraMenuAll()
+            }
+            val cookies=device.wait(Until.findObject(By.text("Cookies & site data")),8_000L)
+            assertNotNull("The locked pane must still allow cookie inspection",cookies)
+            cookies.click()
+            assertNotNull("Locked pane should clearly state view-only",
+                device.wait(Until.findObject(By.textContains("VIEW ONLY")),8_000L))
+            assertNull("Locked cookie editor must hide Add action",
+                device.findObject(By.text("Add cookie")))
+            assertNull("Locked cookie editor must hide Delete all action",
+                device.findObject(By.text("Delete all for this site")))
+            assertNull("Locked cookie editor must hide Edit action",
+                device.findObject(By.text("✎ Edit")))
+            assertNull("Locked cookie editor must hide Delete action",
+                device.findObject(By.text("⌫ Delete")))
+            device.pressBack()
+            scenario.onActivity{host->
+                val pane=host.store.active().panes.first()
+                pane.locked=false
+                host.updateWindowLocks()
+                host.tesseraMenuAll()
+            }
+            val unlocked=device.wait(Until.findObject(
+                By.text("Cookies & site data")),8_000L)
+            assertNotNull(unlocked)
+            unlocked.click()
+            assertNotNull("An unlocked pane can add its own site cookie",
+                device.wait(Until.findObject(By.text("Add cookie")),8_000L))
+            assertNotNull("Unrestricted site actions should remain in original layout",
+                device.findObject(By.text("Delete all for this site")))
+            assertNull("With no cookie selected, omit the irrelevant Edit row",
+                device.findObject(By.text("✎ Edit")))
+            scenario.onActivity{host->
+                assertEquals(profileId,host.store.active().panes.first().profile)
+            }
+        }finally{scenario.close()}
+    }
+
+
+    @Test fun bookmarkStarUndoIsPaneScopedAndDoesNotOverwriteNewerEdits(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            lateinit var firstId:String
+            lateinit var secondId:String
+            lateinit var profiles:Map<String,String>
+            val firstUrl="https://appassets.androidplatform.net/assets/isolation_test.html"
+            val secondUrl="https://other.sixpane-fixture.invalid/own"
+            scenario.onActivity{host->
+                val panes=host.store.active().panes
+                firstId=panes[0].id
+                secondId=panes[1].id
+                profiles=panes.associate{it.id to it.profile}
+                host.store.bookmarkForPane(secondId,secondUrl)
+                host.windowCard(firstId)?.loadAddress(firstUrl,exact=true)
+            }
+            var loaded=false
+            for(i in 0 until 45){
+                scenario.onActivity{host->
+                    loaded=host.store.active().panes[0].url==firstUrl &&
+                        host.windowCard(firstId)?.loading==false
+                }
+                if(loaded)break
+                Thread.sleep(200)
+            }
+            assertTrue("Local bookmark fixture should finish navigating",loaded)
+            val initial=device.wait(Until.findObject(By.text("☆")),10_000L)
+            assertNotNull("Unbookmarked page must show the star action",initial)
+            initial.click()
+            val undo=device.wait(Until.findObject(By.text("Undo")),4_000L)
+            assertNotNull("New bookmark should offer Undo",undo)
+            scenario.onActivity{host->
+                assertEquals(listOf(firstUrl),host.store.bookmarksForPane(firstId))
+                assertEquals(listOf(secondUrl),host.store.bookmarksForPane(secondId))
+            }
+            undo.click()
+            scenario.onActivity{host->
+                assertTrue("Undo should revert only the bookmark just added",
+                    host.store.bookmarksForPane(firstId).isEmpty())
+                assertEquals(listOf(secondUrl),host.store.bookmarksForPane(secondId))
+            }
+            // Recreate the action and make a newer change before Undo. An older
+            // Undo must never re-add or remove a changed bookmark.
+            val star=device.wait(Until.findObject(By.text("☆")),5_000L)
+            assertNotNull(star)
+            star.click()
+            val staleUndo=device.wait(Until.findObject(By.text("Undo")),4_000L)
+            assertNotNull(staleUndo)
+            scenario.onActivity{host->
+                assertEquals(listOf(firstUrl),host.store.bookmarksForPane(firstId))
+                host.store.toggleBookmarkForPane(firstId,firstUrl)
+                assertTrue(host.store.bookmarksForPane(firstId).isEmpty())
+            }
+            staleUndo.click()
+            scenario.onActivity{host->
+                assertTrue("Undo must not overwrite a newer bookmark edit",
+                    host.store.bookmarksForPane(firstId).isEmpty())
+                assertEquals(listOf(secondUrl),host.store.bookmarksForPane(secondId))
+                assertEquals(profiles,host.store.active().panes.associate{it.id to it.profile})
+            }
+        }finally{scenario.close()}
+    }
 }

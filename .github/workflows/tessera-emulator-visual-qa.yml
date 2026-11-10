@@ -12,6 +12,7 @@ on:
       - 'android/app/src/main/java/com/sixpane/app/MainActivity.kt'
       - 'android/app/src/main/java/com/sixpane/app/TesseraBar.kt'
       - 'android/app/src/main/java/com/sixpane/app/PaneCard.kt'
+      - 'android/app/src/main/java/com/sixpane/app/CookieEditor.kt'
       - 'android/app/src/main/java/com/sixpane/app/LocalStore.kt'
       - 'android/app/src/main/java/com/sixpane/app/WorkspacePolicy.kt'
   workflow_dispatch:
