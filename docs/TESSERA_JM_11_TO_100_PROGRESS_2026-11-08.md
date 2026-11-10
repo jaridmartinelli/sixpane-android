@@ -463,3 +463,35 @@ recreation, and unsupported named-profile WebView behavior refuses to start
 with an accessible recovery action. These outcomes are evidence for the
 individual asserted requirements, not automatic acceptance of full compound
 JM items or all 27 reference layouts. No production promotion was performed.
+
+### November 9 — cookie-editor layout and accurate background guidance
+
+Two user-supplied reference states were revisited after the 31/31 emulator run:
+
+- **Cookie editor** (`tour-14-cookie-editor.jpg`): Site actions belong
+  immediately after the cookie list/empty state and before the storage details,
+  not fixed at the foot of the screen. Edit/Delete controls belong only to
+  an actual cookie selection. A locked pane must be view-only and must not
+  expose cookie mutation controls. Implemented in the feature branch;
+  `TesseraJourneysInstrumentedTest` now checks visible action availability
+  and vertical ordering in the emulator.
+- **Welcome screen** (`tour-14-welcome-page.jpg`): The prior caption
+  `So sessions never drop` promised behavior Android cannot guarantee.
+  Replaced with `Help keep sessions available` while retaining the
+  notification/battery-permission choices. A first-launch emulator assertion
+  guards this safety-critical copy.
+- **Bookmark Undo**: The new emulator journey adds a bookmark in Pane 1,
+  checks Pane 2 is unaffected, undoes the change, then exercises an
+  intervening edit to ensure stale Undo does not overwrite the newer state.
+
+The follow-up revision is `08933a05fdcbaea3499bb0d095c30892660c7023`.
+Its CI preview run is [42746200242](https://github.com/jaridmartinelli/sixpane-android/actions/runs/42746200242).
+Its emulator run is [42746200415](https://github.com/jaridmartinelli/sixpane-android/actions/runs/42746200415).
+The emulator artifact's JUnit XML confirms **34 tests passed, 0 failed,
+0 errors, 0 skipped**, on Android API 35. The canonical preview build passed
+as well. Verified additions: a locked cookie editor hides mutation controls,
+an unlocked editor shows site actions after the list and before storage info,
+bookmark Undo is pane-scoped and ignores newer changes, and first-launch copy
+does not promise continuous background execution.
+This is still not a 100/100 end-to-end JM acceptance or complete 27-screen
+layout sign-off.
