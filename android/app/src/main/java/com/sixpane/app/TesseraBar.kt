@@ -559,7 +559,11 @@ internal class TesseraBar(private val host:MainActivity) {
         }
         r.addView(txt(icon,22f),LinearLayout.LayoutParams(dp(39),dp(44)))
         val bodyText=LinearLayout(host).apply{orientation=LinearLayout.VERTICAL}
-        bodyText.addView(txt(title,15f))
+        val dangerAction=title=="End session"||title=="End sessions…"||
+            title=="Close workspace"
+        bodyText.addView(txt(title,15f).apply{
+            if(dangerAction)setTextColor(0xffff6b6b.toInt())
+        })
         if(description.isNotEmpty())bodyText.addView(txt(description,12f).apply{
             setTextColor(if(enabled)secondary else 0xffff6b6b.toInt())
         })
@@ -1045,6 +1049,9 @@ internal class TesseraBar(private val host:MainActivity) {
                     host.tesseraSetFilter(host.store.filterQuery,colors)
                     dialog.dismiss();filterScreen()
                 }.apply{
+                    contentDescription="Filter by "+name+
+                        (if(selected)" (selected)" else "")
+                    isSelected=selected
                     setTextColor(FramePalette.tesseraColors[i])
                     background=round(surface2,22,if(selected)3 else 1,
                         if(selected)Color.WHITE else stroke)

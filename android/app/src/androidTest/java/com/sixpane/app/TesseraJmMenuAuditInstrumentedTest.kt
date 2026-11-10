@@ -208,6 +208,12 @@ class TesseraJmMenuAuditInstrumentedTest {
             assertNotNull(filter)
             filter.click()
             assertNotNull(device.wait(Until.findObject(By.text("COLOURS · ANY OF THESE")),8_000L))
+            for(name in listOf("Blue","Green","Red","Gold","Olive","Teal")){
+                val colour=device.findObject(By.desc("Filter by "+name))
+                assertNotNull("Filter colour needs an accessible label: "+name,colour)
+                assertTrue("Filter colour target must be 44dp tall: "+name,
+                    dp(colour.visibleBounds.height())>=43f)
+            }
             assertNotNull(device.findObject(By.text("URL CONTAINS")))
             assertNotNull(device.findObject(By.text("Clear all")))
             assertNotNull(device.findObject(By.text("Done")))
