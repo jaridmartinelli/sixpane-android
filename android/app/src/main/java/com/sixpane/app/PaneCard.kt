@@ -234,7 +234,8 @@ class PaneCard(
             isClickable=true;isFocusable=true
             contentDescription="Empty window: tap to enter an address, hold for pane menu"
             background=android.graphics.drawable.RippleDrawable(
-                android.content.res.ColorStateList.valueOf(Color.argb(55,255,255,255)),null,null)
+                android.content.res.ColorStateList.valueOf(Color.argb(55,255,255,255)),
+                android.graphics.drawable.ColorDrawable(0xff0b0e13.toInt()),null)
             setOnClickListener{host.tesseraFocusAddress(state.id)}
             setOnLongClickListener{host.windowContextMenu(this@PaneCard);true}
         }

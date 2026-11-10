@@ -215,7 +215,7 @@ internal class TesseraBar(private val host:MainActivity) {
             ws.panes.any{it.id in host.tesseraSelected()}
         }
         val status=LinearLayout(host).apply{orientation=LinearLayout.VERTICAL}
-        status.addView(txt(selectionCount.toString()+" selected",14f).apply{
+        status.addView(txt(selectionCount.toString()+" selected",15f).apply{
             setTypeface(null,Typeface.BOLD)
         })
         status.addView(txt(if(workspaceCount<=1)"In this workspace" else
@@ -812,7 +812,7 @@ internal class TesseraBar(private val host:MainActivity) {
                     // The reference places workspace number, count, lock and close
                     // together in the card header, BEFORE the 2×3 live preview.
                     val cardHeader=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
-                    cardHeader.addView(txt((index+1).toString(),16f).apply{
+                    cardHeader.addView(txt((index+1).toString(),17f).apply{
                         setTypeface(null,Typeface.BOLD)
                         contentDescription="Workspace "+(index+1)
                     },LinearLayout.LayoutParams(dp(20),dp(44)))
@@ -940,7 +940,7 @@ internal class TesseraBar(private val host:MainActivity) {
                 alpha=if(addReason.isBlank())1f else .45f
                 contentDescription=if(addReason.isBlank())"Create new workspace"
                     else "New workspace unavailable: "+addReason
-            },LinearLayout.LayoutParams(-1,dp(48)))
+            },LinearLayout.LayoutParams(-1,dp(52)))
             if(addReason.isNotBlank()){
                 footerStack.addView(txt(addReason,10f).apply{
                     gravity=Gravity.CENTER
