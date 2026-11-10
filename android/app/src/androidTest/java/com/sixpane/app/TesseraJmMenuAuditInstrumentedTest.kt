@@ -113,7 +113,7 @@ class TesseraJmMenuAuditInstrumentedTest {
         try{
             dismissWelcome()
             scenario.onActivity{host->host.enterSelection(host.store.active().panes[0].id)}
-            val targets=listOf("Exit selection","Deselect all visible panes",
+            val targets=listOf("Exit selection","Select all visible panes",
                 "Lock selected panes","Unlock selected panes",
                 "Change colour of selected panes","More actions for selected panes")
             for(desc in targets){
@@ -123,6 +123,14 @@ class TesseraJmMenuAuditInstrumentedTest {
                     " actual="+dp(control.visibleBounds.height()),
                     dp(control.visibleBounds.height())>=43f)
             }
+            // The reference uses one toggle. In a partially selected grid it is
+            // "All"; only after selecting all six does it change to "None".
+            device.findObject(By.desc("Select all visible panes")).click()
+            val none=device.wait(Until.findObject(
+                By.desc("Deselect all visible panes")),8_000L)
+            assertNotNull("All must turn into None when every pane is selected",none)
+            assertTrue("None touch target must also meet 44dp",
+                dp(none.visibleBounds.height())>=43f)
         }finally{scenario.close()}
     }
 
