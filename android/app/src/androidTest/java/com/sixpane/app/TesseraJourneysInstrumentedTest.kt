@@ -1,6 +1,7 @@
 package com.sixpane.app
 
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -481,6 +482,141 @@ class TesseraJourneysInstrumentedTest {
             assertTrue("Snack should be within 64dp of dock top",
                 dockTop-snap.bottom<(64*density).toInt())
             undo.click()
+        }finally{scenario.close()}
+    }
+
+
+    @Test fun closingPaneRetiresOnlyItsBookmarksAndNeverCopiesThemToFreshPane(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            lateinit var first:String
+            lateinit var second:String
+            lateinit var formerProfile:String
+            val bookmarkA="https://fixture.one.invalid/private-p1"
+            val bookmarkB="https://fixture.two.invalid/private-p2"
+            scenario.onActivity{host->
+                val panes=host.store.active().panes
+                first=panes[0].id
+                second=panes[1].id
+                formerProfile=panes[0].profile
+                host.store.bookmarkForPane(first,bookmarkA)
+                host.store.bookmarkForPane(second,bookmarkB)
+                host.tesseraEnd(setOf(first))
+            }
+            assertNotNull(device.wait(Until.findObject(By.text("End Pane 1?")),8_000L))
+            val confirm=device.findObject(By.text("End sessions"))
+            assertNotNull(confirm)
+            confirm.click()
+            device.waitForIdle()
+            scenario.onActivity{host->
+                val panes=host.store.active().panes
+                assertNotEquals("Ended slot must receive a fresh pane ID",first,panes[0].id)
+                assertNotEquals("Ended slot must receive a fresh isolated profile",
+                    formerProfile,panes[0].profile)
+                assertTrue("A new session must not inherit the ended pane's bookmarks",
+                    panes[0].bookmarks.isEmpty())
+                assertEquals("The neighboring pane must keep its own bookmark",second,panes[1].id)
+                assertEquals(listOf(bookmarkB),host.store.bookmarksForPane(second))
+                assertNull("Retired pane must not be addressed as live",
+                    host.store.spaces.flatMap{it.panes}.firstOrNull{it.id==first})
+                assertTrue("Former profile must be queued for retirement",
+                    formerProfile in host.store.pendingDeletion)
+            }
+        }finally{scenario.close()}
+    }
+
+    @Test fun sevenWorkspaceMaximumPreserves42DistinctSessionProfiles(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            scenario.onActivity{host->
+                repeat(6){host.tesseraNewWorkspace()}
+                assertEquals("SIXPANE holds seven workspaces",7,host.store.spaces.size)
+                assertTrue(host.store.spaces.all{it.panes.size==6})
+                val ids=host.store.spaces.flatMap{it.panes}.map{it.id}
+                val profiles=host.store.spaces.flatMap{it.panes}.map{it.profile}
+                assertEquals("42 distinct pane IDs",42,ids.toSet().size)
+                assertEquals("42 distinct named WebView profiles",42,profiles.toSet().size)
+                assertTrue("42 unique declared viewport dimensions",
+                    ViewportRatioPolicy.allUnique(host.store.spaces.flatMap{it.panes}
+                        .map{it.widthPercent to it.heightPercent}))
+                val snapshot=host.store.spaces.map{it.id to it.panes.map{p->p.profile}}
+                host.tesseraNewWorkspace()
+                assertEquals("Creating an eighth workspace must be refused",
+                    snapshot,host.store.spaces.map{it.id to it.panes.map{p->p.profile}})
+            }
+        }finally{scenario.close()}
+    }
+
+    @Test fun manualGridOverrideChangesActualPaneGeometryAndPersists(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            lateinit var profiles:Map<String,String>
+            lateinit var p:List<String>
+            scenario.onActivity{host->
+                p=host.store.active().panes.map{it.id}
+                profiles=host.store.active().panes.associate{it.id to it.profile}
+                host.tesseraSetGrid("3x2")
+            }
+            fun assertShape(threeAcross:Boolean){
+                var ready=false
+                var diagnostic=""
+                for(i in 0 until 30){
+                    scenario.onActivity{host->
+                        val layout=p.map{id->
+                            host.windowCard(id)?.layoutParams as? android.widget.FrameLayout.LayoutParams
+                        }
+                        if(layout.all{it!=null}){
+                            val cells=layout.map{it!!}
+                            ready=if(threeAcross)
+                                cells[0].topMargin==cells[2].topMargin &&
+                                    cells[3].topMargin>cells[0].topMargin
+                            else cells[0].topMargin==cells[1].topMargin &&
+                                cells[2].topMargin>cells[0].topMargin
+                            diagnostic=cells.map{it.leftMargin to it.topMargin}.toString()
+                        }
+                    }
+                    if(ready)break
+                    Thread.sleep(250)
+                }
+                assertTrue("Grid preference did not produce expected pane positions: "+diagnostic,
+                    ready)
+            }
+            assertShape(true)
+            scenario.onActivity{host->assertEquals("3x2",host.store.gridPreference)}
+            scenario.recreate()
+            scenario.onActivity{host->
+                assertEquals("Grid override must persist", "3x2",host.store.gridPreference)
+                assertEquals("Grid change cannot replace profiles",
+                    profiles,host.store.active().panes.associate{it.id to it.profile})
+                host.tesseraSetGrid("2x3")
+            }
+            assertShape(false)
+        }finally{scenario.close()}
+    }
+
+    @Test fun unsupportedWebViewShowsShieldAndStoreActionWithoutCreatingWebViews(){
+        val intent=Intent(instrumentation.targetContext,MainActivity::class.java).apply{
+            putExtra("sixpane.qa.forceUnsupportedWebView",true)
+        }
+        val scenario=ActivityScenario.launch<MainActivity>(intent)
+        try{
+            assertNotNull("Unsupported-WebView mode should explain the failure",
+                device.wait(Until.findObject(
+                    By.text("Update Android System WebView")),8_000L))
+            assertNotNull("A shield should identify the isolation warning",
+                device.findObject(
+                    By.desc("Shield: browser profile isolation unavailable")))
+            val store=device.findObject(
+                By.desc("Open Play Store for Android System WebView"))
+            assertNotNull("The recovery action should be accessible",store)
+            assertTrue("The Play Store action must be tappable",store.isClickable)
+            scenario.onActivity{host->
+                assertTrue("Never allocate any profiles when isolation is unavailable",
+                    host.auditPanes().all{(_,card)->card==null})
+            }
         }finally{scenario.close()}
     }
 }

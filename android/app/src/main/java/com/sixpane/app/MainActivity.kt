@@ -80,8 +80,15 @@ class MainActivity:Activity(){
         super.onCreate(state)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         try{store=LocalStore(this)}catch(e:Exception){fatal("Saved workspace manifest could not be loaded: ${e.message}");return}
-        if(!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)){
-            fatal("This device WebView does not support MULTI_PROFILE. SIXPANE will not start in a shared-cookie mode. Update Android System WebView and try again.")
+        // Test-only emulator override lets CI validate the fail-closed UI.
+        // Normal/release builds still rely exclusively on the real WebView
+        // capability, never on a user-chosen session-sharing fallback.
+        val previewUnsupported=BuildConfig.DEBUG &&
+            packageName=="com.sixpane.app.preview.filterview" &&
+            intent.getBooleanExtra("sixpane.qa.forceUnsupportedWebView",false)
+        if(previewUnsupported||
+            !WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)){
+            unsupportedWebView()
             return
         }
         cleanupDeletedProfiles()
@@ -93,6 +100,64 @@ class MainActivity:Activity(){
     private fun fatal(message:String){
         val label=TextView(this).apply {text=message;textSize=17f;setTextColor(Color.WHITE);setPadding(dp(20),dp(35),dp(20),dp(20))}
         setContentView(ScrollView(this).apply{setBackgroundColor(Color.rgb(25,33,45));addView(label)})
+    }
+    /** Never silently substitute a shared WebView cookie/profile context. */
+    private fun unsupportedWebView(){
+        val bg=0xff0b0e13.toInt()
+        val ink=0xffeef2f7.toInt()
+        val center=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER
+            setPadding(dp(26),dp(24),dp(26),dp(24))
+        }
+        center.addView(TextView(this).apply{
+            text="⬟";textSize=56f
+            setTextColor(0xffff4d57.toInt())
+            gravity=Gravity.CENTER
+            contentDescription="Shield: browser profile isolation unavailable"
+        },LinearLayout.LayoutParams(dp(84),dp(86)))
+        center.addView(TextView(this).apply{
+            text="Update Android System WebView"
+            textSize=20f;setTextColor(ink)
+            setTypeface(null,android.graphics.Typeface.BOLD)
+            gravity=Gravity.CENTER
+        },LinearLayout.LayoutParams(-1,dp(68)))
+        center.addView(TextView(this).apply{
+            text="This Android WebView cannot isolate each pane's browser profile. SIXPANE will not start in shared-session mode. Update Android System WebView, then open SIXPANE again."
+            textSize=14f
+            setTextColor(0xffb6c1cf.toInt())
+            gravity=Gravity.CENTER
+            setPadding(0,0,0,dp(12))
+        },LinearLayout.LayoutParams(-1,-2))
+        center.addView(TextView(this).apply{
+            text="Open Play Store";textSize=15f
+            setTypeface(null,android.graphics.Typeface.BOLD)
+            gravity=Gravity.CENTER
+            setTextColor(bg)
+            contentDescription="Open Play Store for Android System WebView"
+            isClickable=true;isFocusable=true
+            background=GradientDrawable().apply{
+                setColor(0xff7ea6ff.toInt())
+                cornerRadius=dp(13).toFloat()
+            }
+            setOnClickListener{
+                val target="com.google.android.webview"
+                try{
+                    startActivity(Intent(Intent.ACTION_VIEW,
+                        Uri.parse("market://details?id="+target)))
+                }catch(_:android.content.ActivityNotFoundException){
+                    try{
+                        startActivity(Intent(Intent.ACTION_VIEW,
+                            Uri.parse("https://play.google.com/store/apps/details?id="+target)))
+                    }catch(_:android.content.ActivityNotFoundException){
+                        notice("Open the Play Store and search for Android System WebView")
+                    }
+                }
+            }
+        },LinearLayout.LayoutParams(-1,dp(52)).apply{topMargin=dp(18)})
+        val root=FrameLayout(this).apply{setBackgroundColor(bg)}
+        root.addView(center,FrameLayout.LayoutParams(-1,-2,Gravity.CENTER))
+        setContentView(root)
     }
     private fun cleanupDeletedProfiles(){
         val profiles=store.pendingDeletion.toList()
