@@ -88,22 +88,19 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
         val scroll=ScrollView(activity).apply{isFillViewport=true}
         list=LinearLayout(activity).apply{orientation=LinearLayout.VERTICAL}
         scroll.addView(list);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-        val footer=LinearLayout(activity).apply{
-            orientation=LinearLayout.VERTICAL;setBackgroundColor(0xff141920.toInt())
-        }
+        // The reference places cookie actions WITH the site-data contents,
+        // directly below the cookie list and above storage information, not
+        // pinned to the bottom edge of the whole screen.
         selectedActions=row()
         editButton=action("✎ Edit"){editSelected()}
         deleteButton=action("⌫ Delete"){deleteSelected()}
         selectedActions.addView(editButton,LinearLayout.LayoutParams(0,activity.dp(44),1f))
         selectedActions.addView(deleteButton,LinearLayout.LayoutParams(0,activity.dp(44),1f))
-        footer.addView(selectedActions)
         siteActions=row()
         siteActions.addView(action("Add cookie"){addCookie()},
             LinearLayout.LayoutParams(0,activity.dp(48),1f))
         siteActions.addView(action("Delete all for this site"){deleteAllForSite()},
             LinearLayout.LayoutParams(0,activity.dp(48),1f))
-        footer.addView(siteActions)
-        root.addView(footer)
         search.addTextChangedListener(object:TextWatcher{
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
             override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){render()}
@@ -145,6 +142,8 @@ class CookieEditor(private val activity:MainActivity,private val card:PaneCard){
             val empty=label(description,12f,Color.LTGRAY).apply{setPadding(activity.dp(18),activity.dp(24),activity.dp(18),activity.dp(8))}
             list.addView(empty)
         }
+        list.addView(selectedActions,LinearLayout.LayoutParams(-1,activity.dp(44)))
+        list.addView(siteActions,LinearLayout.LayoutParams(-1,activity.dp(48)))
         // Honest limitation: getCookie() may not expose every cookie attribute or every origin.
         val storage=label("Storage on this page: loading…",12f,Color.LTGRAY)
         storage.setPadding(activity.dp(18),activity.dp(18),activity.dp(18),activity.dp(10))

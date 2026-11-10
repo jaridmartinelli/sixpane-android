@@ -663,6 +663,14 @@ class TesseraJourneysInstrumentedTest {
                 device.findObject(By.text("Delete all for this site")))
             assertNull("With no cookie selected, omit the irrelevant Edit row",
                 device.findObject(By.text("✎ Edit")))
+            val search=device.findObject(By.clazz("android.widget.EditText"))
+            val add=device.findObject(By.text("Add cookie"))
+            val storage=device.wait(Until.findObject(By.textContains("Storage on this page")),
+                5_000L)
+            assertNotNull(search);assertNotNull(add);assertNotNull(storage)
+            assertTrue("Cookie actions belong below search",search.visibleBounds.bottom<=add.visibleBounds.top)
+            assertTrue("Cookie actions belong ABOVE page storage, not pinned to the bottom",
+                add.visibleBounds.bottom<=storage.visibleBounds.top)
             scenario.onActivity{host->
                 assertEquals(profileId,host.store.active().panes.first().profile)
             }
@@ -731,6 +739,19 @@ class TesseraJourneysInstrumentedTest {
                 assertEquals(listOf(secondUrl),host.store.bookmarksForPane(secondId))
                 assertEquals(profiles,host.store.active().panes.associate{it.id to it.profile})
             }
+        }finally{scenario.close()}
+    }
+
+
+    @Test fun welcomeDoesNotPromiseUnstoppableBackgroundWebViews(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            assertNotNull("First-run screen should explain background permissions",
+                device.wait(Until.findObject(
+                    By.text("Help keep sessions available")),8_000L))
+            assertNull("Android cannot guarantee pages never stop in background",
+                device.findObject(By.text("So sessions never drop")))
+            assertNotNull(device.findObject(By.text("Got it")))
         }finally{scenario.close()}
     }
 }

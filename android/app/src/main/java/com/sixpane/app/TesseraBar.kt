@@ -1148,7 +1148,7 @@ internal class TesseraBar(private val host:MainActivity) {
             body.addView(txt("Tap a pane header to activate, double-tap to enlarge, hold for its menu.",15f).apply{
                 setPadding(dp(12),dp(14),dp(12),dp(14))
             })
-            body.addView(txt("So sessions never drop",17f).apply{
+            body.addView(txt("Help keep sessions available",17f).apply{
                 setPadding(dp(12),dp(18),dp(12),dp(8))
             })
             val power=host.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
