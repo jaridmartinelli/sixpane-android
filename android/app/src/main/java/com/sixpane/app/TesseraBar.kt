@@ -881,8 +881,11 @@ internal class TesseraBar(private val host:MainActivity) {
                                 val canvas=android.graphics.Canvas(bitmap)
                                 canvas.drawColor(Color.WHITE)
                                 canvas.save()
-                                canvas.scale(tileWidth.toFloat()/live.width,
-                                    tileHeight.toFloat()/live.height)
+                                // Preserve the site's proportions in the tiny
+                                // workspace preview; scale to tile width and crop
+                                // the lower page instead of squashing its height.
+                                val scale=tileWidth.toFloat()/live.width
+                                canvas.scale(scale,scale)
                                 live.draw(canvas)
                                 canvas.restore()
                                 // WebView.draw may produce an empty/solid bitmap even
