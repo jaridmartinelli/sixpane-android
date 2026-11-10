@@ -383,9 +383,83 @@ untested.
   never spoof browser/page visibility or promise impossible guarantees.
   Any replacement for the handoff's absolute background-speed promise requires
   separately approved technical acceptance semantics.
-- The 27 Tessera reference images were not accessible in the inspected Git
-  checkout or attached CI evidence. Recorded emulator screenshots establish
-  what the app rendered, not exact correspondence to unavailable references.
+- **Corrected November 9:** `Tessera-screens.zip` was located in the
+  user's persistent ChatGPT Library; its archive contains **27 JPG reference
+  images** (verified ZIP structure). The archive is not checked into GitHub,
+  and manual side-by-side inspection has not established exact menu parity for
+  all 27 states. Earlier wording that the references were unavailable was
+  outdated.
 - The condensed 100-item index remains the working list; the original
   228-check/18-section handoff is retained. Tests establish only their actual
   assertions, never every clause of an entire compound 100 item.
+
+---
+
+## November 9, 2026 continuation — tested UI journeys and bookmark isolation
+
+The authoritative user decision is to **keep per-pane bookmarks**. No shared
+bookmark list, metadata migration, or cross-pane merge is authorized. The
+per-pane `PaneState.bookmarks` lists remain unchanged as the live source of
+bookmark suggestions and changes; fresh sessions do not inherit old bookmarks.
+
+### Emulator evidence
+
+- Commit `7fa1e1e58f65626ca269e1f18c2b0fe8e412b9f6`: Android 15
+  disposable emulator [run 42703274657](https://github.com/jaridmartinelli/sixpane-android/actions/runs/42703274657)
+  executed **27 tests: 27 passed, 0 failed, 0 skipped**. Canonical preview
+  CI also succeeded. These tests exercise UI gestures, selection, workspace
+  controls, filter visibility, cross-workspace pane slots, popup navigation,
+  exact address entry with Enter, snackbars above an open IME, per-pane bookmark
+  storage/recreation, and state-aware Undo.
+- Previously source-implemented but now emulator-verified behaviors include:
+  distinct bookmark suggestions/removal without affecting another pane,
+  cross-workspace selection persistence, All/None controls, locked-pane
+  skip/end confirmation, workspace header controls, native dock and pane-header
+  gestures, popup navigation, and labelled filter-chip removal.
+- Scope: each case passes its explicit assertions **only**. This is not a
+  blanket acceptance of 27 checklist rows, all 32 end-to-end journeys, or
+  all 228 canonical atomic assertions. Exact 27-image layout parity remains
+  open, despite the recovered references.
+
+### Regressions, causes and prevention
+
+1. **Address-field automation** failed repeatedly as UiAutomator's EditText
+   accessibility node became stale or unavailable during IME/suggestion popup
+   transitions. Production focus remained native; an emulator check now
+   confirms focused EditText content, sends real Android text-input events and
+   presses Enter. It passed in run 42703274657. Do not restore stale
+   accessibility-node reuse in this journey.
+2. **Cross-workspace filter fixture race**: navigating local asset pages
+   during a newly allocated about:blank WebView could cause a late callback to
+   remove a filter match from the fixture. The test now waits for both local
+   URLs to settle before enabling condensed result mode; passed in run
+   42703274657. No browser-profile or filter-policy change was needed.
+3. **Undo safety**: Bookmark, pane-lock and multi-pane recolour callbacks now
+   verify that the expected action is still current. Undo must never reverse
+   an intervening user edit or write to a retired pane. Emulator lock and
+   colour regressions passed. Bookmark Undo still needs its own dedicated
+   user-level action/negative-case regression.
+4. **Snackbar keyboard overlap**: the fixed gravity-bottom positioning was
+   replaced by a dock-relative placement updated on layout changes. Emulator
+   verified the Undo snackbar stays above the IME-lifted dock.
+
+### Latest additional slice
+
+Commit `e6dd2d18896215f038e4e9034d4b4ec269d9f2ed` adds an
+unsupported-WebView recovery screen without falling back to shared cookie
+storage, plus emulator checks for fresh-session bookmark separation, seven
+workspaces and 42 distinct profile IDs, and the persistence/actual geometry
+of manual grid settings. Emulator [run 42744305404](https://github.com/jaridmartinelli/sixpane-android/actions/runs/42744305404)
+finished **31 passed, 0 failed, 0 skipped** (Android API 35; test suite
+`com.sixpane.app.ProfileIsolationInstrumentedTest`). Canonical preview CI
+[run 42744305401](https://github.com/jaridmartinelli/sixpane-android/actions/runs/42744305401)
+also passed. These are the latest validated source and test artifacts.
+
+New checks verified that retiring a pane replaces its profile without copying
+bookmarks and does not affect its neighbor's bookmarks, all seven workspaces
+hold 42 unique IDs and profile names without allowing an eighth, a manual
+2×3/3×2 override changes actual pane positions and persists across activity
+recreation, and unsupported named-profile WebView behavior refuses to start
+with an accessible recovery action. These outcomes are evidence for the
+individual asserted requirements, not automatic acceptance of full compound
+JM items or all 27 reference layouts. No production promotion was performed.
