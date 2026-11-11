@@ -32,8 +32,12 @@ class FilteredPanePagesTest {
             for(count in 1..5){
                 val partial=FilteredPanePages.bounds(360,720,2,columns,count,null,54,80)
                 assertEquals(six.take(count),partial)
-                // A two-match page uses exactly the same cell dimensions as six matches.
-                assertTrue(partial.all{it.width==six[0].width&&it.height==six[0].height})
+                // Remainder pixels are distributed between cells to keep
+                // both outer edges and every gap equal; sizes differ by <=1px.
+                assertTrue(partial.all{
+                    kotlin.math.abs(it.width-six[0].width)<=1 &&
+                    kotlin.math.abs(it.height-six[0].height)<=1
+                })
             }
             assertTrue(FilteredPanePages.bounds(360,720,2,columns,0,null,54,80).isEmpty())
         }
