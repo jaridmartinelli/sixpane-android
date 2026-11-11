@@ -1212,8 +1212,14 @@ class MainActivity:Activity(){
                 card.post{
                     if(card.parent!==stage||layoutRun!=layoutGeneration)return@post
                     card.pivotX=0f;card.pivotY=0f
-                    card.scaleX=oldW.toFloat()/card.width.coerceAtLeast(1)
-                    card.scaleY=oldH.toFloat()/card.height.coerceAtLeast(1)
+                    // Resize animation must not warp web content either.
+                    // Keep a uniform transform while the new layout settles.
+                    val uniformStartScale=minOf(
+                        oldW.toFloat()/card.width.coerceAtLeast(1),
+                        oldH.toFloat()/card.height.coerceAtLeast(1)
+                    ).coerceIn(.2f,4f)
+                    card.scaleX=uniformStartScale
+                    card.scaleY=uniformStartScale
                     card.translationX=oldX-card.left.toFloat()
                     card.translationY=oldY-card.top.toFloat()
                     card.animate().translationX(0f).translationY(0f).scaleX(1f).scaleY(1f)

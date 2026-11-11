@@ -801,34 +801,51 @@ internal class TesseraBar(private val host:MainActivity) {
     }
     fun workspaceScreen(){
         page("Workspaces",host.store.spaces.size.toString()+" of 7","×",80){body,footer,dialog->
-            val cols=if(host.resources.displayMetrics.widthPixels>=dp(600))3 else 2
-            val width=(host.resources.displayMetrics.widthPixels-dp(48))/cols
+            val screenWidth=host.resources.displayMetrics.widthPixels
+            val cols=if(screenWidth>=dp(600))3 else 2
+            // Include the scroll body's 12dp padding on both sides and each
+            // card's 4dp margins. Never let headers inflate a GridLayout column.
+            val cardWidths=WorkspaceGridSizing.cardWidths(
+                screenWidth,dp(12),dp(4),cols)
             val grid=android.widget.GridLayout(host).apply{columnCount=cols}
+            var visibleCardIndex=0
             host.store.spaces.forEachIndexed{index,ws->
                 val visible=ws.panes.any{p->
                     FramePalette.matches(p.url,host.store.frameColor(p.id),
                         host.store.filterQuery,host.store.selectedFrameColors)
                 }
                 if(visible||host.store.filterQuery.isBlank()&&host.store.selectedFrameColors.isEmpty()){
+                    val width=cardWidths[visibleCardIndex++%cols]
+                    val compactHeader=width<dp(168)
                     val card=LinearLayout(host).apply{
                         orientation=LinearLayout.VERTICAL
                         setPadding(dp(6),dp(6),dp(6),dp(6))
                         background=round(surface,16,if(ws.id==host.store.currentId)2 else 1,
                             if(ws.id==host.store.currentId)Color.WHITE else stroke)
                     }
-                    // The reference places workspace number, count, lock and close
-                    // together in the card header, BEFORE the 2×3 live preview.
-                    val cardHeader=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
-                    cardHeader.addView(txt((index+1).toString(),17f).apply{
+                    // Narrow two-column cards cannot fit two 44dp actions plus
+                    // number/count in one row. Keep both full-size touch targets
+                    // in a second row instead of overflowing neighbouring cards.
+                    val cardHeader=LinearLayout(host).apply{
+                        orientation=if(compactHeader)LinearLayout.VERTICAL
+                            else LinearLayout.HORIZONTAL
+                        gravity=Gravity.CENTER_VERTICAL
+                    }
+                    val labelRow=LinearLayout(host).apply{gravity=Gravity.CENTER_VERTICAL}
+                    labelRow.addView(txt((index+1).toString(),17f).apply{
                         setTypeface(null,Typeface.BOLD)
                         contentDescription="Workspace "+(index+1)
-                    },LinearLayout.LayoutParams(dp(20),dp(44)))
-                    cardHeader.addView(txt(
+                    },LinearLayout.LayoutParams(dp(20),dp(if(compactHeader)26 else 44)))
+                    labelRow.addView(txt(
                         ws.panes.count{it.url!="about:blank"}.toString()+" open",10f
                     ).apply{
                         setTextColor(secondary)
-                    },LinearLayout.LayoutParams(0,dp(44),1f))
-                    cardHeader.addView(button("⌑"){
+                        maxLines=1
+                    },LinearLayout.LayoutParams(0,dp(if(compactHeader)26 else 44),1f))
+                    val actionRow=LinearLayout(host).apply{
+                        gravity=Gravity.CENTER_VERTICAL or Gravity.END
+                    }
+                    actionRow.addView(button("⌑"){
                         val next=!ws.panes.all{it.locked}
                         ws.panes.forEach{it.locked=next}
                         host.updateWindowLocks();dialog.dismiss();workspaceScreen()
@@ -837,7 +854,7 @@ internal class TesseraBar(private val host:MainActivity) {
                             " all panes in workspace "+(index+1)
                     },LinearLayout.LayoutParams(dp(44),dp(44)))
                     val canCloseWorkspace=!ws.locked&&ws.panes.none{it.locked}
-                    cardHeader.addView(button("×"){
+                    actionRow.addView(button("×"){
                         if(canCloseWorkspace)dialog.dismiss()
                         // A protected workspace stays open; the close action explains
                         // the refusal instead of dismissing the card silently.
@@ -847,9 +864,19 @@ internal class TesseraBar(private val host:MainActivity) {
                             (if(canCloseWorkspace)"" else "; unlock workspace and panes first")
                         alpha=if(canCloseWorkspace)1f else .45f
                     },LinearLayout.LayoutParams(dp(44),dp(44)))
-                    card.addView(cardHeader,LinearLayout.LayoutParams(-1,dp(44)))
+                    if(compactHeader){
+                        cardHeader.addView(labelRow,LinearLayout.LayoutParams(-1,dp(26)))
+                        cardHeader.addView(actionRow,LinearLayout.LayoutParams(-1,dp(44)))
+                    }else{
+                        cardHeader.addView(labelRow,LinearLayout.LayoutParams(0,dp(44),1f))
+                        cardHeader.addView(actionRow,LinearLayout.LayoutParams(dp(88),dp(44)))
+                    }
+                    card.addView(cardHeader,LinearLayout.LayoutParams(-1,
+                        dp(if(compactHeader)70 else 44)))
                     val previews=android.widget.GridLayout(host).apply{columnCount=2}
-                    ws.panes.forEach{p->
+                    val previewWidths=WorkspaceGridSizing.previewWidths(
+                        width,dp(6),dp(1))
+                    ws.panes.forEachIndexed{paneIndex,p->
                         val tile=LinearLayout(host).apply{
                             orientation=LinearLayout.VERTICAL
                             setBackgroundColor(surface2)
@@ -858,7 +885,7 @@ internal class TesseraBar(private val host:MainActivity) {
                             setBackgroundColor(host.store.frameColor(p.id))
                         },LinearLayout.LayoutParams(-1,dp(4)))
                         val live=host.windowCard(p.id)?.webView
-                        val tileWidth=(width-dp(22))/2
+                        val tileWidth=previewWidths[paneIndex%2]
                         val tileHeight=dp(if(cols==3)64 else 72)-dp(4)
                         fun fallbackPreview(){
                             val label=if(p.url=="about:blank")"New"
@@ -906,13 +933,15 @@ internal class TesseraBar(private val host:MainActivity) {
                                 if(featureless)fallbackPreview()
                                 else tile.addView(android.widget.ImageView(host).apply{
                                     setImageBitmap(bitmap)
-                                    scaleType=android.widget.ImageView.ScaleType.FIT_XY
+                                    // A width/height rounding difference must
+                                    // never stretch a website screenshot.
+                                    scaleType=android.widget.ImageView.ScaleType.CENTER_CROP
                                     contentDescription="Snapshot of pane "+host.paneIndex(p.id)
                                 },LinearLayout.LayoutParams(-1,tileHeight))
                             }catch(_:RuntimeException){fallbackPreview()}
                         }else fallbackPreview()
                         previews.addView(tile,android.widget.GridLayout.LayoutParams().apply{
-                            this.width=(width-dp(22))/2
+                            this.width=tileWidth
                             height=dp(if(cols==3)64 else 72)
                             setMargins(dp(1),dp(1),dp(1),dp(1))
                         })

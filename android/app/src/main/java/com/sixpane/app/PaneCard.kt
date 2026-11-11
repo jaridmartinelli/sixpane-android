@@ -886,21 +886,19 @@ class PaneCard(
     }
     private fun applyViewportDimensions(w:Int,h:Int){
         if(!webViewAlive)return
-        // Small genuine WebView viewport-size differences within identical visible card geometry.
-        // View transforms visually fit the independent surface into its aligned host cell.
-        val sx=WorkspacePolicy.normalViewScale(state.widthPercent)
-        val sy=WorkspacePolicy.normalViewScale(state.heightPercent)
-        val trueW=(w/sx).roundToInt().coerceAtLeast(1).let{
-            if(host.store.fullSizeSmallPanes && w<host.dp(320))
-                maxOf(it,(host.dp(320)/sx).roundToInt())
-            else it
-        }
-        val trueH=(h/sy).roundToInt().coerceAtLeast(1)
+        val fitted=ViewportDisplayPolicy.fit(
+            w,h,host.dp(320),host.store.fullSizeSmallPanes,
+            state.widthPercent,state.heightPercent,host.paneIndex(state.id))
         val lp=webView.layoutParams
-        if(lp.width!=trueW||lp.height!=trueH){lp.width=trueW;lp.height=trueH;webView.layoutParams=lp}
+        if(lp.width!=fitted.webWidthPx||lp.height!=fitted.webHeightPx){
+            lp.width=fitted.webWidthPx
+            lp.height=fitted.webHeightPx
+            webView.layoutParams=lp
+        }
         webView.pivotX=0f;webView.pivotY=0f
-        webView.scaleX=w.toFloat()/trueW
-        webView.scaleY=sy
+        // CRITICAL: never stretch HTML, text, or images with unequal X/Y scaling.
+        webView.scaleX=fitted.scale
+        webView.scaleY=fitted.scale
     }
     fun updateLockStatus(){
         lock.locked=state.locked

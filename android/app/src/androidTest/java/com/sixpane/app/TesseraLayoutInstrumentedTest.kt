@@ -37,6 +37,34 @@ class TesseraLayoutInstrumentedTest {
         device.waitForIdle()
     }
 
+    @Test fun realWebViewsHaveIdenticalHorizontalAndVerticalScale(){
+        val scenario=ActivityScenario.launch(MainActivity::class.java)
+        try{
+            dismissWelcome()
+            var ready=false
+            for(i in 0 until 35){
+                scenario.onActivity{host->
+                    val active=host.store.active().panes.map{it.id}.toSet()
+                    ready=host.auditPanes().filter{it.first.id in active}
+                        .count{it.second!=null&&it.second!!.webView.width>0}==6
+                }
+                if(ready)break
+                Thread.sleep(250)
+            }
+            assertTrue("All six WebViews should have measured layouts",ready)
+            scenario.onActivity{host->
+                val ids=host.store.active().panes.map{it.id}.toSet()
+                host.auditPanes().filter{it.first.id in ids}.forEach{(pane,card)->
+                    val web=card!!.webView
+                    assertEquals("Pane "+host.paneIndex(pane.id)+
+                        " must never warp website content",web.scaleX,web.scaleY,0.0001f)
+                    assertTrue("Pane "+host.paneIndex(pane.id)+" must have real page dimensions",
+                        web.width>0&&web.height>0)
+                }
+            }
+        }finally{scenario.close()}
+    }
+
     @Test fun paneMenuHasInlineColourChoicesSwitchAndCorrectGroupOrder(){
         val scenario=ActivityScenario.launch(MainActivity::class.java)
         try{
